@@ -35,30 +35,34 @@ struct options
 	int			minor;
 };
 
+/* global variables */
+struct options	*opts;
+PGconn	   		*conn;
+
 /* function prototypes */
 static void help(const char *progname);
-void		get_opts(int, char **, struct options *);
+void		get_opts(int, char **);
 void	   *myalloc(size_t size);
 char	   *mystrdup(const char *str);
-PGconn	   *sql_conn(struct options *);
-int			sql_exec(PGconn *, const char *sql, const char *filename, bool quiet);
-void        sql_exec_dump_pgstatactivity(PGconn *, struct options *);
-void		sql_exec_dump_pgstatbgwriter(PGconn *, struct options *);
-void		sql_exec_dump_pgstatdatabase(PGconn *, struct options *);
-void		sql_exec_dump_pgstatalltables(PGconn *, struct options *);
-void		sql_exec_dump_pgstatallindexes(PGconn *, struct options *);
-void		sql_exec_dump_pgstatioalltables(PGconn *, struct options *);
-void		sql_exec_dump_pgstatioallindexes(PGconn *, struct options *);
-void		sql_exec_dump_pgstatioallsequences(PGconn *, struct options *);
-void		sql_exec_dump_pgstatuserfunctions(PGconn *, struct options *);
-void		sql_exec_dump_pgclass_size(PGconn *, struct options *);
-void		sql_exec_dump_xlog_stat(PGconn *, struct options *);
-void		fetch_version(PGconn *conn, struct options * opts);
-bool		backend_minimum_version(int major, int minor, struct options * opts);
+PGconn	   *sql_conn(void);
+int			sql_exec(const char *sql, const char *filename, bool quiet);
+void        sql_exec_dump_pgstatactivity(void);
+void		sql_exec_dump_pgstatbgwriter(void);
+void		sql_exec_dump_pgstatdatabase(void);
+void		sql_exec_dump_pgstatalltables(void);
+void		sql_exec_dump_pgstatallindexes(void);
+void		sql_exec_dump_pgstatioalltables(void);
+void		sql_exec_dump_pgstatioallindexes(void);
+void		sql_exec_dump_pgstatioallsequences(void);
+void		sql_exec_dump_pgstatuserfunctions(void);
+void		sql_exec_dump_pgclass_size(void);
+void		sql_exec_dump_xlog_stat(void);
+void		fetch_version(void);
+bool		backend_minimum_version(int major, int minor);
 
 /* function to parse command line options and check for some usage errors. */
 void
-get_opts(int argc, char **argv, struct options * my_opts)
+get_opts(int argc, char **argv)
 {
 	int			c;
 	const char *progname;
@@ -66,13 +70,13 @@ get_opts(int argc, char **argv, struct options * my_opts)
 	progname = get_progname(argv[0]);
 
 	/* set the defaults */
-	my_opts->quiet = false;
-	my_opts->nodb = false;
-	my_opts->directory = NULL;
-	my_opts->dbname = NULL;
-	my_opts->hostname = NULL;
-	my_opts->port = NULL;
-	my_opts->username = NULL;
+	opts->quiet = false;
+	opts->nodb = false;
+	opts->directory = NULL;
+	opts->dbname = NULL;
+	opts->hostname = NULL;
+	opts->port = NULL;
+	opts->username = NULL;
 
 	if (argc > 1)
 	{
@@ -95,32 +99,32 @@ get_opts(int argc, char **argv, struct options * my_opts)
 		{
 				/* specify the database */
 			case 'd':
-				my_opts->dbname = mystrdup(optarg);
+				opts->dbname = mystrdup(optarg);
 				break;
 
 				/* specify the directory */
 			case 'D':
-				my_opts->directory = mystrdup(optarg);
+				opts->directory = mystrdup(optarg);
 				break;
 
 				/* don't show headers */
 			case 'q':
-				my_opts->quiet = true;
+				opts->quiet = true;
 				break;
 
 				/* host to connect to */
 			case 'H':
-				my_opts->hostname = mystrdup(optarg);
+				opts->hostname = mystrdup(optarg);
 				break;
 
 				/* port to connect to on remote host */
 			case 'p':
-				my_opts->port = mystrdup(optarg);
+				opts->port = mystrdup(optarg);
 				break;
 
 				/* username */
 			case 'U':
-				my_opts->username = mystrdup(optarg);
+				opts->username = mystrdup(optarg);
 				break;
 
 			case 'h':
@@ -183,9 +187,9 @@ mystrdup(const char *str)
 
 /* establish connection with database. */
 PGconn *
-sql_conn(struct options * my_opts)
+sql_conn()
 {
-	PGconn	   *conn;
+	PGconn	   *my_conn;
 	char	   *password = NULL;
 	bool		new_pass;
 
@@ -196,25 +200,25 @@ sql_conn(struct options * my_opts)
 	do
 	{
 		new_pass = false;
-		conn = PQsetdbLogin(my_opts->hostname,
-							my_opts->port,
+		my_conn = PQsetdbLogin(opts->hostname,
+							opts->port,
 							NULL,		/* options */
 							NULL,		/* tty */
-							my_opts->dbname,
-							my_opts->username,
+							opts->dbname,
+							opts->username,
 							password);
-		if (!conn)
+		if (!my_conn)
 		{
 			fprintf(stderr, "%s: could not connect to database %s\n",
-					"pgstats", my_opts->dbname);
+					"pgstats", opts->dbname);
 			exit(1);
 		}
 
-		if (PQstatus(conn) == CONNECTION_BAD &&
+		if (PQstatus(my_conn) == CONNECTION_BAD &&
 			PQconnectionNeedsPassword(conn) &&
 			password == NULL)
 		{
-			PQfinish(conn);
+			PQfinish(my_conn);
 			password = simple_prompt("Password: ", 100, false);
 			new_pass = true;
 		}
@@ -224,23 +228,23 @@ sql_conn(struct options * my_opts)
 		free(password);
 
 	/* check to see that the backend connection was successfully made */
-	if (PQstatus(conn) == CONNECTION_BAD)
+	if (PQstatus(my_conn) == CONNECTION_BAD)
 	{
 		fprintf(stderr, "%s: could not connect to database %s: %s",
-				"pgstats", my_opts->dbname, PQerrorMessage(conn));
-		PQfinish(conn);
+				"pgstats", opts->dbname, PQerrorMessage(my_conn));
+		PQfinish(my_conn);
 		exit(1);
 	}
 
 	/* return the conn if good */
-	return conn;
+	return my_conn;
 }
 
 /*
  * Actual code to make call to the database and print the output data.
  */
 int
-sql_exec(PGconn *conn, const char *todo, const char* filename, bool quiet)
+sql_exec(const char *todo, const char* filename, bool quiet)
 {
 	PGresult   *res;
 	FILE	   *fdcsv;
@@ -308,7 +312,7 @@ sql_exec(PGconn *conn, const char *todo, const char* filename, bool quiet)
  * Dump all activities.
  */
 void
-sql_exec_dump_pgstatactivity(PGconn *conn, struct options * opts)
+sql_exec_dump_pgstatactivity()
 {
 	char		todo[1024];
 	char		filename[1024];
@@ -324,14 +328,14 @@ sql_exec_dump_pgstatactivity(PGconn *conn, struct options * opts)
 	snprintf(filename, sizeof(filename),
 			 "%s/pg_stat_activity.csv", opts->directory);
 
-	sql_exec(conn, todo, filename, opts->quiet);
+	sql_exec(todo, filename, opts->quiet);
 }
 
 /*
  * Dump all bgwriter stats.
  */
 void
-sql_exec_dump_pgstatbgwriter(PGconn *conn, struct options * opts)
+sql_exec_dump_pgstatbgwriter()
 {
 	char		todo[1024];
 	char		filename[1024];
@@ -342,14 +346,14 @@ sql_exec_dump_pgstatbgwriter(PGconn *conn, struct options * opts)
 	snprintf(filename, sizeof(filename),
 			 "%s/pg_stat_bgwriter.csv", opts->directory);
 
-	sql_exec(conn, todo, filename, opts->quiet);
+	sql_exec(todo, filename, opts->quiet);
 }
 
 /*
  * Dump all databases stats.
  */
 void
-sql_exec_dump_pgstatdatabase(PGconn *conn, struct options * opts)
+sql_exec_dump_pgstatdatabase()
 {
 	char		todo[1024];
 	char		filename[1024];
@@ -360,14 +364,14 @@ sql_exec_dump_pgstatdatabase(PGconn *conn, struct options * opts)
 	snprintf(filename, sizeof(filename),
 			 "%s/pg_stat_database.csv", opts->directory);
 
-	sql_exec(conn, todo, filename, opts->quiet);
+	sql_exec(todo, filename, opts->quiet);
 }
 
 /*
  * Dump all tables stats.
  */
 void
-sql_exec_dump_pgstatalltables(PGconn *conn, struct options * opts)
+sql_exec_dump_pgstatalltables()
 {
 	char		todo[1024];
 	char		filename[1024];
@@ -385,14 +389,14 @@ sql_exec_dump_pgstatalltables(PGconn *conn, struct options * opts)
 	snprintf(filename, sizeof(filename),
 			 "%s/pg_stat_all_tables.csv", opts->directory);
 
-	sql_exec(conn, todo, filename, opts->quiet);
+	sql_exec(todo, filename, opts->quiet);
 }
 
 /*
  * Dump all indexes stats.
  */
 void
-sql_exec_dump_pgstatallindexes(PGconn *conn, struct options * opts)
+sql_exec_dump_pgstatallindexes()
 {
 	char		todo[1024];
 	char		filename[1024];
@@ -406,14 +410,14 @@ sql_exec_dump_pgstatallindexes(PGconn *conn, struct options * opts)
 	snprintf(filename, sizeof(filename),
 			 "%s/pg_stat_all_indexes.csv", opts->directory);
 
-	sql_exec(conn, todo, filename, opts->quiet);
+	sql_exec(todo, filename, opts->quiet);
 }
 
 /*
  * Dump all tables IO stats.
  */
 void
-sql_exec_dump_pgstatioalltables(PGconn *conn, struct options * opts)
+sql_exec_dump_pgstatioalltables()
 {
 	char		todo[1024];
 	char		filename[1024];
@@ -427,14 +431,14 @@ sql_exec_dump_pgstatioalltables(PGconn *conn, struct options * opts)
 	snprintf(filename, sizeof(filename),
 			 "%s/pg_statio_all_tables.csv", opts->directory);
 
-	sql_exec(conn, todo, filename, opts->quiet);
+	sql_exec(todo, filename, opts->quiet);
 }
 
 /*
  * Dump all indexes IO stats.
  */
 void
-sql_exec_dump_pgstatioallindexes(PGconn *conn, struct options * opts)
+sql_exec_dump_pgstatioallindexes()
 {
 	char		todo[1024];
 	char		filename[1024];
@@ -448,14 +452,14 @@ sql_exec_dump_pgstatioallindexes(PGconn *conn, struct options * opts)
 	snprintf(filename, sizeof(filename),
 			 "%s/pg_statio_all_indexes.csv", opts->directory);
 
-	sql_exec(conn, todo, filename, opts->quiet);
+	sql_exec(todo, filename, opts->quiet);
 }
 
 /*
  * Dump all sequences IO stats.
  */
 void
-sql_exec_dump_pgstatioallsequences(PGconn *conn, struct options * opts)
+sql_exec_dump_pgstatioallsequences()
 {
 	char		todo[1024];
 	char		filename[1024];
@@ -469,14 +473,14 @@ sql_exec_dump_pgstatioallsequences(PGconn *conn, struct options * opts)
 	snprintf(filename, sizeof(filename),
 			 "%s/pg_statio_all_sequences.csv", opts->directory);
 
-	sql_exec(conn, todo, filename, opts->quiet);
+	sql_exec(todo, filename, opts->quiet);
 }
 
 /*
  * Dump all functions stats.
  */
 void
-sql_exec_dump_pgstatuserfunctions(PGconn *conn, struct options * opts)
+sql_exec_dump_pgstatuserfunctions()
 {
 	char		todo[1024];
 	char		filename[1024];
@@ -490,14 +494,14 @@ sql_exec_dump_pgstatuserfunctions(PGconn *conn, struct options * opts)
 	snprintf(filename, sizeof(filename),
 			 "%s/pg_stat_user_functions.csv", opts->directory);
 
-	sql_exec(conn, todo, filename, opts->quiet);
+	sql_exec(todo, filename, opts->quiet);
 }
 
 /*
  * Dump all size class stats.
  */
 void
-sql_exec_dump_pgclass_size(PGconn *conn, struct options * opts)
+sql_exec_dump_pgclass_size()
 {
 	char		todo[1024];
 	char		filename[1024];
@@ -511,14 +515,14 @@ sql_exec_dump_pgclass_size(PGconn *conn, struct options * opts)
 	snprintf(filename, sizeof(filename),
 			 "%s/pg_class_size.csv", opts->directory);
 
-	sql_exec(conn, todo, filename, opts->quiet);
+	sql_exec(todo, filename, opts->quiet);
 }
 
 /*
  * Dump all xlog stats.
  */
 void
-sql_exec_dump_xlog_stat(PGconn *conn, struct options * opts)
+sql_exec_dump_xlog_stat()
 {
 	char		todo[1024];
 	char		filename[1024];
@@ -533,14 +537,15 @@ sql_exec_dump_xlog_stat(PGconn *conn, struct options * opts)
 	snprintf(filename, sizeof(filename),
 			 "%s/pg_xlog_stat.csv", opts->directory);
 
-	sql_exec(conn, todo, filename, opts->quiet);
+	sql_exec(todo, filename, opts->quiet);
 }
 
 
 /*
  * Fetch PostgreSQL major and minor numbers
  */
-void fetch_version(PGconn *conn, struct options * opts)
+void
+fetch_version()
 {
 	char		todo[1024];
 	PGresult   *res;
@@ -573,7 +578,8 @@ void fetch_version(PGconn *conn, struct options * opts)
 /*
  * Compare given major and minor numbers to the one of the connected server
  */
-bool backend_minimum_version(int major, int minor, struct options * opts)
+bool
+backend_minimum_version(int major, int minor)
 {
 	return opts->major > major || (opts->major == major && opts->minor >= minor);
 }
@@ -582,49 +588,46 @@ bool backend_minimum_version(int major, int minor, struct options * opts)
 int
 main(int argc, char **argv)
 {
-	struct options *my_opts;
-	PGconn	   *pgconn;
-
-	my_opts = (struct options *) myalloc(sizeof(struct options));
+	opts = (struct options *) myalloc(sizeof(struct options));
 
 	/* parse the opts */
-	get_opts(argc, argv, my_opts);
+	get_opts(argc, argv);
 
-	if (my_opts->dbname == NULL)
+	if (opts->dbname == NULL)
 	{
-		my_opts->dbname = "postgres";
-		my_opts->nodb = true;
+		opts->dbname = "postgres";
+		opts->nodb = true;
 	}
 
-	if (my_opts->directory == NULL)
+	if (opts->directory == NULL)
 	{
-		my_opts->directory = "./";
+		opts->directory = "./";
 	}
 
 	/* connect to the database */
-	pgconn = sql_conn(my_opts);
+	conn = sql_conn();
 
 	/* get version */
-    fetch_version(pgconn, my_opts);
+    fetch_version();
 
 	/* grap cluster stats info */
-	sql_exec_dump_pgstatactivity(pgconn, my_opts);
-	sql_exec_dump_pgstatbgwriter(pgconn, my_opts);
-	sql_exec_dump_pgstatdatabase(pgconn, my_opts);
+	sql_exec_dump_pgstatactivity();
+	sql_exec_dump_pgstatbgwriter();
+	sql_exec_dump_pgstatdatabase();
 
 	/* grap database stats info */
-	sql_exec_dump_pgstatalltables(pgconn, my_opts);
-	sql_exec_dump_pgstatallindexes(pgconn, my_opts);
-	sql_exec_dump_pgstatioalltables(pgconn, my_opts);
-	sql_exec_dump_pgstatioallindexes(pgconn, my_opts);
-	sql_exec_dump_pgstatioallsequences(pgconn, my_opts);
-    if (backend_minimum_version(8, 4, my_opts))
-		sql_exec_dump_pgstatuserfunctions(pgconn, my_opts);
+	sql_exec_dump_pgstatalltables();
+	sql_exec_dump_pgstatallindexes();
+	sql_exec_dump_pgstatioalltables();
+	sql_exec_dump_pgstatioallindexes();
+	sql_exec_dump_pgstatioallsequences();
+    if (backend_minimum_version(8, 4))
+		sql_exec_dump_pgstatuserfunctions();
 
 	/* grab other informations */
-	sql_exec_dump_pgclass_size(pgconn, my_opts);
-	sql_exec_dump_xlog_stat(pgconn, my_opts);
+	sql_exec_dump_pgclass_size();
+	sql_exec_dump_xlog_stat();
 
-	PQfinish(pgconn);
+	PQfinish(conn);
 	return 0;
 }
