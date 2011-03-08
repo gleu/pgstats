@@ -30,6 +30,9 @@ struct options
 	char	   *hostname;
 	char	   *port;
 	char	   *username;
+
+	int			major;
+	int			minor;
 };
 
 /* function prototypes */
@@ -50,6 +53,8 @@ void		sql_exec_dump_pgstatioallsequences(PGconn *, struct options *);
 void		sql_exec_dump_pgstatuserfunctions(PGconn *, struct options *);
 void		sql_exec_dump_pgclass_size(PGconn *, struct options *);
 void		sql_exec_dump_xlog_stat(PGconn *, struct options *);
+void		fetch_version(PGconn *conn, struct options * opts);
+bool		backend_minimum_version(int major, int minor, struct options * opts);
 
 /* function to parse command line options and check for some usage errors. */
 void
@@ -532,6 +537,48 @@ sql_exec_dump_xlog_stat(PGconn *conn, struct options * opts)
 }
 
 
+/*
+ * Fetch PostgreSQL major and minor numbers
+ */
+void fetch_version(PGconn *conn, struct options * opts)
+{
+	char		todo[1024];
+	PGresult   *res;
+
+	/* get the oid and database name from the system pg_database table */
+	snprintf(todo, sizeof(todo), "SELECT version()");
+
+	/* make the call */
+	res = PQexec(conn, todo);
+
+	/* check and deal with errors */
+	if (!res || PQresultStatus(res) > 2)
+	{
+		fprintf(stderr, "pgstats: query failed: %s\n", PQerrorMessage(conn));
+		fprintf(stderr, "pgstats: query was: %s\n", todo);
+
+		PQclear(res);
+		PQfinish(conn);
+		exit(-1);
+	}
+
+	/* get the only row, and parse it to get major and minor numbers */
+	sscanf(PQgetvalue(res, 0, 0), "%*s %d.%d", &(opts->major), &(opts->minor));
+
+	/* cleanup */
+	PQclear(res);
+}
+
+
+/*
+ * Compare given major and minor numbers to the one of the connected server
+ */
+bool backend_minimum_version(int major, int minor, struct options * opts)
+{
+	return opts->major > major || (opts->major == major && opts->minor >= minor);
+}
+
+
 int
 main(int argc, char **argv)
 {
@@ -557,6 +604,9 @@ main(int argc, char **argv)
 	/* connect to the database */
 	pgconn = sql_conn(my_opts);
 
+	/* get version */
+    fetch_version(pgconn, my_opts);
+
 	/* grap cluster stats info */
 	sql_exec_dump_pgstatactivity(pgconn, my_opts);
 	sql_exec_dump_pgstatbgwriter(pgconn, my_opts);
@@ -568,7 +618,8 @@ main(int argc, char **argv)
 	sql_exec_dump_pgstatioalltables(pgconn, my_opts);
 	sql_exec_dump_pgstatioallindexes(pgconn, my_opts);
 	sql_exec_dump_pgstatioallsequences(pgconn, my_opts);
-	sql_exec_dump_pgstatuserfunctions(pgconn, my_opts);
+    if (backend_minimum_version(8, 4, my_opts))
+		sql_exec_dump_pgstatuserfunctions(pgconn, my_opts);
 
 	/* grab other informations */
 	sql_exec_dump_pgclass_size(pgconn, my_opts);
