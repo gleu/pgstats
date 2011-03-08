@@ -322,12 +322,13 @@ sql_exec_dump_pgstatactivity()
 			 "SELECT date_trunc('seconds', now()), datid, datname, procpid, "
              "usesysid, usename,%s client_addr, client_port, "
              "date_trunc('seconds', backend_start) AS backend_start, "
-			 "date_trunc('seconds', xact_start) AS xact_start, "
+			 "%s"
 			 "date_trunc('seconds', query_start) AS query_start, "
              "waiting, current_query "
              "FROM pg_stat_activity "
 			 "ORDER BY procpid",
-		backend_minimum_version(9, 0) ? " application_name," : "");
+		backend_minimum_version(9, 0) ? " application_name," : "",
+        backend_minimum_version(8, 3) ? "date_trunc('seconds', xact_start) AS xact_start, " : "");
 	snprintf(filename, sizeof(filename),
 			 "%s/pg_stat_activity.csv", opts->directory);
 
@@ -383,12 +384,13 @@ sql_exec_dump_pgstatalltables()
 	snprintf(todo, sizeof(todo),
 			 "SELECT date_trunc('seconds', now()), relid, schemaname, relname, "
              "seq_scan, seq_tup_read, idx_scan, idx_tup_fetch, n_tup_ins, "
-             "n_tup_upd, n_tup_del, n_tup_hot_upd, n_live_tup, n_dead_tup, "
+             "n_tup_upd, n_tup_del,%s "
              "date_trunc('seconds', last_vacuum) AS last_vacuum, date_trunc('seconds', last_autovacuum) AS last_autovacuum, "
              "date_trunc('seconds',last_analyze) AS last_analyze, date_trunc('seconds',last_autoanalyze) AS last_autoanalyze "
              "FROM pg_stat_all_tables "
 	     "WHERE schemaname <> 'information_schema' "
-	     "ORDER BY schemaname, relname");
+	     "ORDER BY schemaname, relname",
+		backend_minimum_version(8, 3) ? " n_tup_hot_upd, n_live_tup, n_dead_tup," : "");
 	snprintf(filename, sizeof(filename),
 			 "%s/pg_stat_all_tables.csv", opts->directory);
 
@@ -615,7 +617,8 @@ main(int argc, char **argv)
 
 	/* grap cluster stats info */
 	sql_exec_dump_pgstatactivity();
-	sql_exec_dump_pgstatbgwriter();
+	if (backend_minimum_version(8, 3))
+		sql_exec_dump_pgstatbgwriter();
 	sql_exec_dump_pgstatdatabase();
 
 	/* grap database stats info */
