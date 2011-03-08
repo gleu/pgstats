@@ -320,11 +320,14 @@ sql_exec_dump_pgstatactivity()
 	/* get the oid and database name from the system pg_database table */
 	snprintf(todo, sizeof(todo),
 			 "SELECT date_trunc('seconds', now()), datid, datname, procpid, "
-             "usesysid, usename, current_query, waiting, "
-             "date_trunc('seconds', xact_start) AS xact_start, date_trunc('seconds', query_start) AS query_start, "
-             "date_trunc('seconds', backend_start) AS backend_start, client_addr, client_port "
+             "usesysid, usename,%s client_addr, client_port, "
+             "date_trunc('seconds', backend_start) AS backend_start, "
+			 "date_trunc('seconds', xact_start) AS xact_start, "
+			 "date_trunc('seconds', query_start) AS query_start, "
+             "waiting, current_query "
              "FROM pg_stat_activity "
-	     "ORDER BY procpid");
+			 "ORDER BY procpid",
+		backend_minimum_version(9, 0) ? " application_name," : "");
 	snprintf(filename, sizeof(filename),
 			 "%s/pg_stat_activity.csv", opts->directory);
 
