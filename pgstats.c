@@ -93,7 +93,7 @@ get_opts(int argc, char **argv)
 	}
 
 	/* get opts */
-	while ((c = getopt(argc, argv, "H:p:U:d:D:qh")) != -1)
+	while ((c = getopt(argc, argv, "h:p:U:d:D:q")) != -1)
 	{
 		switch (c)
 		{
@@ -113,7 +113,7 @@ get_opts(int argc, char **argv)
 				break;
 
 				/* host to connect to */
-			case 'H':
+			case 'h':
 				opts->hostname = mystrdup(optarg);
 				break;
 
@@ -125,11 +125,6 @@ get_opts(int argc, char **argv)
 				/* username */
 			case 'U':
 				opts->username = mystrdup(optarg);
-				break;
-
-			case 'h':
-				help(progname);
-				exit(0);
 				break;
 
 			default:
@@ -145,17 +140,18 @@ help(const char *progname)
 	printf("%s gathers statistics from a PostgreSQL database.\n\n"
 		   "Usage:\n"
 		   "  %s [OPTIONS]...\n"
-		   "\nOptions:\n"
+		   "\nGeneral options:\n"
 		   "  -d DBNAME    database to connect to\n"
 		   "  -D DIRECTORY directory for stats files (defaults to current)\n"
-		   "  -q           quiet (don't show headers)\n"
+		   "  -q           quiet\n"
 		   "  --help       show this help, then exit\n"
 		   "  --version    output version information, then exit\n"
-		   "  -H HOSTNAME  database server host or socket directory\n"
+		   "\nConnection options:\n"
+		   "  -h HOSTNAME  database server host or socket directory\n"
 		   "  -p PORT      database server port number\n"
 		   "  -U USER      connect as specified database user\n"
-		   "\nThe default action is to show all database OIDs.\n\n"
-		   "Report bugs to <pgsql-bugs@postgresql.org>.\n",
+		   "\nThe default action is to create CSV files for each report.\n\n"
+		   "Report bugs to <guillaume@lelarge.info>.\n",
 		   progname, progname);
 }
 
@@ -580,7 +576,8 @@ fetch_version()
 	sscanf(PQgetvalue(res, 0, 0), "%*s %d.%d", &(opts->major), &(opts->minor));
 
 	/* print version */
-    printf("Detected release: %d.%d\n", opts->major, opts->minor);
+	if (!opts->quiet)
+	    printf("Detected release: %d.%d\n", opts->major, opts->minor);
 
 	/* cleanup */
 	PQclear(res);
