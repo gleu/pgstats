@@ -214,6 +214,7 @@ sql_conn()
 			exit(1);
 		}
 
+#ifndef BEFORE_8_2
 		if (PQstatus(my_conn) == CONNECTION_BAD &&
 			PQconnectionNeedsPassword(conn) &&
 			password == NULL)
@@ -222,6 +223,7 @@ sql_conn()
 			password = simple_prompt("Password: ", 100, false);
 			new_pass = true;
 		}
+#endif
 	} while (new_pass);
 
 	if (password)
@@ -324,11 +326,12 @@ sql_exec_dump_pgstatactivity()
              "date_trunc('seconds', backend_start) AS backend_start, "
 			 "%s"
 			 "date_trunc('seconds', query_start) AS query_start, "
-             "waiting, current_query "
+             "%scurrent_query "
              "FROM pg_stat_activity "
 			 "ORDER BY procpid",
 		backend_minimum_version(9, 0) ? " application_name," : "",
-        backend_minimum_version(8, 3) ? "date_trunc('seconds', xact_start) AS xact_start, " : "");
+        backend_minimum_version(8, 3) ? "date_trunc('seconds', xact_start) AS xact_start, " : "",
+        backend_minimum_version(8, 2) ? "waiting, " : "");
 	snprintf(filename, sizeof(filename),
 			 "%s/pg_stat_activity.csv", opts->directory);
 
@@ -384,13 +387,14 @@ sql_exec_dump_pgstatalltables()
 	snprintf(todo, sizeof(todo),
 			 "SELECT date_trunc('seconds', now()), relid, schemaname, relname, "
              "seq_scan, seq_tup_read, idx_scan, idx_tup_fetch, n_tup_ins, "
-             "n_tup_upd, n_tup_del,%s "
-             "date_trunc('seconds', last_vacuum) AS last_vacuum, date_trunc('seconds', last_autovacuum) AS last_autovacuum, "
-             "date_trunc('seconds',last_analyze) AS last_analyze, date_trunc('seconds',last_autoanalyze) AS last_autoanalyze "
-             "FROM pg_stat_all_tables "
+             "n_tup_upd, n_tup_del"
+             "%s"
+			 "%s"
+             " FROM pg_stat_all_tables "
 	     "WHERE schemaname <> 'information_schema' "
 	     "ORDER BY schemaname, relname",
-		backend_minimum_version(8, 3) ? " n_tup_hot_upd, n_live_tup, n_dead_tup," : "");
+		backend_minimum_version(8, 3) ? ", n_tup_hot_upd, n_live_tup, n_dead_tup" : "",
+        backend_minimum_version(8, 2) ? ", date_trunc('seconds', last_vacuum) AS last_vacuum, date_trunc('seconds', last_autovacuum) AS last_autovacuum, date_trunc('seconds',last_analyze) AS last_analyze, date_trunc('seconds',last_autoanalyze) AS last_autoanalyze" : "");
 	snprintf(filename, sizeof(filename),
 			 "%s/pg_stat_all_tables.csv", opts->directory);
 
@@ -575,6 +579,9 @@ fetch_version()
 	/* get the only row, and parse it to get major and minor numbers */
 	sscanf(PQgetvalue(res, 0, 0), "%*s %d.%d", &(opts->major), &(opts->minor));
 
+	/* print version */
+    printf("Detected release: %d.%d\n", opts->major, opts->minor);
+
 	/* cleanup */
 	PQclear(res);
 }
@@ -632,7 +639,8 @@ main(int argc, char **argv)
 
 	/* grab other informations */
 	sql_exec_dump_pgclass_size();
-	sql_exec_dump_xlog_stat();
+    if (backend_minimum_version(8, 2))
+		sql_exec_dump_xlog_stat();
 
 	PQfinish(conn);
 	return 0;
