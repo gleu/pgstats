@@ -58,9 +58,11 @@ void		sql_exec_dump_pgstatioallindexes(void);
 void		sql_exec_dump_pgstatioallsequences(void);
 void		sql_exec_dump_pgstatuserfunctions(void);
 void		sql_exec_dump_pgclass_size(void);
+void        sql_exec_dump_pgstatstatements(void);
 void		sql_exec_dump_xlog_stat(void);
 void		fetch_version(void);
 bool		backend_minimum_version(int major, int minor);
+bool        backend_has_pgstatstatements(void);
 
 /* function to parse command line options and check for some usage errors. */
 void
@@ -584,6 +586,27 @@ sql_exec_dump_pgclass_size()
 }
 
 /*
+ * Dump all statements stats.
+ */
+void
+sql_exec_dump_pgstatstatements()
+{
+	char		todo[1024];
+	char		filename[1024];
+
+	/* get the oid and database name from the system pg_database table */
+	snprintf(todo, sizeof(todo),
+			 "SELECT date_trunc('seconds', now()), r.rolname, d.datname, q.* "
+			 "FROM pg_stat_statements q, pg_database d, pg_roles r "
+			 "WHERE q.userid=r.oid and q.dbid=d.oid "
+			 "ORDER BY r.rolname, d.datname");
+	snprintf(filename, sizeof(filename),
+			 "%s/pg_stat_statements.csv", opts->directory);
+
+	sql_exec(todo, filename, opts->quiet);
+}
+
+/*
  * Dump all xlog stats.
  */
 void
@@ -654,6 +677,47 @@ backend_minimum_version(int major, int minor)
 }
 
 
+/*
+ * Check if backend has the pg_stat_statements view
+ */
+bool
+backend_has_pgstatstatements()
+{
+	PGresult   *res;
+	char		sql[1024];
+    bool        has_pgstatstatements = false;
+
+	/* get the oid and database name from the system pg_database table */
+	snprintf(sql, sizeof(sql),
+			 "SELECT 1 "
+			 "FROM pg_proc p, pg_namespace n "
+			 "WHERE p.proname='pg_stat_statements' "
+             "  AND p.pronamespace=n.oid");
+
+	/* make the call */
+	res = PQexec(conn, sql);
+
+	/* check and deal with errors */
+	if (!res || PQresultStatus(res) > 2)
+	{
+		fprintf(stderr, "pgstats: query failed: %s\n", PQerrorMessage(conn));
+		fprintf(stderr, "pgstats: query was: %s\n", sql);
+
+		PQclear(res);
+		PQfinish(conn);
+		exit(-1);
+	}
+
+	/* get the information */
+    has_pgstatstatements = PQntuples(res)>0;
+
+	/* cleanup */
+	PQclear(res);
+
+	return has_pgstatstatements;
+}
+
+
 int
 main(int argc, char **argv)
 {
@@ -701,6 +765,8 @@ main(int argc, char **argv)
 
 	/* grab other informations */
 	sql_exec_dump_pgclass_size();
+    if (backend_has_pgstatstatements())
+	    sql_exec_dump_pgstatstatements();
     if (backend_minimum_version(8, 2))
 		sql_exec_dump_xlog_stat();
 
