@@ -260,6 +260,14 @@ sql_exec(const char *todo, const char* filename, bool quiet)
 
 	/* open the csv file */
 	fdcsv = fopen(filename, "a");
+    if (!fdcsv)
+    {
+        fprintf(stderr, "pgstats: fopen failed: %d\n", errno);
+        fprintf(stderr, "pgstats: filename was: %s\n", filename);
+        
+        PQfinish(conn);
+        exit(-1);
+    }
 
 	/* get size of file */
 	stat(filename, &st);
