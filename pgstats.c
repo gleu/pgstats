@@ -604,7 +604,11 @@ sql_exec_dump_pgstatstatements()
 
 	/* get the oid and database name from the system pg_database table */
 	snprintf(todo, sizeof(todo),
-			 "SELECT date_trunc('seconds', now()), r.rolname, d.datname, q.* "
+			 "SELECT date_trunc('seconds', now()), r.rolname, d.datname, "
+             "regexp_replace(query, E'\n', ' ', 'g') as query, calls, total_time, rows, "
+             "shared_blks_hit, shared_blks_read, shared_blks_written, "
+             "local_blks_hit, local_blks_read, local_blks_written, "
+             "temp_blks_read, temp_blks_written "
 			 "FROM pg_stat_statements q, pg_database d, pg_roles r "
 			 "WHERE q.userid=r.oid and q.dbid=d.oid "
 			 "ORDER BY r.rolname, d.datname");
