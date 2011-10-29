@@ -19,7 +19,3 @@ top_builddir = ../..
 include $(top_builddir)/src/Makefile.global
 include $(top_srcdir)/contrib/contrib-global.mk
 endif
-
-ifdef BEFORE_8_2
-CFLAGS += -D BEFORE_8_2
-endif

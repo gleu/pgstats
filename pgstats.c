@@ -214,7 +214,7 @@ sql_conn()
 			exit(1);
 		}
 
-#ifndef BEFORE_8_2
+#if PG_VERSION_NUM >= 80200
 		if (PQstatus(my_conn) == CONNECTION_BAD &&
 			PQconnectionNeedsPassword(conn) &&
 			password == NULL)
