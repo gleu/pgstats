@@ -428,7 +428,8 @@ sql_exec_dump_pgstatreplication()
 			 "SELECT date_trunc('seconds', now()), procpid, usesysid, usename, "
              "application_name, client_addr, client_hostname, client_port, "
              "date_trunc('seconds', backend_start), state, sent_location, "
-             "write_location, flush_location, sync_priority, sync_state "
+             "write_location, flush_location, replay_location, sync_priority, "
+             "sync_state "
              "FROM pg_stat_replication "
              "ORDER BY application_name");
 	snprintf(filename, sizeof(filename),
