@@ -427,8 +427,10 @@ sql_exec_dump_pgstatreplication()
 	snprintf(todo, sizeof(todo),
 			 "SELECT date_trunc('seconds', now()), procpid, usesysid, usename, "
              "application_name, client_addr, client_hostname, client_port, "
-             "date_trunc('seconds', backend_start), state, sent_location, "
-             "write_location, flush_location, replay_location, sync_priority, "
+             "date_trunc('seconds', backend_start), state, "
+             "pg_current_xlog_location() AS master_location, "
+             "sent_location, write_location, flush_location, replay_location, "
+             "sync_priority, "
              "sync_state "
              "FROM pg_stat_replication "
              "ORDER BY application_name");
