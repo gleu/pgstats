@@ -296,7 +296,9 @@ sql_exec(const char *todo, const char* filename, bool quiet)
 	{
 		for (j = 0; j < nfields; j++)
 		{
-			fprintf(fdcsv, "%s;", PQfname(res, j));
+			fprintf(fdcsv, "%s", PQfname(res, j));
+            if (j < nfields - 1)
+			    fprintf(fdcsv, ";");
 		}
 		fprintf(fdcsv, "\n");
 	}
@@ -305,7 +307,11 @@ sql_exec(const char *todo, const char* filename, bool quiet)
 	for (i = 0; i < nrows; i++)
 	{
 		for (j = 0; j < nfields; j++)
-			fprintf(fdcsv, "%s;", PQgetvalue(res, i, j));
+        {
+			fprintf(fdcsv, "%s", PQgetvalue(res, i, j));
+            if (j < nfields - 1)
+			    fprintf(fdcsv, ";");
+		}
 		fprintf(fdcsv, "\n");
 	}
 
