@@ -335,18 +335,21 @@ sql_exec_dump_pgstatactivity()
 
 	/* get the oid and database name from the system pg_database table */
 	snprintf(todo, sizeof(todo),
-			 "SELECT date_trunc('seconds', now()), datid, datname, procpid, "
+			 "SELECT date_trunc('seconds', now()), datid, datname, %s, "
              "usesysid, usename, %s%s%s%s%s"
 			 "date_trunc('seconds', query_start) AS query_start, "
-             "%scurrent_query "
+             "%s%s "
              "FROM pg_stat_activity "
-			 "ORDER BY procpid",
+			 "ORDER BY %s",
+		backend_minimum_version(9, 2) ? "pid" : "procpid",
 		backend_minimum_version(9, 0) ? "application_name, " : "",
 		backend_minimum_version(8, 1) ? "client_addr, " : "",
 		backend_minimum_version(9, 1) ? "client_hostname, " : "",
 		backend_minimum_version(8, 1) ? "client_port, date_trunc('seconds', backend_start) AS backend_start, " : "",
         backend_minimum_version(8, 3) ? "date_trunc('seconds', xact_start) AS xact_start, " : "",
-        backend_minimum_version(8, 2) ? "waiting, " : "");
+        backend_minimum_version(8, 2) ? "waiting, " : "",
+        backend_minimum_version(9, 2) ? "query" : "current_query",
+		backend_minimum_version(9, 2) ? "pid" : "procpid");
 	snprintf(filename, sizeof(filename),
 			 "%s/pg_stat_activity.csv", opts->directory);
 
@@ -431,7 +434,7 @@ sql_exec_dump_pgstatreplication()
 
 	/* get the oid and database name from the system pg_database table */
 	snprintf(todo, sizeof(todo),
-			 "SELECT date_trunc('seconds', now()), procpid, usesysid, usename, "
+			 "SELECT date_trunc('seconds', now()), %s, usesysid, usename, "
              "application_name, client_addr, client_hostname, client_port, "
              "date_trunc('seconds', backend_start), state, "
              "pg_current_xlog_location() AS master_location, "
@@ -439,7 +442,8 @@ sql_exec_dump_pgstatreplication()
              "sync_priority, "
              "sync_state "
              "FROM pg_stat_replication "
-             "ORDER BY application_name");
+             "ORDER BY application_name",
+		backend_minimum_version(9, 2) ? "pid" : "procpid");
 	snprintf(filename, sizeof(filename),
 			 "%s/pg_stat_replication.csv", opts->directory);
 
