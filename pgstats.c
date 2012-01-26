@@ -392,11 +392,12 @@ sql_exec_dump_pgstatdatabase()
 	snprintf(todo, sizeof(todo),
 			 "SELECT date_trunc('seconds', now()), datid, datname, "
              "numbackends, xact_commit, xact_rollback, blks_read, blks_hit"
-             "%s%s "
+             "%s%s%s "
              "FROM pg_stat_database "
              "ORDER BY datname",
 		backend_minimum_version(8, 3) ? ", tup_returned, tup_fetched, tup_inserted, tup_updated, tup_deleted" : "",
-		backend_minimum_version(9, 1) ? ", conflicts, date_trunc('seconds', stats_reset) AS stats_reset " : "");
+		backend_minimum_version(9, 1) ? ", conflicts, date_trunc('seconds', stats_reset) AS stats_reset" : "",
+		backend_minimum_version(9, 2) ? ", temp_files, temp_bytes, deadlocks" : "");
 	snprintf(filename, sizeof(filename),
 			 "%s/pg_stat_database.csv", opts->directory);
 
