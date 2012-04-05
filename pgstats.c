@@ -368,9 +368,10 @@ sql_exec_dump_pgstatbgwriter()
 	/* get the oid and database name from the system pg_database table */
 	snprintf(todo, sizeof(todo),
 			 "SELECT date_trunc('seconds', now()), checkpoints_timed, "
-             "checkpoints_req, buffers_checkpoint, buffers_clean, "
+             "checkpoints_req, %sbuffers_checkpoint, buffers_clean, "
 			 "maxwritten_clean, buffers_backend, %sbuffers_alloc%s "
              "FROM pg_stat_bgwriter ",
+		backend_minimum_version(9, 2) ? "checkpoint_write_time, checkpoint_sync_time, " : "",
 		backend_minimum_version(9, 1) ? "buffers_backend_fsync, " : "",
 		backend_minimum_version(9, 1) ? ", date_trunc('seconds', stats_reset) AS stats_reset " : "");
 	snprintf(filename, sizeof(filename),
@@ -397,7 +398,7 @@ sql_exec_dump_pgstatdatabase()
              "ORDER BY datname",
 		backend_minimum_version(8, 3) ? ", tup_returned, tup_fetched, tup_inserted, tup_updated, tup_deleted" : "",
 		backend_minimum_version(9, 1) ? ", conflicts, date_trunc('seconds', stats_reset) AS stats_reset" : "",
-		backend_minimum_version(9, 2) ? ", temp_files, temp_bytes, deadlocks" : "");
+		backend_minimum_version(9, 2) ? ", temp_files, temp_bytes, deadlocks, block_read_time, block_write_time" : "");
 	snprintf(filename, sizeof(filename),
 			 "%s/pg_stat_database.csv", opts->directory);
 
