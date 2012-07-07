@@ -2,7 +2,7 @@
  * pgstats, a PostgreSQL app to gather statistical informations
  * from a PostgreSQL database.
  *
- * Guillaume Lelarge, guillaume@lelarge.info, 2011.
+ * Guillaume Lelarge, guillaume@lelarge.info, 2011-2012.
  *
  * contrib/pgstats/pgstats.c
  */
@@ -338,7 +338,7 @@ sql_exec_dump_pgstatactivity()
 			 "SELECT date_trunc('seconds', now()), datid, datname, %s, "
              "usesysid, usename, %s%s%s%s%s"
 			 "date_trunc('seconds', query_start) AS query_start, "
-             "%s%s "
+             "%s%s%s "
              "FROM pg_stat_activity "
 			 "ORDER BY %s",
 		backend_minimum_version(9, 2) ? "pid" : "procpid",
@@ -347,6 +347,7 @@ sql_exec_dump_pgstatactivity()
 		backend_minimum_version(9, 1) ? "client_hostname, " : "",
 		backend_minimum_version(8, 1) ? "client_port, date_trunc('seconds', backend_start) AS backend_start, " : "",
         backend_minimum_version(8, 3) ? "date_trunc('seconds', xact_start) AS xact_start, " : "",
+        backend_minimum_version(9, 2) ? "state_change, " : "",
         backend_minimum_version(8, 2) ? "waiting, " : "",
         backend_minimum_version(9, 2) ? "query" : "current_query",
 		backend_minimum_version(9, 2) ? "pid" : "procpid");
@@ -398,7 +399,7 @@ sql_exec_dump_pgstatdatabase()
              "ORDER BY datname",
 		backend_minimum_version(8, 3) ? ", tup_returned, tup_fetched, tup_inserted, tup_updated, tup_deleted" : "",
 		backend_minimum_version(9, 1) ? ", conflicts, date_trunc('seconds', stats_reset) AS stats_reset" : "",
-		backend_minimum_version(9, 2) ? ", temp_files, temp_bytes, deadlocks, block_read_time, block_write_time" : "");
+		backend_minimum_version(9, 2) ? ", temp_files, temp_bytes, deadlocks, blk_read_time, blk_write_time" : "");
 	snprintf(filename, sizeof(filename),
 			 "%s/pg_stat_database.csv", opts->directory);
 
@@ -438,7 +439,7 @@ sql_exec_dump_pgstatreplication()
 	snprintf(todo, sizeof(todo),
 			 "SELECT date_trunc('seconds', now()), %s, usesysid, usename, "
              "application_name, client_addr, client_hostname, client_port, "
-             "date_trunc('seconds', backend_start), state, "
+             "date_trunc('seconds', backend_start) AS backend_start, state, "
              "pg_current_xlog_location() AS master_location, "
              "sent_location, write_location, flush_location, replay_location, "
              "sync_priority, "
