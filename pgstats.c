@@ -61,6 +61,7 @@ void		sql_exec_dump_pgclass_size(void);
 void        sql_exec_dump_pgstatstatements(void);
 void		sql_exec_dump_xlog_stat(void);
 void		fetch_version(void);
+bool		check_superuser(void);
 bool		backend_minimum_version(int major, int minor);
 bool        backend_has_pgstatstatements(void);
 
@@ -696,6 +697,44 @@ fetch_version()
 
 
 /*
+ * Check if user has the superuser attribute
+ */
+bool
+check_superuser()
+{
+	PGresult   *res;
+	char		sql[1024];
+    bool        is_superuser = false;
+
+	/* get the oid and database name from the system pg_database table */
+	snprintf(sql, sizeof(sql),
+			 "SELECT rolsuper FROM pg_roles WHERE rolname=current_user ");
+
+	/* make the call */
+	res = PQexec(conn, sql);
+
+	/* check and deal with errors */
+	if (!res || PQresultStatus(res) > 2)
+	{
+		fprintf(stderr, "pgstats: query failed: %s\n", PQerrorMessage(conn));
+		fprintf(stderr, "pgstats: query was: %s\n", sql);
+
+		PQclear(res);
+		PQfinish(conn);
+		exit(-1);
+	}
+
+	/* get the information */
+    is_superuser = strncmp(PQgetvalue(res, 0, 0), "t", 1) == 0;
+
+	/* cleanup */
+	PQclear(res);
+
+	return is_superuser;
+}
+
+
+/*
  * Compare given major and minor numbers to the one of the connected server
  */
 bool
@@ -749,6 +788,8 @@ backend_has_pgstatstatements()
 int
 main(int argc, char **argv)
 {
+    bool is_superuser = false;
+
 	opts = (struct options *) myalloc(sizeof(struct options));
 
 	/* parse the opts */
@@ -770,6 +811,9 @@ main(int argc, char **argv)
 
 	/* get version */
     fetch_version();
+
+    /* check superuser attribute */
+    is_superuser = check_superuser();
 
 	/* grap cluster stats info */
 	sql_exec_dump_pgstatactivity();
@@ -795,7 +839,7 @@ main(int argc, char **argv)
 	sql_exec_dump_pgclass_size();
     if (backend_has_pgstatstatements())
 	    sql_exec_dump_pgstatstatements();
-    if (backend_minimum_version(8, 2))
+    if (backend_minimum_version(8, 2) && is_superuser)
 		sql_exec_dump_xlog_stat();
 
 	PQfinish(conn);
