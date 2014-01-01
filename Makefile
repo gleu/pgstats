@@ -1,10 +1,7 @@
-# contrib/pgcsvstat/Makefile
-
-PGFILEDESC = "pgcsvstat - grabs all statistics, and stores them in .csv files"
+PGFILEDESC = "Statistics utilities"
 PGAPPICON = win32
 
-PROGRAM = pgcsvstat
-OBJS	= pgcsvstat.o
+PROGRAMS = pgcsvstat pgstat
 
 PG_CPPFLAGS = -I$(libpq_srcdir)
 PG_LIBS = $(libpq_pgport)
@@ -12,3 +9,14 @@ PG_LIBS = $(libpq_pgport)
 PG_CONFIG = pg_config
 PGXS := $(shell $(PG_CONFIG) --pgxs)
 include $(PGXS)
+
+all: $(PROGRAMS)
+
+%: %.o $(WIN32RES)
+	   $(CC) $(CFLAGS) $^ $(libpq_pgport) $(LDFLAGS) $(LDFLAGS_EX) $(LIBS) -o $@$(X)
+
+pgcsvstat: pgcsvstat.o
+pgstat: pgstat.o
+
+clean:
+	rm -f $(addsuffix $(X), $(PROGRAMS)) $(addsuffix .o, $(PROGRAMS))
