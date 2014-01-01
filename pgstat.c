@@ -32,6 +32,7 @@ typedef enum
 	BGWRITER = 1,
 	DATABASE,
 	TABLE,
+	INDEX,
 	FUNCTION
 } stat_t;
 
@@ -116,6 +117,14 @@ struct pgstattable
     int autoanalyze_count;
 };
 
+/* pg_stat_all_indexes mode struct */
+struct pgstatindex
+{
+	int idx_scan;
+	int idx_tup_read;
+	int idx_tup_fetch;
+};
+
 /* pg_stat_user_functions mode struct */
 struct pgstatfunction
 {
@@ -138,6 +147,7 @@ extern char           *optarg;
 struct pgstatbgwriter *previous_pgstatbgwriter;
 struct pgstatdatabase *previous_pgstatdatabase;
 struct pgstattable    *previous_pgstattable;
+struct pgstatindex    *previous_pgstatindex;
 struct pgstatfunction *previous_pgstatfunction;
 int                    hdrcnt = 0;
 volatile sig_atomic_t  wresized;
@@ -154,6 +164,7 @@ PGconn	   *sql_conn(void);
 void		print_pgstatbgwriter(void);
 void        print_pgstatdatabase(void);
 void        print_pgstattable(void);
+void        print_pgstatindex(void);
 void        print_pgstatfunction(void);
 void		fetch_version(void);
 bool		backend_minimum_version(int major, int minor);
@@ -262,6 +273,10 @@ get_opts(int argc, char **argv)
 				if (!strcmp(optarg, "table"))
 				{
 					opts->stat = TABLE;
+				}
+				if (!strcmp(optarg, "index"))
+				{
+					opts->stat = INDEX;
 				}
 				if (!strcmp(optarg, "function"))
 				{
@@ -796,6 +811,95 @@ print_pgstattable()
 }
 
 /*
+ * Dump all index stats.
+ */
+void
+print_pgstatindex()
+{
+	char		sql[1024];
+	PGresult   *res;
+    const char *paramValues[1];
+	int			nrows;
+	int			row, column;
+
+	int idx_scan = 0;
+	int idx_tup_read = 0;
+	int idx_tup_fetch = 0;
+
+	/* get the oid and database name from the system pg_database table */
+	if (opts->filter == NULL)
+	{
+		snprintf(sql, sizeof(sql),
+				 "SELECT sum(idx_scan), sum(idx_tup_read), sum(idx_tup_fetch) "
+	             " FROM pg_stat_all_indexes "
+		     "WHERE schemaname <> 'information_schema' ");
+
+		res = PQexec(conn, sql);
+	}
+	else
+	{
+		snprintf(sql, sizeof(sql),
+				 "SELECT idx_scan, idx_tup_read, idx_tup_fetch "
+	             " FROM pg_stat_all_indexes "
+		     "WHERE schemaname <> 'information_schema' "
+		     "  AND indexrelname = $1");
+
+		paramValues[0] = mystrdup(opts->filter);
+
+	    res = PQexecParams(conn,
+	                       sql,
+	                       1,       /* one param */
+	                       NULL,    /* let the backend deduce param type */
+	                       paramValues,
+	                       NULL,    /* don't need param lengths since text */
+	                       NULL,    /* default to all text params */
+	                       0);      /* ask for text results */
+    }
+
+	/* check and deal with errors */
+	if (!res || PQresultStatus(res) > 2)
+	{
+		warnx("pgstats: query failed: %s", PQerrorMessage(conn));
+		PQclear(res);
+		PQfinish(conn);
+		err(1, "pgstats: query was: %s", sql);
+	}
+
+	/* get the number of fields */
+	nrows = PQntuples(res);
+
+	/* for each row, dump the information */
+	/* this is stupid, a simple if would do the trick, but it will help for other cases */
+	for (row = 0; row < nrows; row++)
+	{
+		column = 0;
+
+		/* getting new values */
+        idx_scan = atoi(PQgetvalue(res, row, column++));
+        idx_tup_read = atof(PQgetvalue(res, row, column++));
+        idx_tup_fetch = atof(PQgetvalue(res, row, column++));
+
+		/* printing the diff... note that the first line will be the current value, rather than the diff */
+		//(void)printf("-- scan -- ----- tuples -----\n");
+		//(void)printf("               read   fetch\n");
+
+		(void)printf(" %8d   %7d %7d\n",
+		    idx_scan - previous_pgstatindex->idx_scan,
+		    idx_tup_read - previous_pgstatindex->idx_tup_read,
+		    idx_tup_fetch - previous_pgstatindex->idx_tup_fetch
+		    );
+
+		/* setting the new old value */
+		previous_pgstatindex->idx_scan = idx_scan;
+		previous_pgstatindex->idx_tup_read = idx_tup_read;
+		previous_pgstatindex->idx_tup_fetch = idx_tup_fetch;
+	}
+
+	/* cleanup */
+	PQclear(res);
+}
+
+/*
  * Dump all function stats.
  */
 void
@@ -948,6 +1052,10 @@ print_header(void)
 			(void)printf("-- sequential -- ------ index ------ ----------------- tuples ------------------ -------------- maintenance --------------\n");
 			(void)printf("   scan  tuples     scan  tuples         ins    upd    del hotupd   live   dead   vacuum autovacuum analyze autoanalyze\n");
 			break;
+		case INDEX:
+			(void)printf("-- scan -- ----- tuples -----\n");
+			(void)printf("               read   fetch\n");
+			break;
 		case FUNCTION:
 			(void)printf("-- count -- ------ time ------\n");
 			(void)printf("             total     self\n");
@@ -975,6 +1083,9 @@ print_line(void)
 			break;
 		case TABLE:
 			print_pgstattable();
+			break;
+		case INDEX:
+			print_pgstatindex();
 			break;
 		case FUNCTION:
 			print_pgstatfunction();
@@ -1037,6 +1148,12 @@ allocate_struct(void)
 		    previous_pgstattable->autovacuum_count = 0;
 		    previous_pgstattable->analyze_count = 0;
 		    previous_pgstattable->autoanalyze_count = 0;
+			break;
+		case INDEX:
+			previous_pgstatindex = (struct pgstatindex *) myalloc(sizeof(struct pgstatindex));
+			previous_pgstatindex->idx_scan = 0;
+			previous_pgstatindex->idx_tup_read = 0;
+			previous_pgstatindex->idx_tup_fetch = 0;
 			break;
 		case FUNCTION:
 			previous_pgstatfunction = (struct pgstatfunction *) myalloc(sizeof(struct pgstatfunction));
