@@ -42,6 +42,7 @@ struct options
 {
 	/* misc */
 	bool		verbose;
+	bool        dontredisplayheader;
 	stat_t      stat;
 	char	   *filter;
 
@@ -210,6 +211,7 @@ help(const char *progname)
 		   "  %s [OPTIONS] [delay [count]]\n"
 		   "\nGeneral options:\n"
 		   "  -f FILTER    include only this object\n"
+		   "  -n           do not redisplay header\n"
 		   "  -s STAT      stats to collect\n"
 		   "  -v           verbose\n"
 		   "  --help       show this help, then exit\n"
@@ -240,6 +242,7 @@ get_opts(int argc, char **argv)
 
 	/* set the defaults */
 	opts->verbose = false;
+	opts->dontredisplayheader = false;
 	opts->stat = BGWRITER;
 	opts->filter = NULL;
 	opts->dbname = NULL;
@@ -264,7 +267,7 @@ get_opts(int argc, char **argv)
 	}
 
 	/* get opts */
-	while ((c = getopt(argc, argv, "h:p:U:d:f:s:v")) != -1)
+	while ((c = getopt(argc, argv, "h:p:U:d:f:n:s:v")) != -1)
 	{
 		switch (c)
 		{
@@ -276,6 +279,11 @@ get_opts(int argc, char **argv)
 				/* specify the filter */
 			case 'f':
 				opts->filter = mystrdup(optarg);
+				break;
+
+				/* do not redisplay the header */
+			case 'n':
+				opts->dontredisplayheader = true;
 				break;
 
 				/* don't show headers */
@@ -1212,7 +1220,10 @@ print_header(void)
 
 	if (wresized != 0)
 		doresize();
-	hdrcnt = winlines;
+	if (opts->dontredisplayheader)
+		hdrcnt = 0;
+	else
+		hdrcnt = winlines;
 }
 
 /*
