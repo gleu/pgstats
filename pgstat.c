@@ -1,10 +1,10 @@
 /*
- * pgstats, a PostgreSQL app to gather statistical informations
+ * pgstat, a PostgreSQL app to gather statistical informations
  * from a PostgreSQL database, and act like a vmstat tool.
  *
  * Guillaume Lelarge, guillaume@lelarge.info, 2013.
  *
- * contrib/pgstats/pgstats.c
+ * pgstat/pgstat.c
  */
 
 
@@ -60,7 +60,7 @@ struct options
 	int			count;
 };
 
-/* pg_stat_bgwriter mode struct */
+/* pg_stat_bgwriter struct */
 struct pgstatbgwriter
 {
 	int checkpoints_timed;
@@ -75,7 +75,7 @@ struct pgstatbgwriter
 	int buffers_alloc;
 };
 
-/* pg_stat_database mode struct */
+/* pg_stat_database struct */
 struct pgstatdatabase
 {
 	/*
@@ -99,7 +99,7 @@ struct pgstatdatabase
 	int blk_write_time;
 };
 
-/* pg_stat_all_tables mode struct */
+/* pg_stat_all_tables struct */
 struct pgstattable
 {
     int seq_scan;
@@ -112,13 +112,20 @@ struct pgstattable
     int n_tup_hot_upd;
     int n_live_tup;
     int n_dead_tup;
-    int vacuum_count;
+    /*
+	we don't put the timestamps here because it makes no sense to get a diff between the new and the old values
+	? last_vacuum;
+    ? last_autovacuum;
+    ? last_analyze;
+    ? last_autoanalyze;
+	*/
+	int vacuum_count;
     int autovacuum_count;
     int analyze_count;
     int autoanalyze_count;
 };
 
-/* pg_statio_all_tables mode struct */
+/* pg_statio_all_tables struct */
 struct pgstattableio
 {
 	int heap_blks_read;
@@ -131,7 +138,7 @@ struct pgstattableio
 	int tidx_blks_hit;
 };
 
-/* pg_stat_all_indexes mode struct */
+/* pg_stat_all_indexes struct */
 struct pgstatindex
 {
 	int idx_scan;
@@ -139,7 +146,7 @@ struct pgstatindex
 	int idx_tup_fetch;
 };
 
-/* pg_stat_user_functions mode struct */
+/* pg_stat_user_functions struct */
 struct pgstatfunction
 {
     int   calls;
@@ -448,7 +455,7 @@ print_pgstatbgwriter()
 	int buffers_backend_fsync = 0;
 	int buffers_alloc = 0;
 
-	/* get the oid and database name from the system pg_database table */
+	/* grab the stats (this is the only stats on one line) */
 	snprintf(sql, sizeof(sql),
 			 "SELECT checkpoints_timed, checkpoints_req, %sbuffers_checkpoint, buffers_clean, "
 			 "maxwritten_clean, buffers_backend, %sbuffers_alloc "
@@ -495,8 +502,8 @@ print_pgstatbgwriter()
 		}
 		buffers_alloc = atoi(PQgetvalue(res, row, column++));
 
-		/* printing the diff... note that the first line will be the current value, rather than the diff */
-//		(void)printf("  timed requested write_time sync_time   checkpoint  clean backend alloc   maxwritten backend_fsync\n");
+		/* printing the diff...
+		 * note that the first line will be the current value, rather than the diff */
 		(void)printf(" %6d    %6d     %6d    %6d       %6d %6d  %6d %6d         %4d            %2d\n",
 		    checkpoints_timed - previous_pgstatbgwriter->checkpoints_timed,
 		    checkpoints_req - previous_pgstatbgwriter->checkpoints_req,
@@ -557,7 +564,10 @@ print_pgstatdatabase()
 	int blk_write_time = 0;
 
 
-	/* get the oid and database name from the system pg_database table */
+	/*
+	 * With a filter, we assume we'll get only one row.
+	 * Without, we sum all the fields to get one row.
+	 */
 	if (opts->filter == NULL)
 	{
 		snprintf(sql, sizeof(sql),
@@ -638,10 +648,9 @@ print_pgstatdatabase()
 			blk_write_time = atoi(PQgetvalue(res, row, column++));
 		}
 
-		/* printing the diff... note that the first line will be the current value, rather than the diff */
-		//(void)printf("                commit rollback     read    hit read_time write_time      ret    fet    ins    upd    del    files     bytes   conflicts deadlocks\n");
-
-			(void)printf("      %4d      %6d   %6d   %6d %6d    %6d     %6d   %6d %6d %6d %6d %6d   %6d %9d   %9d %9d\n",
+		/* printing the diff...
+		 * note that the first line will be the current value, rather than the diff */
+		(void)printf("      %4d      %6d   %6d   %6d %6d    %6d     %6d   %6d %6d %6d %6d %6d   %6d %9d   %9d %9d\n",
 		    numbackends,
 		    xact_commit - previous_pgstatdatabase->xact_commit,
 		    xact_rollback - previous_pgstatdatabase->xact_rollback,
@@ -709,7 +718,10 @@ print_pgstattable()
     int analyze_count = 0;
     int autoanalyze_count = 0;
 
-	/* get the oid and database name from the system pg_database table */
+	/*
+	 * With a filter, we assume we'll get only one row.
+	 * Without, we sum all the fields to get one row.
+	 */
 	if (opts->filter == NULL)
 	{
 		snprintf(sql, sizeof(sql),
@@ -790,8 +802,6 @@ print_pgstattable()
 		}
 
 		/* printing the diff... note that the first line will be the current value, rather than the diff */
-		//(void)printf("   scan  tuples     scan  tuples         ins    upd    del hotupd   live   dead   vacuum autovacuum analyze autoanalyze\n");
-
 		(void)printf(" %6d  %6d   %6d  %6d      %6d %6d %6d %6d %6d %6d   %6d     %6d  %6d      %6d\n",
 		    seq_scan - previous_pgstattable->seq_scan,
 		    seq_tup_read - previous_pgstattable->seq_tup_read,
@@ -851,7 +861,10 @@ print_pgstattableio()
 	int tidx_blks_read = 0;
 	int tidx_blks_hit = 0;
 
-	/* get the oid and database name from the system pg_database table */
+	/*
+	 * With a filter, we assume we'll get only one row.
+	 * Without, we sum all the fields to get one row.
+	 */
 	if (opts->filter == NULL)
 	{
 		snprintf(sql, sizeof(sql),
@@ -911,7 +924,8 @@ print_pgstattableio()
 		tidx_blks_read = atoi(PQgetvalue(res, row, column++));
 		tidx_blks_hit = atoi(PQgetvalue(res, row, column++));
 
-		/* printing the diff... note that the first line will be the current value, rather than the diff */
+		/* printing the diff...
+		 * note that the first line will be the current value, rather than the diff */
 		(void)printf(" %6d    %6d    %7d   %7d    %7d    %7d     %9d %9d\n",
 		    heap_blks_read - previous_pgstattableio->heap_blks_read,
 		    heap_blks_hit - previous_pgstattableio->heap_blks_hit,
@@ -954,7 +968,10 @@ print_pgstatindex()
 	int idx_tup_read = 0;
 	int idx_tup_fetch = 0;
 
-	/* get the oid and database name from the system pg_database table */
+	/*
+	 * With a filter, we assume we'll get only one row.
+	 * Without, we sum all the fields to get one row.
+	 */
 	if (opts->filter == NULL)
 	{
 		snprintf(sql, sizeof(sql),
@@ -1007,10 +1024,8 @@ print_pgstatindex()
         idx_tup_read = atof(PQgetvalue(res, row, column++));
         idx_tup_fetch = atof(PQgetvalue(res, row, column++));
 
-		/* printing the diff... note that the first line will be the current value, rather than the diff */
-		//(void)printf("-- scan -- ----- tuples -----\n");
-		//(void)printf("               read   fetch\n");
-
+		/* printing the diff...
+		 * note that the first line will be the current value, rather than the diff */
 		(void)printf(" %8d   %7d %7d\n",
 		    idx_scan - previous_pgstatindex->idx_scan,
 		    idx_tup_read - previous_pgstatindex->idx_tup_read,
@@ -1043,7 +1058,10 @@ print_pgstatfunction()
     float total_time = 0;
     float self_time = 0;
 
-	/* get the oid and database name from the system pg_database table */
+	/*
+	 * With a filter, we assume we'll get only one row.
+	 * Without, we sum all the fields to get one row.
+	 */
 	if (opts->filter == NULL)
 	{
 		snprintf(sql, sizeof(sql),
@@ -1096,10 +1114,8 @@ print_pgstatfunction()
         total_time = atof(PQgetvalue(res, row, column++));
         self_time = atof(PQgetvalue(res, row, column++));
 
-		/* printing the diff... note that the first line will be the current value, rather than the diff */
-		//(void)printf("-- count -- ------ time ------\n");
-		//(void)printf("             total     self\n");
-
+		/* printing the diff...
+		 * note that the first line will be the current value, rather than the diff */
 		(void)printf(" %9d   %5f    %5f\n",
 		    calls - previous_pgstatfunction->calls,
 		    total_time - previous_pgstatfunction->total_time,
@@ -1125,7 +1141,7 @@ fetch_version()
 	char		sql[1024];
 	PGresult   *res;
 
-	/* get the oid and database name from the system pg_database table */
+	/* get the cluster version */
 	snprintf(sql, sizeof(sql), "SELECT version()");
 
 	/* make the call */
@@ -1379,7 +1395,7 @@ main(int argc, char **argv)
 	 * If the user stops the program (control-Z) and then resumes it,
 	 * print out the header again.
 	 */
-	(void)signal(SIGCONT, needhdr);
+	pqsignal(SIGCONT, needhdr);
 	pqsignal(SIGINT, quit_properly);
 
 	/*
