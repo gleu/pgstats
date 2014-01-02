@@ -224,7 +224,11 @@ help(const char *progname)
 		   "\nThe default stat is pg_stat_bgwriter, but you can change it with the -s command line option,\n"
 		   "and one of its value (STAT):\n"
 		   "  * bgwriter   for pg_stat_bgwriter\n"
-		   "  * database   for pg_stat_database\n\n"
+		   "  * database   for pg_stat_database\n"
+		   "  * table      for pg_stat_all_tables\n"
+		   "  * tableio    for pg_statio_all_tables\n"
+		   "  * index      for pg_stat_all_indexes\n"
+		   "  * function   for pg_stat_user_function\n\n"
 		   "Report bugs to <guillaume@lelarge.info>.\n",
 		   progname, progname);
 }
