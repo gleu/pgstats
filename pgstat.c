@@ -32,6 +32,7 @@ typedef enum
 	BGWRITER = 1,
 	DATABASE,
 	TABLE,
+	TABLEIO,
 	INDEX,
 	FUNCTION
 } stat_t;
@@ -117,6 +118,19 @@ struct pgstattable
     int autoanalyze_count;
 };
 
+/* pg_statio_all_tables mode struct */
+struct pgstattableio
+{
+	int heap_blks_read;
+	int heap_blks_hit;
+	int idx_blks_read;
+	int idx_blks_hit;
+	int toast_blks_read;
+	int toast_blks_hit;
+	int tidx_blks_read;
+	int tidx_blks_hit;
+};
+
 /* pg_stat_all_indexes mode struct */
 struct pgstatindex
 {
@@ -147,6 +161,7 @@ extern char           *optarg;
 struct pgstatbgwriter *previous_pgstatbgwriter;
 struct pgstatdatabase *previous_pgstatdatabase;
 struct pgstattable    *previous_pgstattable;
+struct pgstattableio  *previous_pgstattableio;
 struct pgstatindex    *previous_pgstatindex;
 struct pgstatfunction *previous_pgstatfunction;
 int                    hdrcnt = 0;
@@ -164,6 +179,7 @@ PGconn	   *sql_conn(void);
 void		print_pgstatbgwriter(void);
 void        print_pgstatdatabase(void);
 void        print_pgstattable(void);
+void		print_pgstattableio(void);
 void        print_pgstatindex(void);
 void        print_pgstatfunction(void);
 void		fetch_version(void);
@@ -273,6 +289,10 @@ get_opts(int argc, char **argv)
 				if (!strcmp(optarg, "table"))
 				{
 					opts->stat = TABLE;
+				}
+				if (!strcmp(optarg, "tableio"))
+				{
+					opts->stat = TABLEIO;
 				}
 				if (!strcmp(optarg, "index"))
 				{
@@ -811,6 +831,114 @@ print_pgstattable()
 }
 
 /*
+ * Dump all table IO stats.
+ */
+void
+print_pgstattableio()
+{
+	char		sql[1024];
+	PGresult   *res;
+    const char *paramValues[1];
+	int			nrows;
+	int			row, column;
+
+	int heap_blks_read = 0;
+	int heap_blks_hit = 0;
+	int idx_blks_read = 0;
+	int idx_blks_hit = 0;
+	int toast_blks_read = 0;
+	int toast_blks_hit = 0;
+	int tidx_blks_read = 0;
+	int tidx_blks_hit = 0;
+
+	/* get the oid and database name from the system pg_database table */
+	if (opts->filter == NULL)
+	{
+		snprintf(sql, sizeof(sql),
+				 "SELECT sum(heap_blks_read), sum(heap_blks_hit), sum(idx_blks_read), sum(idx_blks_hit), "
+	             "sum(toast_blks_read), sum(toast_blks_hit), sum(tidx_blks_read), sum(tidx_blks_hit) "
+	             "FROM pg_statio_all_tables "
+			     "WHERE schemaname <> 'information_schema' ");
+
+		res = PQexec(conn, sql);
+	}
+	else
+	{
+		snprintf(sql, sizeof(sql),
+				 "SELECT heap_blks_read, heap_blks_hit, idx_blks_read, idx_blks_hit, "
+	             "toast_blks_read, toast_blks_hit, tidx_blks_read, tidx_blks_hit "
+	             "FROM pg_statio_all_tables "
+			     "WHERE schemaname <> 'information_schema' "
+			     "  AND tablename = $1");
+
+		paramValues[0] = mystrdup(opts->filter);
+
+	    res = PQexecParams(conn,
+	                       sql,
+	                       1,       /* one param */
+	                       NULL,    /* let the backend deduce param type */
+	                       paramValues,
+	                       NULL,    /* don't need param lengths since text */
+	                       NULL,    /* default to all text params */
+	                       0);      /* ask for text results */
+    }
+
+	/* check and deal with errors */
+	if (!res || PQresultStatus(res) > 2)
+	{
+		warnx("pgstats: query failed: %s", PQerrorMessage(conn));
+		PQclear(res);
+		PQfinish(conn);
+		err(1, "pgstats: query was: %s", sql);
+	}
+
+	/* get the number of fields */
+	nrows = PQntuples(res);
+
+	/* for each row, dump the information */
+	/* this is stupid, a simple if would do the trick, but it will help for other cases */
+	for (row = 0; row < nrows; row++)
+	{
+		column = 0;
+
+		/* getting new values */
+		heap_blks_read = atoi(PQgetvalue(res, row, column++));
+		heap_blks_hit = atoi(PQgetvalue(res, row, column++));
+		idx_blks_read = atoi(PQgetvalue(res, row, column++));
+		idx_blks_hit = atoi(PQgetvalue(res, row, column++));
+		toast_blks_read = atoi(PQgetvalue(res, row, column++));
+		toast_blks_hit = atoi(PQgetvalue(res, row, column++));
+		tidx_blks_read = atoi(PQgetvalue(res, row, column++));
+		tidx_blks_hit = atoi(PQgetvalue(res, row, column++));
+
+		/* printing the diff... note that the first line will be the current value, rather than the diff */
+		(void)printf(" %6d    %6d    %7d   %7d    %7d    %7d     %9d %9d\n",
+		    heap_blks_read - previous_pgstattableio->heap_blks_read,
+		    heap_blks_hit - previous_pgstattableio->heap_blks_hit,
+		    idx_blks_read - previous_pgstattableio->idx_blks_read,
+		    idx_blks_hit - previous_pgstattableio->idx_blks_hit,
+		    toast_blks_read - previous_pgstattableio->toast_blks_read,
+		    toast_blks_hit - previous_pgstattableio->toast_blks_hit,
+		    tidx_blks_read - previous_pgstattableio->tidx_blks_read,
+		    tidx_blks_hit - previous_pgstattableio->tidx_blks_hit
+		    );
+
+		/* setting the new old value */
+		previous_pgstattableio->heap_blks_read = heap_blks_read;
+		previous_pgstattableio->heap_blks_hit = heap_blks_hit;
+		previous_pgstattableio->idx_blks_read = idx_blks_read;
+		previous_pgstattableio->idx_blks_hit = idx_blks_hit;
+		previous_pgstattableio->toast_blks_read = toast_blks_read;
+		previous_pgstattableio->toast_blks_hit = toast_blks_hit;
+		previous_pgstattableio->tidx_blks_read = tidx_blks_read;
+		previous_pgstattableio->tidx_blks_hit = tidx_blks_hit;
+	}
+
+	/* cleanup */
+	PQclear(res);
+}
+
+/*
  * Dump all index stats.
  */
 void
@@ -1052,6 +1180,10 @@ print_header(void)
 			(void)printf("-- sequential -- ------ index ------ ----------------- tuples ------------------ -------------- maintenance --------------\n");
 			(void)printf("   scan  tuples     scan  tuples         ins    upd    del hotupd   live   dead   vacuum autovacuum analyze autoanalyze\n");
 			break;
+		case TABLEIO:
+			(void)printf("--- heap table ---  --- toast table ---  --- heap indexes ---  --- toast indexes ---\n");
+			(void)printf("   read       hit       read       hit       read        hit          read       hit \n");
+			break;
 		case INDEX:
 			(void)printf("-- scan -- ----- tuples -----\n");
 			(void)printf("               read   fetch\n");
@@ -1083,6 +1215,9 @@ print_line(void)
 			break;
 		case TABLE:
 			print_pgstattable();
+			break;
+		case TABLEIO:
+			print_pgstattableio();
 			break;
 		case INDEX:
 			print_pgstatindex();
@@ -1148,6 +1283,17 @@ allocate_struct(void)
 		    previous_pgstattable->autovacuum_count = 0;
 		    previous_pgstattable->analyze_count = 0;
 		    previous_pgstattable->autoanalyze_count = 0;
+			break;
+		case TABLEIO:
+			previous_pgstattableio = (struct pgstattableio *) myalloc(sizeof(struct pgstattableio));
+			previous_pgstattableio->heap_blks_read = 0;
+			previous_pgstattableio->heap_blks_hit = 0;
+			previous_pgstattableio->idx_blks_read = 0;
+			previous_pgstattableio->idx_blks_hit = 0;
+			previous_pgstattableio->toast_blks_read = 0;
+			previous_pgstattableio->toast_blks_hit = 0;
+			previous_pgstattableio->tidx_blks_read = 0;
+			previous_pgstattableio->tidx_blks_hit = 0;
 			break;
 		case INDEX:
 			previous_pgstatindex = (struct pgstatindex *) myalloc(sizeof(struct pgstatindex));
