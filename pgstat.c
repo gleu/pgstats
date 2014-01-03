@@ -30,6 +30,7 @@
 typedef enum 
 {
 	BGWRITER = 1,
+	CONNECTION,
 	DATABASE,
 	TABLE,
 	TABLEIO,
@@ -185,6 +186,7 @@ void	   *myalloc(size_t size);
 char	   *mystrdup(const char *str);
 PGconn	   *sql_conn(void);
 void		print_pgstatbgwriter(void);
+void        print_pgstatconnection(void);
 void        print_pgstatdatabase(void);
 void        print_pgstattable(void);
 void		print_pgstattableio(void);
@@ -224,6 +226,7 @@ help(const char *progname)
 		   "\nThe default stat is pg_stat_bgwriter, but you can change it with the -s command line option,\n"
 		   "and one of its value (STAT):\n"
 		   "  * bgwriter   for pg_stat_bgwriter\n"
+		   "  * connection (only for > 9.1)\n"
 		   "  * database   for pg_stat_database\n"
 		   "  * table      for pg_stat_all_tables\n"
 		   "  * tableio    for pg_statio_all_tables\n"
@@ -300,6 +303,10 @@ get_opts(int argc, char **argv)
 				if (!strcmp(optarg, "bgwriter"))
 				{
 					opts->stat = BGWRITER;
+				}
+				if (!strcmp(optarg, "connection"))
+				{
+					opts->stat = CONNECTION;
 				}
 				if (!strcmp(optarg, "database"))
 				{
@@ -540,6 +547,66 @@ print_pgstatbgwriter()
 	    previous_pgstatbgwriter->buffers_backend = buffers_backend;
 	    previous_pgstatbgwriter->buffers_backend_fsync = buffers_backend_fsync;
 	    previous_pgstatbgwriter->buffers_alloc = buffers_alloc;
+	}
+
+	/* cleanup */
+	PQclear(res);
+}
+
+/*
+ * Dump all connection stats.
+ */
+void
+print_pgstatconnection()
+{
+	char		sql[1024];
+	PGresult   *res;
+	int			nrows;
+	int			row, column;
+
+	int total = 0;
+	int active = 0;
+	int lockwaiting = 0;
+	int idleintransaction = 0;
+	int idle = 0;
+
+	snprintf(sql, sizeof(sql),
+			 "SELECT count(*) AS total, "
+             "  sum(CASE WHEN state='active' and not waiting THEN 1 ELSE 0 end) AS active, "
+             "  sum(CASE WHEN waiting THEN 1 ELSE 0 end) AS lockwaiting, "
+             "  sum(CASE WHEN state='idle in transaction' THEN 1 ELSE 0 end) AS idleintransaction, "
+             "  sum(CASE WHEN state='idle' THEN 1 ELSE 0 end) AS idle "
+             "FROM pg_stat_activity");
+
+	res = PQexec(conn, sql);
+
+	/* check and deal with errors */
+	if (!res || PQresultStatus(res) > 2)
+	{
+		warnx("pgstats: query failed: %s", PQerrorMessage(conn));
+		PQclear(res);
+		PQfinish(conn);
+		err(1, "pgstats: query was: %s", sql);
+	}
+
+	/* get the number of fields */
+	nrows = PQntuples(res);
+
+	/* for each row, dump the information */
+	/* this is stupid, a simple if would do the trick, but it will help for other cases */
+	for (row = 0; row < nrows; row++)
+	{
+		column = 0;
+
+		total = atoi(PQgetvalue(res, row, column++));
+		active = atoi(PQgetvalue(res, row, column++));
+		lockwaiting = atoi(PQgetvalue(res, row, column++));
+		idleintransaction = atoi(PQgetvalue(res, row, column++));
+		idle = atoi(PQgetvalue(res, row, column++));
+
+		/* printing the actual values for once */
+		(void)printf("    %4d     %4d          %4d                  %4d   %4d  \n",
+		    total, active, lockwaiting, idleintransaction, idle);
 	}
 
 	/* cleanup */
@@ -1200,6 +1267,9 @@ print_header(void)
 			(void)printf("------------ checkpoints ------------- ------------- buffers ------------- ---------- misc ----------\n");
 			(void)printf("  timed requested write_time sync_time   checkpoint  clean backend  alloc   maxwritten backend_fsync\n");
 			break;
+		case CONNECTION:
+			(void)printf(" - total - active - lockwaiting - idle in transaction - idle -\n");
+			break;
 		case DATABASE:
 			(void)printf("- backends - ------ xacts ------ -------------- blocks -------------- -------------- tuples -------------- ------ temp ------ ------- misc --------\n");
 			(void)printf("                commit rollback     read    hit read_time write_time      ret    fet    ins    upd    del    files     bytes   conflicts deadlocks\n");
@@ -1241,6 +1311,9 @@ print_line(void)
 		case BGWRITER:
 			print_pgstatbgwriter();
 			break;
+		case CONNECTION:
+			print_pgstatconnection();
+			break;
 		case DATABASE:
 			print_pgstatdatabase();
 			break;
@@ -1280,6 +1353,9 @@ allocate_struct(void)
 		    previous_pgstatbgwriter->buffers_backend_fsync = 0;
 		    previous_pgstatbgwriter->buffers_alloc = 0;
 		    break;
+		case CONNECTION:
+			// nothing to do
+			break;
 		case DATABASE:
 			previous_pgstatdatabase = (struct pgstatdatabase *) myalloc(sizeof(struct pgstatdatabase));
 			previous_pgstatdatabase->xact_commit = 0;
@@ -1410,8 +1486,13 @@ main(int argc, char **argv)
 	 * If the user stops the program (control-Z) and then resumes it,
 	 * print out the header again.
 	 */
+#if PG_VERSION_NUM >= 90200
 	pqsignal(SIGCONT, needhdr);
 	pqsignal(SIGINT, quit_properly);
+#else
+	signal(SIGCONT, needhdr);
+	signal(SIGINT, quit_properly);
+#endif
 
 	/*
 	 * If our standard output is a tty, then install a SIGWINCH handler
@@ -1437,6 +1518,11 @@ main(int argc, char **argv)
 
 	/* get version */
     fetch_version();
+
+	if (opts->stat == CONNECTION && !backend_minimum_version(9, 2))
+	{
+		errx(1, "You need at least 9.2 for this statistic.");
+	}
 
     /* allocate and initialize statistics struct */
     allocate_struct();
