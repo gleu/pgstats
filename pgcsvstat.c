@@ -47,6 +47,7 @@ char	   *mystrdup(const char *str);
 PGconn	   *sql_conn(void);
 int			sql_exec(const char *sql, const char *filename, bool quiet);
 void        sql_exec_dump_pgstatactivity(void);
+void        sql_exec_dump_pgstatarchiver(void);
 void		sql_exec_dump_pgstatbgwriter(void);
 void		sql_exec_dump_pgstatdatabase(void);
 void        sql_exec_dump_pgstatdatabaseconflicts(void);
@@ -339,7 +340,7 @@ sql_exec_dump_pgstatactivity()
 			 "SELECT date_trunc('seconds', now()), datid, datname, %s, "
              "usesysid, usename, %s%s%s%s%s"
 			 "date_trunc('seconds', query_start) AS query_start, "
-             "%s%s%s "
+             "%s%s%s%s%s "
              "FROM pg_stat_activity "
 			 "ORDER BY %s",
 		backend_minimum_version(9, 2) ? "pid" : "procpid",
@@ -350,6 +351,8 @@ sql_exec_dump_pgstatactivity()
         backend_minimum_version(8, 3) ? "date_trunc('seconds', xact_start) AS xact_start, " : "",
         backend_minimum_version(9, 2) ? "state_change, " : "",
         backend_minimum_version(8, 2) ? "waiting, " : "",
+        backend_minimum_version(9, 4) ? "backend_xid, " : "",
+        backend_minimum_version(9, 4) ? "backend_xmin, " : "",
         backend_minimum_version(9, 2) ? "query" : "current_query",
 		backend_minimum_version(9, 2) ? "pid" : "procpid");
 	snprintf(filename, sizeof(filename),
@@ -378,6 +381,29 @@ sql_exec_dump_pgstatbgwriter()
 		backend_minimum_version(9, 1) ? ", date_trunc('seconds', stats_reset) AS stats_reset " : "");
 	snprintf(filename, sizeof(filename),
 			 "%s/pg_stat_bgwriter.csv", opts->directory);
+
+	sql_exec(todo, filename, opts->quiet);
+}
+
+/*
+ * Dump all archiver stats.
+ */
+void
+sql_exec_dump_pgstatarchiver()
+{
+	char		todo[1024];
+	char		filename[1024];
+
+	/* get the oid and database name from the system pg_database table */
+	snprintf(todo, sizeof(todo),
+			 "SELECT date_trunc('seconds', now()), archived_count, "
+             "last_archived_wal, date_trunc('seconds', last_archived_time) AS last_archived_time, "
+			 "failed_count, "
+             "last_failed_wal, date_trunc('seconds', last_failed_time) AS last_failed_time, "
+		     "date_trunc('seconds', stats_reset) AS stats_reset "
+             "FROM pg_stat_archiver ");
+	snprintf(filename, sizeof(filename),
+			 "%s/pg_stat_archiver.csv", opts->directory);
 
 	sql_exec(todo, filename, opts->quiet);
 }
@@ -440,14 +466,15 @@ sql_exec_dump_pgstatreplication()
 	snprintf(todo, sizeof(todo),
 			 "SELECT date_trunc('seconds', now()), %s, usesysid, usename, "
              "application_name, client_addr, client_hostname, client_port, "
-             "date_trunc('seconds', backend_start) AS backend_start, state, "
+             "date_trunc('seconds', backend_start) AS backend_start, %sstate, "
              "pg_current_xlog_location() AS master_location, "
              "sent_location, write_location, flush_location, replay_location, "
              "sync_priority, "
              "sync_state "
              "FROM pg_stat_replication "
              "ORDER BY application_name",
-		backend_minimum_version(9, 2) ? "pid" : "procpid");
+		backend_minimum_version(9, 2) ? "pid" : "procpid",
+		backend_minimum_version(9, 4) ? "backend_xmin, " : "");
 	snprintf(filename, sizeof(filename),
 			 "%s/pg_stat_replication.csv", opts->directory);
 
@@ -471,10 +498,12 @@ sql_exec_dump_pgstatalltables()
              "%s"
 			 "%s"
 			 "%s"
+			 "%s"
              " FROM pg_stat_all_tables "
 	     "WHERE schemaname <> 'information_schema' "
 	     "ORDER BY schemaname, relname",
 		backend_minimum_version(8, 3) ? ", n_tup_hot_upd, n_live_tup, n_dead_tup" : "",
+        backend_minimum_version(9, 4) ? ", n_mod_since_analyze" : "",
         backend_minimum_version(8, 2) ? ", date_trunc('seconds', last_vacuum) AS last_vacuum, date_trunc('seconds', last_autovacuum) AS last_autovacuum, date_trunc('seconds',last_analyze) AS last_analyze, date_trunc('seconds',last_autoanalyze) AS last_autoanalyze" : "",
         backend_minimum_version(9, 1) ? ", vacuum_count, autovacuum_count, analyze_count, autoanalyze_count" : "");
 	snprintf(filename, sizeof(filename),
@@ -815,7 +844,7 @@ main(int argc, char **argv)
     /* check superuser attribute */
     is_superuser = check_superuser();
 
-	/* grap cluster stats info */
+	/* grabe cluster stats info */
 	sql_exec_dump_pgstatactivity();
 	if (backend_minimum_version(8, 3))
 		sql_exec_dump_pgstatbgwriter();
@@ -825,8 +854,10 @@ main(int argc, char **argv)
 		sql_exec_dump_pgstatdatabaseconflicts();
 		sql_exec_dump_pgstatreplication();
     }
+	if (backend_minimum_version(9, 4))
+		sql_exec_dump_pgstatarchiver();
 
-	/* grap database stats info */
+	/* grabe database stats info */
 	sql_exec_dump_pgstatalltables();
 	sql_exec_dump_pgstatallindexes();
 	sql_exec_dump_pgstatioalltables();
@@ -835,7 +866,7 @@ main(int argc, char **argv)
     if (backend_minimum_version(8, 4))
 		sql_exec_dump_pgstatuserfunctions();
 
-	/* grab other informations */
+	/* grabe other informations */
 	sql_exec_dump_pgclass_size();
     if (backend_has_pgstatstatements())
 	    sql_exec_dump_pgstatstatements();

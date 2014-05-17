@@ -29,7 +29,8 @@
  */
 typedef enum 
 {
-	BGWRITER = 1,
+	ARCHIVER = 1,
+	BGWRITER,
 	CONNECTION,
 	DATABASE,
 	TABLE,
@@ -60,6 +61,24 @@ struct options
 	/* frequency */
 	int			interval;
 	int			count;
+};
+
+/* pg_stat_bgwriter struct */
+struct pgstatarchiver
+{
+	int archived_count;
+    /*
+	we don't put these columns here because it makes no sense to get a diff between the new and the old values
+	? last_archived_wal;
+    ? last_archived_time;
+	*/
+	int failed_count;
+    /*
+	we don't put these columns here because it makes no sense to get a diff between the new and the old values
+	? last_failed_wal;
+    ? last_failed_time;
+    ? stats_reset;
+	*/
 };
 
 /* pg_stat_bgwriter struct */
@@ -114,6 +133,7 @@ struct pgstattable
     int n_tup_hot_upd;
     int n_live_tup;
     int n_dead_tup;
+    int n_mod_since_analyze;
     /*
 	we don't put the timestamps here because it makes no sense to get a diff between the new and the old values
 	? last_vacuum;
@@ -167,6 +187,7 @@ struct pgstatfunction
 PGconn	   		      *conn;
 struct options	      *opts;
 extern char           *optarg;
+struct pgstatarchiver *previous_pgstatarchiver;
 struct pgstatbgwriter *previous_pgstatbgwriter;
 struct pgstatdatabase *previous_pgstatdatabase;
 struct pgstattable    *previous_pgstattable;
@@ -185,6 +206,7 @@ void		get_opts(int, char **);
 void	   *myalloc(size_t size);
 char	   *mystrdup(const char *str);
 PGconn	   *sql_conn(void);
+void		print_pgstatarchiver(void);
 void		print_pgstatbgwriter(void);
 void        print_pgstatconnection(void);
 void        print_pgstatdatabase(void);
@@ -225,6 +247,7 @@ help(const char *progname)
 		   "  -d DBNAME    database to connect to\n"
 		   "\nThe default stat is pg_stat_bgwriter, but you can change it with the -s command line option,\n"
 		   "and one of its value (STAT):\n"
+		   "  * archiver   for pg_stat_archiver\n"
 		   "  * bgwriter   for pg_stat_bgwriter\n"
 		   "  * connection (only for > 9.1)\n"
 		   "  * database   for pg_stat_database\n"
@@ -300,6 +323,10 @@ get_opts(int argc, char **argv)
 
 				/* specify the stat */
 			case 's':
+				if (!strcmp(optarg, "archiver"))
+				{
+					opts->stat = ARCHIVER;
+				}
 				if (!strcmp(optarg, "bgwriter"))
 				{
 					opts->stat = BGWRITER;
@@ -450,6 +477,66 @@ sql_conn()
 
 	/* return the conn if good */
 	return my_conn;
+}
+
+/*
+ * Dump all archiver stats.
+ */
+void
+print_pgstatarchiver()
+{
+	char		sql[1024];
+	PGresult   *res;
+	int			nrows;
+	int			row, column;
+
+	int archived_count;
+	int failed_count;
+
+	/* grab the stats (this is the only stats on one line) */
+	snprintf(sql, sizeof(sql),
+			 "SELECT archived_count, failed_count "
+             "FROM pg_stat_archiver ");
+
+	/* make the call */
+	res = PQexec(conn, sql);
+
+	/* check and deal with errors */
+	if (!res || PQresultStatus(res) > 2)
+	{
+		warnx("pgstats: query failed: %s", PQerrorMessage(conn));
+		PQclear(res);
+		PQfinish(conn);
+		err(1, "pgstats: query was: %s", sql);
+	}
+
+	/* get the number of fields */
+	nrows = PQntuples(res);
+
+	/* for each row, dump the information */
+	/* this is stupid, a simple if would do the trick, but it will help for other cases */
+	for (row = 0; row < nrows; row++)
+	{
+		column = 0;
+
+		/* getting new values */
+		archived_count = atoi(PQgetvalue(res, row, column++));
+		failed_count = atoi(PQgetvalue(res, row, column++));
+
+		/* printing the diff...
+		 * note that the first line will be the current value, rather than the diff */
+		(void)printf("   %6d   %6d\n",
+		    archived_count - previous_pgstatarchiver->archived_count,
+		    failed_count - previous_pgstatarchiver->failed_count
+		    );
+
+		/* setting the new old value */
+		previous_pgstatarchiver->archived_count = archived_count;
+	    previous_pgstatarchiver->failed_count = failed_count;
+	}
+
+	/* cleanup */
+	PQclear(res);
 }
 
 /*
@@ -792,6 +879,7 @@ print_pgstattable()
     int n_tup_hot_upd = 0;
     int n_live_tup = 0;
     int n_dead_tup = 0;
+    int n_mod_since_analyze = 0;
     int vacuum_count = 0;
     int autovacuum_count = 0;
     int analyze_count = 0;
@@ -808,9 +896,11 @@ print_pgstattable()
 	             "sum(n_tup_upd), sum(n_tup_del)"
 	             "%s"
 				 "%s"
+				 "%s"
 	             " FROM pg_stat_all_tables "
 		     "WHERE schemaname <> 'information_schema' ",
 			backend_minimum_version(8, 3) ? ", sum(n_tup_hot_upd), sum(n_live_tup), sum(n_dead_tup)" : "",
+	        backend_minimum_version(9, 4) ? ", sum(n_mod_since_analyze)" : "",
 	        backend_minimum_version(9, 1) ? ", sum(vacuum_count), sum(autovacuum_count), sum(analyze_count), sum(autoanalyze_count)" : "");
 
 		res = PQexec(conn, sql);
@@ -822,10 +912,12 @@ print_pgstattable()
 	             "sum(n_tup_upd), sum(n_tup_del)"
 	             "%s"
 				 "%s"
+				 "%s"
 	             " FROM pg_stat_all_tables "
 		     "WHERE schemaname <> 'information_schema' "
-		     "  AND tablename = $1",
+		     "  AND relname = $1",
 			backend_minimum_version(8, 3) ? ", sum(n_tup_hot_upd), sum(n_live_tup), sum(n_dead_tup)" : "",
+	        backend_minimum_version(9, 4) ? ", sum(n_mod_since_analyze)" : "",
 	        backend_minimum_version(9, 1) ? ", sum(vacuum_count), sum(autovacuum_count), sum(analyze_count), sum(autoanalyze_count)" : "");
 
 		paramValues[0] = mystrdup(opts->filter);
@@ -872,6 +964,10 @@ print_pgstattable()
 	        n_live_tup = atoi(PQgetvalue(res, row, column++));
 	        n_dead_tup = atoi(PQgetvalue(res, row, column++));
     	}
+		if (backend_minimum_version(9, 4))
+		{
+	        n_mod_since_analyze = atoi(PQgetvalue(res, row, column++));
+    	}
 		if (backend_minimum_version(9, 1))
 		{
 	        vacuum_count = atoi(PQgetvalue(res, row, column++));
@@ -881,7 +977,7 @@ print_pgstattable()
 		}
 
 		/* printing the diff... note that the first line will be the current value, rather than the diff */
-		(void)printf(" %6d  %6d   %6d  %6d      %6d %6d %6d %6d %6d %6d   %6d     %6d  %6d      %6d\n",
+		(void)printf(" %6d  %6d   %6d  %6d      %6d %6d %6d %6d %6d %6d %6d  %6d     %6d  %6d      %6d\n",
 		    seq_scan - previous_pgstattable->seq_scan,
 		    seq_tup_read - previous_pgstattable->seq_tup_read,
 		    idx_scan - previous_pgstattable->idx_scan,
@@ -892,6 +988,7 @@ print_pgstattable()
 		    n_tup_hot_upd - previous_pgstattable->n_tup_hot_upd,
 		    n_live_tup - previous_pgstattable->n_live_tup,
 		    n_dead_tup - previous_pgstattable->n_dead_tup,
+		    n_mod_since_analyze - previous_pgstattable->n_mod_since_analyze,
 		    vacuum_count - previous_pgstattable->vacuum_count,
 		    autovacuum_count - previous_pgstattable->autovacuum_count,
 		    analyze_count - previous_pgstattable->analyze_count,
@@ -909,6 +1006,7 @@ print_pgstattable()
 		previous_pgstattable->n_tup_hot_upd = n_tup_hot_upd;
 		previous_pgstattable->n_live_tup = n_live_tup;
 		previous_pgstattable->n_dead_tup = n_dead_tup;
+		previous_pgstattable->n_mod_since_analyze = n_mod_since_analyze;
 		previous_pgstattable->vacuum_count = vacuum_count;
 		previous_pgstattable->autovacuum_count = autovacuum_count;
 		previous_pgstattable->analyze_count = analyze_count;
@@ -961,7 +1059,7 @@ print_pgstattableio()
 	             "toast_blks_read, toast_blks_hit, tidx_blks_read, tidx_blks_hit "
 	             "FROM pg_statio_all_tables "
 			     "WHERE schemaname <> 'information_schema' "
-			     "  AND tablename = $1");
+			     "  AND relname = $1");
 
 		paramValues[0] = mystrdup(opts->filter);
 
@@ -1263,6 +1361,10 @@ print_header(void)
 {
 	switch(opts->stat)
 	{
+		case ARCHIVER:
+			(void)printf("---- WAL counts ----\n");
+			(void)printf(" archived   failed \n");
+			break;
 		case BGWRITER:
 			(void)printf("------------ checkpoints ------------- ------------- buffers ------------- ---------- misc ----------\n");
 			(void)printf("  timed requested write_time sync_time   checkpoint  clean backend  alloc   maxwritten backend_fsync\n");
@@ -1275,8 +1377,8 @@ print_header(void)
 			(void)printf("                commit rollback     read    hit read_time write_time      ret    fet    ins    upd    del    files     bytes   conflicts deadlocks\n");
 			break;
 		case TABLE:
-			(void)printf("-- sequential -- ------ index ------ ----------------- tuples ------------------ -------------- maintenance --------------\n");
-			(void)printf("   scan  tuples     scan  tuples         ins    upd    del hotupd   live   dead   vacuum autovacuum analyze autoanalyze\n");
+			(void)printf("-- sequential -- ------ index ------ ----------------- tuples -------------------------- -------------- maintenance --------------\n");
+			(void)printf("   scan  tuples     scan  tuples         ins    upd    del hotupd   live   dead analyze   vacuum autovacuum analyze autoanalyze\n");
 			break;
 		case TABLEIO:
 			(void)printf("--- heap table ---  --- toast table ---  --- heap indexes ---  --- toast indexes ---\n");
@@ -1308,6 +1410,9 @@ print_line(void)
 {
 	switch(opts->stat)
 	{
+		case ARCHIVER:
+			print_pgstatarchiver();
+			break;
 		case BGWRITER:
 			print_pgstatbgwriter();
 			break;
@@ -1340,6 +1445,11 @@ allocate_struct(void)
 {
 	switch (opts->stat)
 	{
+		case ARCHIVER:
+			previous_pgstatarchiver = (struct pgstatarchiver *) myalloc(sizeof(struct pgstatarchiver));
+			previous_pgstatarchiver->archived_count = 0;
+		    previous_pgstatarchiver->failed_count = 0;
+		    break;
 		case BGWRITER:
 			previous_pgstatbgwriter = (struct pgstatbgwriter *) myalloc(sizeof(struct pgstatbgwriter));
 			previous_pgstatbgwriter->checkpoints_timed = 0;
@@ -1518,6 +1628,11 @@ main(int argc, char **argv)
 
 	/* get version */
     fetch_version();
+
+	if (opts->stat == ARCHIVER && !backend_minimum_version(9, 4))
+	{
+		errx(1, "You need at least 9.4 for this statistic.");
+	}
 
 	if (opts->stat == CONNECTION && !backend_minimum_version(9, 2))
 	{
