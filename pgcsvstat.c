@@ -2,7 +2,7 @@
  * pgstats, a PostgreSQL app to gather statistical informations
  * from a PostgreSQL database.
  *
- * Guillaume Lelarge, guillaume@lelarge.info, 2011-2012.
+ * Guillaume Lelarge, guillaume@lelarge.info, 2011-2015.
  *
  * contrib/pgstats/pgstats.c
  */

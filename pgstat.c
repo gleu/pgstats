@@ -2,7 +2,7 @@
  * pgstat, a PostgreSQL app to gather statistical informations
  * from a PostgreSQL database, and act like a vmstat tool.
  *
- * Guillaume Lelarge, guillaume@lelarge.info, 2013.
+ * Guillaume Lelarge, guillaume@lelarge.info, 2015.
  *
  * pgstat/pgstat.c
  */
