@@ -36,7 +36,8 @@ typedef enum
 	TABLE,
 	TABLEIO,
 	INDEX,
-	FUNCTION
+	FUNCTION,
+	PBPOOLS
 } stat_t;
 
 /* these are the options structure for command line parameters */
@@ -176,6 +177,19 @@ struct pgstatfunction
     float self_time;
 };
 
+/* pgBouncer pools stats struct */
+struct pgbouncerpools
+{
+    int   cl_active;
+    int   cl_waiting;
+    int   sv_active;
+    int   sv_idle;
+    int   sv_used;
+    int   sv_tested;
+    int   sv_login;
+    int   maxwait;
+};
+
 /*
  * Defines
  */
@@ -194,6 +208,7 @@ struct pgstattable    *previous_pgstattable;
 struct pgstattableio  *previous_pgstattableio;
 struct pgstatindex    *previous_pgstatindex;
 struct pgstatfunction *previous_pgstatfunction;
+struct pgbouncerpools *previous_pgbouncerpools;
 int                    hdrcnt = 0;
 volatile sig_atomic_t  wresized;
 static int             winlines = PGSTAT_DEFAULT_LINES;
@@ -214,6 +229,7 @@ void        print_pgstattable(void);
 void		print_pgstattableio(void);
 void        print_pgstatindex(void);
 void        print_pgstatfunction(void);
+void        print_pgbouncerpools(void);
 void		fetch_version(void);
 bool		backend_minimum_version(int major, int minor);
 void        print_header(void);
@@ -254,7 +270,8 @@ help(const char *progname)
 		   "  * table      for pg_stat_all_tables\n"
 		   "  * tableio    for pg_statio_all_tables\n"
 		   "  * index      for pg_stat_all_indexes\n"
-		   "  * function   for pg_stat_user_function\n\n"
+		   "  * function   for pg_stat_user_function\n"
+		   "  * pbpools    for pgBouncer pools statistics\n\n"
 		   "Report bugs to <guillaume@lelarge.info>.\n",
 		   progname, progname);
 }
@@ -354,6 +371,10 @@ get_opts(int argc, char **argv)
 				if (!strcmp(optarg, "function"))
 				{
 					opts->stat = FUNCTION;
+				}
+				if (!strcmp(optarg, "pbpools"))
+				{
+					opts->stat = PBPOOLS;
 				}
 				break;
 
@@ -1310,6 +1331,89 @@ print_pgstatfunction()
 }
 
 /*
+ * Dump all pgBouncer pools stats.
+ */
+void
+print_pgbouncerpools()
+{
+	char		sql[1024];
+	PGresult   *res;
+	int			nrows;
+	int			row, column;
+
+    int cl_active = 0;
+    int cl_waiting = 0;
+    int sv_active = 0;
+    int sv_idle = 0;
+    int sv_used = 0;
+    int sv_tested = 0;
+    int sv_login = 0;
+    int maxwait = 0;
+
+	/*
+	 * We cannot use a filter now, we need to get all rows.
+	 */
+	snprintf(sql, sizeof(sql), "SHOW pools");
+	res = PQexec(conn, sql);
+
+	/* check and deal with errors */
+	if (!res || PQresultStatus(res) > 2)
+	{
+		warnx("pgstats: query failed: %s", PQerrorMessage(conn));
+		PQclear(res);
+		PQfinish(conn);
+		err(1, "pgstats: query was: %s", sql);
+	}
+
+	/* get the number of fields */
+	nrows = PQntuples(res);
+
+	/* for each row, dump the information */
+	/* this is stupid, a simple if would do the trick, but it will help for other cases */
+	for (row = 0; row < nrows; row++)
+	{
+		/* we don't use the first two columns */
+		column = 2;
+
+		/* getting new values */
+		cl_active += atoi(PQgetvalue(res, row, column++));
+		cl_waiting += atoi(PQgetvalue(res, row, column++));
+		sv_active += atoi(PQgetvalue(res, row, column++));
+		sv_idle += atoi(PQgetvalue(res, row, column++));
+		sv_used += atoi(PQgetvalue(res, row, column++));
+		sv_tested += atoi(PQgetvalue(res, row, column++));
+		sv_login += atoi(PQgetvalue(res, row, column++));
+		maxwait += atoi(PQgetvalue(res, row, column++));
+	}
+
+	/* printing the diff...
+	 * note that the first line will be the current value, rather than the diff */
+	(void)printf(" %6d   %6d    %6d  %6d  %6d  %6d  %6d    %6d\n",
+		cl_active - previous_pgbouncerpools->cl_active,
+		cl_waiting - previous_pgbouncerpools->cl_waiting,
+		sv_active - previous_pgbouncerpools->sv_active,
+		sv_idle - previous_pgbouncerpools->sv_idle,
+		sv_used - previous_pgbouncerpools->sv_used,
+		sv_tested - previous_pgbouncerpools->sv_tested,
+		sv_login - previous_pgbouncerpools->sv_login,
+		maxwait - previous_pgbouncerpools->maxwait
+	    );
+
+	/* setting the new old value */
+	previous_pgbouncerpools->cl_active = cl_active;
+	previous_pgbouncerpools->cl_waiting = cl_waiting;
+	previous_pgbouncerpools->sv_active = sv_active;
+	previous_pgbouncerpools->sv_idle = sv_idle;
+	previous_pgbouncerpools->sv_used = sv_used;
+	previous_pgbouncerpools->sv_tested = sv_tested;
+	previous_pgbouncerpools->sv_login = sv_login;
+	previous_pgbouncerpools->maxwait = maxwait;
+
+	/* cleanup */
+	PQclear(res);
+}
+
+/*
  * Fetch PostgreSQL major and minor numbers
  */
 void
@@ -1392,6 +1496,10 @@ print_header(void)
 			(void)printf("-- count -- ------ time ------\n");
 			(void)printf("             total     self\n");
 			break;
+		case PBPOOLS:
+			(void)printf("---- client -----  ---------------- server ----------------  -- misc --\n");
+			(void)printf(" active  waiting    active    idle    used  tested   login    maxwait\n");
+			break;
 	}
 
 	if (wresized != 0)
@@ -1433,6 +1541,9 @@ print_line(void)
 			break;
 		case FUNCTION:
 			print_pgstatfunction();
+			break;
+		case PBPOOLS:
+			print_pgbouncerpools();
 			break;
 	}
 }
@@ -1523,6 +1634,17 @@ allocate_struct(void)
 		    previous_pgstatfunction->calls = 0;
 		    previous_pgstatfunction->total_time = 0;
 		    previous_pgstatfunction->self_time = 0;
+			break;
+		case PBPOOLS:
+			previous_pgbouncerpools = (struct pgbouncerpools *) myalloc(sizeof(struct pgbouncerpools));
+    		previous_pgbouncerpools->cl_active = 0;
+    		previous_pgbouncerpools->cl_waiting = 0;
+    		previous_pgbouncerpools->sv_active = 0;
+    		previous_pgbouncerpools->sv_idle = 0;
+    		previous_pgbouncerpools->sv_used = 0;
+    		previous_pgbouncerpools->sv_tested = 0;
+    		previous_pgbouncerpools->sv_login = 0;
+    		previous_pgbouncerpools->maxwait = 0;
 			break;
 	}
 }
@@ -1627,7 +1749,10 @@ main(int argc, char **argv)
 	conn = sql_conn();
 
 	/* get version */
-    fetch_version();
+	if (opts->stat != PBPOOLS)
+	{
+		fetch_version();
+	}
 
 	if (opts->stat == ARCHIVER && !backend_minimum_version(9, 4))
 	{
