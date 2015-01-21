@@ -37,7 +37,8 @@ typedef enum
 	TABLEIO,
 	INDEX,
 	FUNCTION,
-	PBPOOLS
+	PBPOOLS,
+	PBSTATS
 } stat_t;
 
 /* these are the options structure for command line parameters */
@@ -190,6 +191,21 @@ struct pgbouncerpools
     int   maxwait;
 };
 
+/* pgBouncer stats struct */
+struct pgbouncerstats
+{
+    int   total_request;
+    int   total_received;
+    int   total_sent;
+    int   total_query_time;
+	/* not used yet
+    float avg_req;
+    float avg_recv;
+    float avg_sent;
+    float avg_query;
+	*/
+};
+
 /*
  * Defines
  */
@@ -209,6 +225,7 @@ struct pgstattableio  *previous_pgstattableio;
 struct pgstatindex    *previous_pgstatindex;
 struct pgstatfunction *previous_pgstatfunction;
 struct pgbouncerpools *previous_pgbouncerpools;
+struct pgbouncerstats *previous_pgbouncerstats;
 int                    hdrcnt = 0;
 volatile sig_atomic_t  wresized;
 static int             winlines = PGSTAT_DEFAULT_LINES;
@@ -230,6 +247,7 @@ void		print_pgstattableio(void);
 void        print_pgstatindex(void);
 void        print_pgstatfunction(void);
 void        print_pgbouncerpools(void);
+void        print_pgbouncerstats(void);
 void		fetch_version(void);
 bool		backend_minimum_version(int major, int minor);
 void        print_header(void);
@@ -271,7 +289,8 @@ help(const char *progname)
 		   "  * tableio    for pg_statio_all_tables\n"
 		   "  * index      for pg_stat_all_indexes\n"
 		   "  * function   for pg_stat_user_function\n"
-		   "  * pbpools    for pgBouncer pools statistics\n\n"
+		   "  * pbpools    for pgBouncer pools statistics\n"
+		   "  * pbstats    for pgBouncer statistics\n\n"
 		   "Report bugs to <guillaume@lelarge.info>.\n",
 		   progname, progname);
 }
@@ -375,6 +394,10 @@ get_opts(int argc, char **argv)
 				if (!strcmp(optarg, "pbpools"))
 				{
 					opts->stat = PBPOOLS;
+				}
+				if (!strcmp(optarg, "pbstats"))
+				{
+					opts->stat = PBSTATS;
 				}
 				break;
 
@@ -1414,6 +1437,73 @@ print_pgbouncerpools()
 }
 
 /*
+ * Dump all pgBouncer stats.
+ */
+void
+print_pgbouncerstats()
+{
+	char		sql[1024];
+	PGresult   *res;
+	int			nrows;
+	int			row, column;
+
+    int total_request = 0;
+    int total_received = 0;
+    int total_sent = 0;
+    int total_query_time = 0;
+
+	/*
+	 * We cannot use a filter now, we need to get all rows.
+	 */
+	snprintf(sql, sizeof(sql), "SHOW stats");
+	res = PQexec(conn, sql);
+
+	/* check and deal with errors */
+	if (!res || PQresultStatus(res) > 2)
+	{
+		warnx("pgstats: query failed: %s", PQerrorMessage(conn));
+		PQclear(res);
+		PQfinish(conn);
+		err(1, "pgstats: query was: %s", sql);
+	}
+
+	/* get the number of fields */
+	nrows = PQntuples(res);
+
+	/* for each row, dump the information */
+	/* this is stupid, a simple if would do the trick, but it will help for other cases */
+	for (row = 0; row < nrows; row++)
+	{
+		/* we don't use the first column */
+		column = 1;
+
+		/* getting new values */
+		total_request += atoi(PQgetvalue(res, row, column++));
+		total_received += atoi(PQgetvalue(res, row, column++));
+		total_sent += atoi(PQgetvalue(res, row, column++));
+		total_query_time += atoi(PQgetvalue(res, row, column++));
+	}
+
+	/* printing the diff...
+	 * note that the first line will be the current value, rather than the diff */
+	(void)printf("  %6d    %6d  %6d      %6d\n",
+		total_request - previous_pgbouncerstats->total_request,
+		total_received - previous_pgbouncerstats->total_received,
+		total_sent - previous_pgbouncerstats->total_sent,
+		total_query_time - previous_pgbouncerstats->total_query_time
+	    );
+
+	/* setting the new old value */
+	previous_pgbouncerstats->total_request = total_request;
+	previous_pgbouncerstats->total_received = total_received;
+	previous_pgbouncerstats->total_sent = total_sent;
+	previous_pgbouncerstats->total_query_time = total_query_time;
+
+	/* cleanup */
+	PQclear(res);
+}
+
+/*
  * Fetch PostgreSQL major and minor numbers
  */
 void
@@ -1500,6 +1590,10 @@ print_header(void)
 			(void)printf("---- client -----  ---------------- server ----------------  -- misc --\n");
 			(void)printf(" active  waiting    active    idle    used  tested   login    maxwait\n");
 			break;
+		case PBSTATS:
+			(void)printf("---------------- total -----------------\n");
+			(void)printf(" request  received  sent    query time\n");
+			break;
 	}
 
 	if (wresized != 0)
@@ -1544,6 +1638,9 @@ print_line(void)
 			break;
 		case PBPOOLS:
 			print_pgbouncerpools();
+			break;
+		case PBSTATS:
+			print_pgbouncerstats();
 			break;
 	}
 }
@@ -1645,6 +1742,13 @@ allocate_struct(void)
     		previous_pgbouncerpools->sv_tested = 0;
     		previous_pgbouncerpools->sv_login = 0;
     		previous_pgbouncerpools->maxwait = 0;
+			break;
+		case PBSTATS:
+			previous_pgbouncerstats = (struct pgbouncerstats *) myalloc(sizeof(struct pgbouncerstats));
+			previous_pgbouncerstats->total_request = 0;
+			previous_pgbouncerstats->total_received = 0;
+			previous_pgbouncerstats->total_sent = 0;
+			previous_pgbouncerstats->total_query_time = 0;
 			break;
 	}
 }
@@ -1749,7 +1853,7 @@ main(int argc, char **argv)
 	conn = sql_conn();
 
 	/* get version */
-	if (opts->stat != PBPOOLS)
+	if (opts->stat != PBPOOLS && opts->stat != PBSTATS)
 	{
 		fetch_version();
 	}
