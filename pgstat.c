@@ -61,6 +61,9 @@ struct options
 	int			major;
 	int			minor;
 
+	/* pg_stat_statements namespace */
+	char	   *namespace;
+
 	/* frequency */
 	int			interval;
 	int			count;
@@ -278,6 +281,7 @@ void        print_pgstatstatement(void);
 void        print_pgbouncerpools(void);
 void        print_pgbouncerstats(void);
 void		fetch_version(void);
+void		fetch_pgstatstatements_namespace(void);
 bool		backend_minimum_version(int major, int minor);
 void        print_header(void);
 void        print_line(void);
@@ -345,6 +349,7 @@ get_opts(int argc, char **argv)
 	opts->hostname = NULL;
 	opts->port = NULL;
 	opts->username = NULL;
+	opts->namespace = NULL;
 	opts->interval = 1;
 	opts->count = -1;
 
@@ -1420,7 +1425,7 @@ print_pgstatstatement()
 	         " sum(local_blks_hit), sum(local_blks_read), sum(local_blks_dirtied), sum(local_blks_written),"
 	         " sum(temp_blks_read), sum(temp_blks_written),"
 	         " sum(blk_read_time), sum(blk_write_time)"
-             " FROM pg_stat_statements ");
+             " FROM %s.pg_stat_statements ", opts->namespace);
 	res = PQexec(conn, sql);
 
 	/* check and deal with errors */
@@ -1680,6 +1685,46 @@ fetch_version()
 	/* print version */
 	if (opts->verbose)
 	    printf("Detected release: %d.%d\n", opts->major, opts->minor);
+
+	/* cleanup */
+	PQclear(res);
+}
+
+/*
+ * Fetch pg_stat_statement namespace
+ */
+void
+fetch_pgstatstatements_namespace()
+{
+	char		sql[1024];
+	PGresult   *res;
+
+	/* get the cluster version */
+	snprintf(sql, sizeof(sql), "SELECT nspname FROM pg_extension e "
+	  "JOIN pg_namespace n ON e.extnamespace=n.oid "
+	  "WHERE extname='pg_stat_statements'");
+
+	/* make the call */
+	res = PQexec(conn, sql);
+
+	/* check and deal with errors */
+	if (!res || PQresultStatus(res) > 2)
+	{
+		warnx("pgstats: query failed: %s", PQerrorMessage(conn));
+		PQclear(res);
+		PQfinish(conn);
+		err(1, "pgstats: query was: %s", sql);
+	}
+
+	if (PQntuples(res) > 0)
+	{
+		/* get the only row, and parse it to get major and minor numbers */
+		opts->namespace = mystrdup(PQgetvalue(res, 0, 0));
+
+		/* print version */
+		if (opts->verbose)
+		    printf("pg_stat_statements namespace: %s\n", opts->namespace);
+	}
 
 	/* cleanup */
 	PQclear(res);
@@ -2038,6 +2083,15 @@ main(int argc, char **argv)
 	if (opts->stat == CONNECTION && !backend_minimum_version(9, 2))
 	{
 		errx(1, "You need at least 9.2 for this statistic.");
+	}
+
+	if (opts->stat == STATEMENT)
+	{
+		fetch_pgstatstatements_namespace();
+		if (!opts->namespace)
+		{
+			errx(1, "Cannot find the pg_stat_statements extension.");
+		}
 	}
 
     /* allocate and initialize statistics struct */
