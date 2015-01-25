@@ -29,7 +29,8 @@
  */
 typedef enum 
 {
-	ARCHIVER = 1,
+	NONE = 0,
+	ARCHIVER,
 	BGWRITER,
 	CONNECTION,
 	DATABASE,
@@ -343,7 +344,7 @@ get_opts(int argc, char **argv)
 	/* set the defaults */
 	opts->verbose = false;
 	opts->dontredisplayheader = false;
-	opts->stat = BGWRITER;
+	opts->stat = NONE;
 	opts->filter = NULL;
 	opts->dbname = NULL;
 	opts->hostname = NULL;
@@ -394,7 +395,7 @@ get_opts(int argc, char **argv)
 
 				/* specify the stat */
 			case 's':
-				if (opts->stat)
+				if (opts->stat != NONE)
 				{
 					err(1, "You can only use once the -s command line switch.\n");
 				}
@@ -464,11 +465,13 @@ get_opts(int argc, char **argv)
 				err(1, "Try \"%s --help\" for more information.\n", progname);
 		}
 	}
+
 	if (optind < argc)
 	{
 		opts->interval = atol(argv[optind]);
 		optind++;
 	}
+
 	if (optind < argc)
 	{
 		opts->count = atol(argv[optind]);
@@ -1752,6 +1755,9 @@ print_header(void)
 {
 	switch(opts->stat)
 	{
+		case NONE:
+			/* That shouldn't happen */
+		    break;
 		case ARCHIVER:
 			(void)printf("---- WAL counts ----\n");
 			(void)printf(" archived   failed \n");
@@ -1813,6 +1819,9 @@ print_line(void)
 {
 	switch(opts->stat)
 	{
+		case NONE:
+			/* That shouldn't happen */
+		    break;
 		case ARCHIVER:
 			print_pgstatarchiver();
 			break;
@@ -1857,6 +1866,9 @@ allocate_struct(void)
 {
 	switch (opts->stat)
 	{
+		case NONE:
+			/* That shouldn't happen */
+		    break;
 		case ARCHIVER:
 			previous_pgstatarchiver = (struct pgstatarchiver *) myalloc(sizeof(struct pgstatarchiver));
 			previous_pgstatarchiver->archived_count = 0;
@@ -2078,6 +2090,11 @@ main(int argc, char **argv)
 	if (opts->stat != PBPOOLS && opts->stat != PBSTATS)
 	{
 		fetch_version();
+	}
+
+	if (opts->stat == NONE)
+	{
+		opts->stat = BGWRITER;
 	}
 
 	if (opts->stat == ARCHIVER && !backend_minimum_version(9, 4))
