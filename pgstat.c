@@ -72,13 +72,13 @@ struct options
 /* pg_stat_bgwriter struct */
 struct pgstatarchiver
 {
-	int archived_count;
+	long archived_count;
     /*
 	we don't put these columns here because it makes no sense to get a diff between the new and the old values
 	? last_archived_wal;
     ? last_archived_time;
 	*/
-	int failed_count;
+	long failed_count;
     /*
 	we don't put these columns here because it makes no sense to get a diff between the new and the old values
 	? last_failed_wal;
@@ -90,16 +90,16 @@ struct pgstatarchiver
 /* pg_stat_bgwriter struct */
 struct pgstatbgwriter
 {
-	int checkpoints_timed;
-	int checkpoints_req;
-	int checkpoint_write_time;
-	int checkpoint_sync_time;
-	int buffers_checkpoint;
-	int buffers_clean;
-	int maxwritten_clean;
-	int buffers_backend;
-	int buffers_backend_fsync;
-	int buffers_alloc;
+	long checkpoints_timed;
+	long checkpoints_req;
+	long checkpoint_write_time;
+	long checkpoint_sync_time;
+	long buffers_checkpoint;
+	long buffers_clean;
+	long maxwritten_clean;
+	long buffers_backend;
+	long buffers_backend_fsync;
+	long buffers_alloc;
 };
 
 /* pg_stat_database struct */
@@ -107,39 +107,39 @@ struct pgstatdatabase
 {
 	/*
 	we don't put numbackends here because it makes no sense to get a diff between the new and the old values
-	int numbackends;
+	long numbackends;
 	*/
-	int xact_commit;
-	int xact_rollback;
-	int blks_read;
-	int blks_hit;
-	int tup_returned;
-	int tup_fetched;
-	int tup_inserted;
-	int tup_updated;
-	int tup_deleted;
-	int conflicts;
-	int temp_files;
-	int temp_bytes;
-	int deadlocks;
-	int blk_read_time;
-	int blk_write_time;
+	long xact_commit;
+	long xact_rollback;
+	long blks_read;
+	long blks_hit;
+	long tup_returned;
+	long tup_fetched;
+	long tup_inserted;
+	long tup_updated;
+	long tup_deleted;
+	long conflicts;
+	long temp_files;
+	long temp_bytes;
+	long deadlocks;
+	long blk_read_time;
+	long blk_write_time;
 };
 
 /* pg_stat_all_tables struct */
 struct pgstattable
 {
-    int seq_scan;
-    int seq_tup_read;
-    int idx_scan;
-    int idx_tup_fetch;
-    int n_tup_ins;
-    int n_tup_upd;
-    int n_tup_del;
-    int n_tup_hot_upd;
-    int n_live_tup;
-    int n_dead_tup;
-    int n_mod_since_analyze;
+    long seq_scan;
+    long seq_tup_read;
+    long idx_scan;
+    long idx_tup_fetch;
+    long n_tup_ins;
+    long n_tup_upd;
+    long n_tup_del;
+    long n_tup_hot_upd;
+    long n_live_tup;
+    long n_dead_tup;
+    long n_mod_since_analyze;
     /*
 	we don't put the timestamps here because it makes no sense to get a diff between the new and the old values
 	? last_vacuum;
@@ -147,37 +147,37 @@ struct pgstattable
     ? last_analyze;
     ? last_autoanalyze;
 	*/
-	int vacuum_count;
-    int autovacuum_count;
-    int analyze_count;
-    int autoanalyze_count;
+	long vacuum_count;
+    long autovacuum_count;
+    long analyze_count;
+    long autoanalyze_count;
 };
 
 /* pg_statio_all_tables struct */
 struct pgstattableio
 {
-	int heap_blks_read;
-	int heap_blks_hit;
-	int idx_blks_read;
-	int idx_blks_hit;
-	int toast_blks_read;
-	int toast_blks_hit;
-	int tidx_blks_read;
-	int tidx_blks_hit;
+	long heap_blks_read;
+	long heap_blks_hit;
+	long idx_blks_read;
+	long idx_blks_hit;
+	long toast_blks_read;
+	long toast_blks_hit;
+	long tidx_blks_read;
+	long tidx_blks_hit;
 };
 
 /* pg_stat_all_indexes struct */
 struct pgstatindex
 {
-	int idx_scan;
-	int idx_tup_read;
-	int idx_tup_fetch;
+	long idx_scan;
+	long idx_tup_read;
+	long idx_tup_fetch;
 };
 
 /* pg_stat_user_functions struct */
 struct pgstatfunction
 {
-    int   calls;
+    long   calls;
     float total_time;
     float self_time;
 };
@@ -186,24 +186,24 @@ struct pgstatfunction
 struct pgstatstatement
 {
 	/*
-	int userid;
-	int dbid;
+	long userid;
+	long dbid;
 	long queryid;
 	text query;
 	*/
-	int calls;
+	long calls;
 	float total_time;
-	int rows;
-	int shared_blks_hit;
-	int shared_blks_read;
-	int shared_blks_dirtied;
-	int shared_blks_written;
-	int local_blks_hit;
-	int local_blks_read;
-	int local_blks_dirtied;
-	int local_blks_written;
-	int temp_blks_read;
-	int temp_blks_written;
+	long rows;
+	long shared_blks_hit;
+	long shared_blks_read;
+	long shared_blks_dirtied;
+	long shared_blks_written;
+	long local_blks_hit;
+	long local_blks_read;
+	long local_blks_dirtied;
+	long local_blks_written;
+	long temp_blks_read;
+	long temp_blks_written;
 	float blk_read_time;
 	float blk_write_time;
 };
@@ -211,23 +211,23 @@ struct pgstatstatement
 /* pgBouncer pools stats struct */
 struct pgbouncerpools
 {
-    int   cl_active;
-    int   cl_waiting;
-    int   sv_active;
-    int   sv_idle;
-    int   sv_used;
-    int   sv_tested;
-    int   sv_login;
-    int   maxwait;
+    long cl_active;
+    long cl_waiting;
+    long sv_active;
+    long sv_idle;
+    long sv_used;
+    long sv_tested;
+    long sv_login;
+    long maxwait;
 };
 
 /* pgBouncer stats struct */
 struct pgbouncerstats
 {
-    int   total_request;
-    int   total_received;
-    int   total_sent;
-    int   total_query_time;
+    long total_request;
+    long total_received;
+    long total_sent;
+    long total_query_time;
 	/* not used yet
     float avg_req;
     float avg_recv;
@@ -394,6 +394,11 @@ get_opts(int argc, char **argv)
 
 				/* specify the stat */
 			case 's':
+				if (opts->stat)
+				{
+					err(1, "You can only use once the -s command line switch.\n");
+				}
+
 				if (!strcmp(optarg, "archiver"))
 				{
 					opts->stat = ARCHIVER;
@@ -461,12 +466,12 @@ get_opts(int argc, char **argv)
 	}
 	if (optind < argc)
 	{
-		opts->interval = atoi(argv[optind]);
+		opts->interval = atol(argv[optind]);
 		optind++;
 	}
 	if (optind < argc)
 	{
-		opts->count = atoi(argv[optind]);
+		opts->count = atol(argv[optind]);
 	}
 
 	if (opts->dbname == NULL)
@@ -573,8 +578,8 @@ print_pgstatarchiver()
 	int			nrows;
 	int			row, column;
 
-	int archived_count;
-	int failed_count;
+	long archived_count;
+	long failed_count;
 
 	/* grab the stats (this is the only stats on one line) */
 	snprintf(sql, sizeof(sql),
@@ -603,12 +608,12 @@ print_pgstatarchiver()
 		column = 0;
 
 		/* getting new values */
-		archived_count = atoi(PQgetvalue(res, row, column++));
-		failed_count = atoi(PQgetvalue(res, row, column++));
+		archived_count = atol(PQgetvalue(res, row, column++));
+		failed_count = atol(PQgetvalue(res, row, column++));
 
 		/* printing the diff...
 		 * note that the first line will be the current value, rather than the diff */
-		(void)printf("   %6d   %6d\n",
+		(void)printf("   %6lu   %6lu\n",
 		    archived_count - previous_pgstatarchiver->archived_count,
 		    failed_count - previous_pgstatarchiver->failed_count
 		    );
@@ -633,16 +638,16 @@ print_pgstatbgwriter()
 	int			nrows;
 	int			row, column;
 
-	int checkpoints_timed = 0;
-	int checkpoints_req = 0;
-	int checkpoint_write_time = 0;
-	int checkpoint_sync_time = 0;
-	int buffers_checkpoint = 0;
-	int buffers_clean = 0;
-	int maxwritten_clean = 0;
-	int buffers_backend = 0;
-	int buffers_backend_fsync = 0;
-	int buffers_alloc = 0;
+	long checkpoints_timed = 0;
+	long checkpoints_req = 0;
+	long checkpoint_write_time = 0;
+	long checkpoint_sync_time = 0;
+	long buffers_checkpoint = 0;
+	long buffers_clean = 0;
+	long maxwritten_clean = 0;
+	long buffers_backend = 0;
+	long buffers_backend_fsync = 0;
+	long buffers_alloc = 0;
 
 	/* grab the stats (this is the only stats on one line) */
 	snprintf(sql, sizeof(sql),
@@ -674,26 +679,26 @@ print_pgstatbgwriter()
 		column = 0;
 
 		/* getting new values */
-		checkpoints_timed = atoi(PQgetvalue(res, row, column++));
-		checkpoints_req = atoi(PQgetvalue(res, row, column++));
+		checkpoints_timed = atol(PQgetvalue(res, row, column++));
+		checkpoints_req = atol(PQgetvalue(res, row, column++));
 		if (backend_minimum_version(9, 2))
 		{
-			checkpoint_write_time = atoi(PQgetvalue(res, row, column++));
-			checkpoint_sync_time = atoi(PQgetvalue(res, row, column++));
+			checkpoint_write_time = atol(PQgetvalue(res, row, column++));
+			checkpoint_sync_time = atol(PQgetvalue(res, row, column++));
 		}
-		buffers_checkpoint = atoi(PQgetvalue(res, row, column++));
-		buffers_clean = atoi(PQgetvalue(res, row, column++));
-		maxwritten_clean = atoi(PQgetvalue(res, row, column++));
-		buffers_backend = atoi(PQgetvalue(res, row, column++));
+		buffers_checkpoint = atol(PQgetvalue(res, row, column++));
+		buffers_clean = atol(PQgetvalue(res, row, column++));
+		maxwritten_clean = atol(PQgetvalue(res, row, column++));
+		buffers_backend = atol(PQgetvalue(res, row, column++));
 		if (backend_minimum_version(9, 1))
 		{
-			buffers_backend_fsync = atoi(PQgetvalue(res, row, column++));
+			buffers_backend_fsync = atol(PQgetvalue(res, row, column++));
 		}
-		buffers_alloc = atoi(PQgetvalue(res, row, column++));
+		buffers_alloc = atol(PQgetvalue(res, row, column++));
 
 		/* printing the diff...
 		 * note that the first line will be the current value, rather than the diff */
-		(void)printf(" %6d    %6d     %6d    %6d       %6d %6d  %6d %6d         %4d            %2d\n",
+		(void)printf(" %6lu    %6lu     %6lu    %6lu       %6lu %6lu  %6lu %6lu         %4lu            %2lu\n",
 		    checkpoints_timed - previous_pgstatbgwriter->checkpoints_timed,
 		    checkpoints_req - previous_pgstatbgwriter->checkpoints_req,
 		    checkpoint_write_time - previous_pgstatbgwriter->checkpoint_write_time,
@@ -734,11 +739,11 @@ print_pgstatconnection()
 	int			nrows;
 	int			row, column;
 
-	int total = 0;
-	int active = 0;
-	int lockwaiting = 0;
-	int idleintransaction = 0;
-	int idle = 0;
+	long total = 0;
+	long active = 0;
+	long lockwaiting = 0;
+	long idleintransaction = 0;
+	long idle = 0;
 
 	snprintf(sql, sizeof(sql),
 			 "SELECT count(*) AS total, "
@@ -768,14 +773,14 @@ print_pgstatconnection()
 	{
 		column = 0;
 
-		total = atoi(PQgetvalue(res, row, column++));
-		active = atoi(PQgetvalue(res, row, column++));
-		lockwaiting = atoi(PQgetvalue(res, row, column++));
-		idleintransaction = atoi(PQgetvalue(res, row, column++));
-		idle = atoi(PQgetvalue(res, row, column++));
+		total = atol(PQgetvalue(res, row, column++));
+		active = atol(PQgetvalue(res, row, column++));
+		lockwaiting = atol(PQgetvalue(res, row, column++));
+		idleintransaction = atol(PQgetvalue(res, row, column++));
+		idle = atol(PQgetvalue(res, row, column++));
 
 		/* printing the actual values for once */
-		(void)printf("    %4d     %4d          %4d                  %4d   %4d  \n",
+		(void)printf("    %4lu     %4lu          %4lu                  %4lu   %4lu  \n",
 		    total, active, lockwaiting, idleintransaction, idle);
 	}
 
@@ -795,22 +800,22 @@ print_pgstatdatabase()
 	int			nrows;
 	int			row, column;
 
-	int numbackends = 0;
-	int xact_commit = 0;
-	int xact_rollback = 0;
-	int blks_read = 0;
-	int blks_hit = 0;
-	int tup_returned = 0;
-	int tup_fetched = 0;
-	int tup_inserted = 0;
-	int tup_updated = 0;
-	int tup_deleted = 0;
-	int conflicts = 0;
-	int temp_files = 0;
-	int temp_bytes = 0;
-	int deadlocks = 0;
-	int blk_read_time = 0;
-	int blk_write_time = 0;
+	long numbackends = 0;
+	long xact_commit = 0;
+	long xact_rollback = 0;
+	long blks_read = 0;
+	long blks_hit = 0;
+	long tup_returned = 0;
+	long tup_fetched = 0;
+	long tup_inserted = 0;
+	long tup_updated = 0;
+	long tup_deleted = 0;
+	long conflicts = 0;
+	long temp_files = 0;
+	long temp_bytes = 0;
+	long deadlocks = 0;
+	long blk_read_time = 0;
+	long blk_write_time = 0;
 
 
 	/*
@@ -871,35 +876,35 @@ print_pgstatdatabase()
 		column = 0;
 
 		/* getting new values */
-		numbackends = atoi(PQgetvalue(res, row, column++));
-		xact_commit = atoi(PQgetvalue(res, row, column++));
-		xact_rollback = atoi(PQgetvalue(res, row, column++));
-		blks_read = atoi(PQgetvalue(res, row, column++));
-		blks_hit = atoi(PQgetvalue(res, row, column++));
+		numbackends = atol(PQgetvalue(res, row, column++));
+		xact_commit = atol(PQgetvalue(res, row, column++));
+		xact_rollback = atol(PQgetvalue(res, row, column++));
+		blks_read = atol(PQgetvalue(res, row, column++));
+		blks_hit = atol(PQgetvalue(res, row, column++));
 		if (backend_minimum_version(8, 3))
 		{
-			tup_returned = atoi(PQgetvalue(res, row, column++));
-			tup_fetched = atoi(PQgetvalue(res, row, column++));
-			tup_inserted = atoi(PQgetvalue(res, row, column++));
-			tup_updated = atoi(PQgetvalue(res, row, column++));
-			tup_deleted = atoi(PQgetvalue(res, row, column++));
+			tup_returned = atol(PQgetvalue(res, row, column++));
+			tup_fetched = atol(PQgetvalue(res, row, column++));
+			tup_inserted = atol(PQgetvalue(res, row, column++));
+			tup_updated = atol(PQgetvalue(res, row, column++));
+			tup_deleted = atol(PQgetvalue(res, row, column++));
 		}
 		if (backend_minimum_version(9, 1))
 		{
-			conflicts = atoi(PQgetvalue(res, row, column++));
+			conflicts = atol(PQgetvalue(res, row, column++));
 		}
 		if (backend_minimum_version(9, 2))
 		{
-			temp_files = atoi(PQgetvalue(res, row, column++));
-			temp_bytes = atoi(PQgetvalue(res, row, column++));
-			deadlocks = atoi(PQgetvalue(res, row, column++));
-			blk_read_time = atoi(PQgetvalue(res, row, column++));
-			blk_write_time = atoi(PQgetvalue(res, row, column++));
+			temp_files = atol(PQgetvalue(res, row, column++));
+			temp_bytes = atol(PQgetvalue(res, row, column++));
+			deadlocks = atol(PQgetvalue(res, row, column++));
+			blk_read_time = atol(PQgetvalue(res, row, column++));
+			blk_write_time = atol(PQgetvalue(res, row, column++));
 		}
 
 		/* printing the diff...
 		 * note that the first line will be the current value, rather than the diff */
-		(void)printf("      %4d      %6d   %6d   %6d %6d    %6d     %6d   %6d %6d %6d %6d %6d   %6d %9d   %9d %9d\n",
+		(void)printf("      %4lu      %6lu   %6lu   %6lu %6lu    %6lu     %6lu   %6lu %6lu %6lu %6lu %6lu   %6lu %9lu   %9lu %9lu\n",
 		    numbackends,
 		    xact_commit - previous_pgstatdatabase->xact_commit,
 		    xact_rollback - previous_pgstatdatabase->xact_rollback,
@@ -952,21 +957,21 @@ print_pgstattable()
 	int			nrows;
 	int			row, column;
 
-    int seq_scan = 0;
-    int seq_tup_read = 0;
-    int idx_scan = 0;
-    int idx_tup_fetch = 0;
-    int n_tup_ins = 0;
-    int n_tup_upd = 0;
-    int n_tup_del = 0;
-    int n_tup_hot_upd = 0;
-    int n_live_tup = 0;
-    int n_dead_tup = 0;
-    int n_mod_since_analyze = 0;
-    int vacuum_count = 0;
-    int autovacuum_count = 0;
-    int analyze_count = 0;
-    int autoanalyze_count = 0;
+    long seq_scan = 0;
+    long seq_tup_read = 0;
+    long idx_scan = 0;
+    long idx_tup_fetch = 0;
+    long n_tup_ins = 0;
+    long n_tup_upd = 0;
+    long n_tup_del = 0;
+    long n_tup_hot_upd = 0;
+    long n_live_tup = 0;
+    long n_dead_tup = 0;
+    long n_mod_since_analyze = 0;
+    long vacuum_count = 0;
+    long autovacuum_count = 0;
+    long analyze_count = 0;
+    long autoanalyze_count = 0;
 
 	/*
 	 * With a filter, we assume we'll get only one row.
@@ -1034,33 +1039,33 @@ print_pgstattable()
 		column = 0;
 
 		/* getting new values */
-        seq_scan = atoi(PQgetvalue(res, row, column++));
-        seq_tup_read = atoi(PQgetvalue(res, row, column++));
-        idx_scan = atoi(PQgetvalue(res, row, column++));
-        idx_tup_fetch = atoi(PQgetvalue(res, row, column++));
-        n_tup_ins = atoi(PQgetvalue(res, row, column++));
-        n_tup_upd = atoi(PQgetvalue(res, row, column++));
-        n_tup_del = atoi(PQgetvalue(res, row, column++));
+        seq_scan = atol(PQgetvalue(res, row, column++));
+        seq_tup_read = atol(PQgetvalue(res, row, column++));
+        idx_scan = atol(PQgetvalue(res, row, column++));
+        idx_tup_fetch = atol(PQgetvalue(res, row, column++));
+        n_tup_ins = atol(PQgetvalue(res, row, column++));
+        n_tup_upd = atol(PQgetvalue(res, row, column++));
+        n_tup_del = atol(PQgetvalue(res, row, column++));
 		if (backend_minimum_version(8, 3))
 		{
-	        n_tup_hot_upd = atoi(PQgetvalue(res, row, column++));
-	        n_live_tup = atoi(PQgetvalue(res, row, column++));
-	        n_dead_tup = atoi(PQgetvalue(res, row, column++));
+	        n_tup_hot_upd = atol(PQgetvalue(res, row, column++));
+	        n_live_tup = atol(PQgetvalue(res, row, column++));
+	        n_dead_tup = atol(PQgetvalue(res, row, column++));
     	}
 		if (backend_minimum_version(9, 4))
 		{
-	        n_mod_since_analyze = atoi(PQgetvalue(res, row, column++));
+	        n_mod_since_analyze = atol(PQgetvalue(res, row, column++));
     	}
 		if (backend_minimum_version(9, 1))
 		{
-	        vacuum_count = atoi(PQgetvalue(res, row, column++));
-	        autovacuum_count = atoi(PQgetvalue(res, row, column++));
-	        analyze_count = atoi(PQgetvalue(res, row, column++));
-	        autoanalyze_count = atoi(PQgetvalue(res, row, column++));
+	        vacuum_count = atol(PQgetvalue(res, row, column++));
+	        autovacuum_count = atol(PQgetvalue(res, row, column++));
+	        analyze_count = atol(PQgetvalue(res, row, column++));
+	        autoanalyze_count = atol(PQgetvalue(res, row, column++));
 		}
 
 		/* printing the diff... note that the first line will be the current value, rather than the diff */
-		(void)printf(" %6d  %6d   %6d  %6d      %6d %6d %6d %6d %6d %6d %6d  %6d     %6d  %6d      %6d\n",
+		(void)printf(" %6lu  %6lu   %6lu  %6lu      %6lu %6lu %6lu %6lu %6lu %6lu %6lu  %6lu     %6lu  %6lu      %6lu\n",
 		    seq_scan - previous_pgstattable->seq_scan,
 		    seq_tup_read - previous_pgstattable->seq_tup_read,
 		    idx_scan - previous_pgstattable->idx_scan,
@@ -1112,14 +1117,14 @@ print_pgstattableio()
 	int			nrows;
 	int			row, column;
 
-	int heap_blks_read = 0;
-	int heap_blks_hit = 0;
-	int idx_blks_read = 0;
-	int idx_blks_hit = 0;
-	int toast_blks_read = 0;
-	int toast_blks_hit = 0;
-	int tidx_blks_read = 0;
-	int tidx_blks_hit = 0;
+	long heap_blks_read = 0;
+	long heap_blks_hit = 0;
+	long idx_blks_read = 0;
+	long idx_blks_hit = 0;
+	long toast_blks_read = 0;
+	long toast_blks_hit = 0;
+	long tidx_blks_read = 0;
+	long tidx_blks_hit = 0;
 
 	/*
 	 * With a filter, we assume we'll get only one row.
@@ -1175,18 +1180,18 @@ print_pgstattableio()
 		column = 0;
 
 		/* getting new values */
-		heap_blks_read = atoi(PQgetvalue(res, row, column++));
-		heap_blks_hit = atoi(PQgetvalue(res, row, column++));
-		idx_blks_read = atoi(PQgetvalue(res, row, column++));
-		idx_blks_hit = atoi(PQgetvalue(res, row, column++));
-		toast_blks_read = atoi(PQgetvalue(res, row, column++));
-		toast_blks_hit = atoi(PQgetvalue(res, row, column++));
-		tidx_blks_read = atoi(PQgetvalue(res, row, column++));
-		tidx_blks_hit = atoi(PQgetvalue(res, row, column++));
+		heap_blks_read = atol(PQgetvalue(res, row, column++));
+		heap_blks_hit = atol(PQgetvalue(res, row, column++));
+		idx_blks_read = atol(PQgetvalue(res, row, column++));
+		idx_blks_hit = atol(PQgetvalue(res, row, column++));
+		toast_blks_read = atol(PQgetvalue(res, row, column++));
+		toast_blks_hit = atol(PQgetvalue(res, row, column++));
+		tidx_blks_read = atol(PQgetvalue(res, row, column++));
+		tidx_blks_hit = atol(PQgetvalue(res, row, column++));
 
 		/* printing the diff...
 		 * note that the first line will be the current value, rather than the diff */
-		(void)printf(" %6d    %6d    %7d   %7d    %7d    %7d     %9d %9d\n",
+		(void)printf(" %6lu    %6lu    %7lu   %7lu    %7lu    %7lu     %9lu %9lu\n",
 		    heap_blks_read - previous_pgstattableio->heap_blks_read,
 		    heap_blks_hit - previous_pgstattableio->heap_blks_hit,
 		    idx_blks_read - previous_pgstattableio->idx_blks_read,
@@ -1224,9 +1229,9 @@ print_pgstatindex()
 	int			nrows;
 	int			row, column;
 
-	int idx_scan = 0;
-	int idx_tup_read = 0;
-	int idx_tup_fetch = 0;
+	long idx_scan = 0;
+	long idx_tup_read = 0;
+	long idx_tup_fetch = 0;
 
 	/*
 	 * With a filter, we assume we'll get only one row.
@@ -1280,13 +1285,13 @@ print_pgstatindex()
 		column = 0;
 
 		/* getting new values */
-        idx_scan = atoi(PQgetvalue(res, row, column++));
+        idx_scan = atol(PQgetvalue(res, row, column++));
         idx_tup_read = atof(PQgetvalue(res, row, column++));
         idx_tup_fetch = atof(PQgetvalue(res, row, column++));
 
 		/* printing the diff...
 		 * note that the first line will be the current value, rather than the diff */
-		(void)printf(" %8d   %7d %7d\n",
+		(void)printf(" %8lu   %7lu %7lu\n",
 		    idx_scan - previous_pgstatindex->idx_scan,
 		    idx_tup_read - previous_pgstatindex->idx_tup_read,
 		    idx_tup_fetch - previous_pgstatindex->idx_tup_fetch
@@ -1314,7 +1319,7 @@ print_pgstatfunction()
 	int			nrows;
 	int			row, column;
 
-    int calls = 0;
+    long calls = 0;
     float total_time = 0;
     float self_time = 0;
 
@@ -1370,13 +1375,13 @@ print_pgstatfunction()
 		column = 0;
 
 		/* getting new values */
-        calls = atoi(PQgetvalue(res, row, column++));
+        calls = atol(PQgetvalue(res, row, column++));
         total_time = atof(PQgetvalue(res, row, column++));
         self_time = atof(PQgetvalue(res, row, column++));
 
 		/* printing the diff...
 		 * note that the first line will be the current value, rather than the diff */
-		(void)printf(" %9d   %5f    %5f\n",
+		(void)printf(" %9lu   %5f    %5f\n",
 		    calls - previous_pgstatfunction->calls,
 		    total_time - previous_pgstatfunction->total_time,
 		    self_time - previous_pgstatfunction->self_time
@@ -1403,19 +1408,19 @@ print_pgstatstatement()
 	int			nrows;
 	int			row, column;
 
-	int calls = 0;
+	long calls = 0;
 	float total_time = 0;
-	int rows = 0;
-	int shared_blks_hit = 0;
-	int shared_blks_read = 0;
-	int shared_blks_dirtied = 0;
-	int shared_blks_written = 0;
-	int local_blks_hit = 0;
-	int local_blks_read = 0;
-	int local_blks_dirtied = 0;
-	int local_blks_written = 0;
-	int temp_blks_read = 0;
-	int temp_blks_written = 0;
+	long rows = 0;
+	long shared_blks_hit = 0;
+	long shared_blks_read = 0;
+	long shared_blks_dirtied = 0;
+	long shared_blks_written = 0;
+	long local_blks_hit = 0;
+	long local_blks_read = 0;
+	long local_blks_dirtied = 0;
+	long local_blks_written = 0;
+	long temp_blks_read = 0;
+	long temp_blks_written = 0;
 	float blk_read_time = 0;
 	float blk_write_time = 0;
 
@@ -1447,25 +1452,25 @@ print_pgstatstatement()
 		column = 0;
 
 		/* getting new values */
-		calls = atoi(PQgetvalue(res, row, column++));
+		calls = atol(PQgetvalue(res, row, column++));
 		total_time = atof(PQgetvalue(res, row, column++));
-		rows = atoi(PQgetvalue(res, row, column++));
-		shared_blks_hit = atoi(PQgetvalue(res, row, column++));
-		shared_blks_read = atoi(PQgetvalue(res, row, column++));
-		shared_blks_dirtied = atoi(PQgetvalue(res, row, column++));
-		shared_blks_written = atoi(PQgetvalue(res, row, column++));
-		local_blks_hit = atoi(PQgetvalue(res, row, column++));
-		local_blks_read = atoi(PQgetvalue(res, row, column++));
-		local_blks_dirtied = atoi(PQgetvalue(res, row, column++));
-		local_blks_written = atoi(PQgetvalue(res, row, column++));
-		temp_blks_read = atoi(PQgetvalue(res, row, column++));
-		temp_blks_written = atoi(PQgetvalue(res, row, column++));
+		rows = atol(PQgetvalue(res, row, column++));
+		shared_blks_hit = atol(PQgetvalue(res, row, column++));
+		shared_blks_read = atol(PQgetvalue(res, row, column++));
+		shared_blks_dirtied = atol(PQgetvalue(res, row, column++));
+		shared_blks_written = atol(PQgetvalue(res, row, column++));
+		local_blks_hit = atol(PQgetvalue(res, row, column++));
+		local_blks_read = atol(PQgetvalue(res, row, column++));
+		local_blks_dirtied = atol(PQgetvalue(res, row, column++));
+		local_blks_written = atol(PQgetvalue(res, row, column++));
+		temp_blks_read = atol(PQgetvalue(res, row, column++));
+		temp_blks_written = atol(PQgetvalue(res, row, column++));
 		blk_read_time = atof(PQgetvalue(res, row, column++));
 		blk_write_time = atof(PQgetvalue(res, row, column++));
 
 		/* printing the diff...
 		 * note that the first line will be the current value, rather than the diff */
-		(void)printf(" %6d   %6.2f %6d   %6d %6d %6d  %6d   %6d %6d %6d  %6d  %6d  %6d      %6.2f    %6.2f\n",
+		(void)printf(" %6lu   %6.2f %6lu   %6lu %6lu %6lu  %6lu   %6lu %6lu %6lu  %6lu  %6lu  %6lu      %6.2f    %6.2f\n",
 			calls - previous_pgstatstatement->calls,
 			total_time - previous_pgstatstatement->total_time,
 			rows - previous_pgstatstatement->rows,
@@ -1516,14 +1521,14 @@ print_pgbouncerpools()
 	int			nrows;
 	int			row, column;
 
-    int cl_active = 0;
-    int cl_waiting = 0;
-    int sv_active = 0;
-    int sv_idle = 0;
-    int sv_used = 0;
-    int sv_tested = 0;
-    int sv_login = 0;
-    int maxwait = 0;
+    long cl_active = 0;
+    long cl_waiting = 0;
+    long sv_active = 0;
+    long sv_idle = 0;
+    long sv_used = 0;
+    long sv_tested = 0;
+    long sv_login = 0;
+    long maxwait = 0;
 
 	/*
 	 * We cannot use a filter now, we need to get all rows.
@@ -1551,19 +1556,19 @@ print_pgbouncerpools()
 		column = 2;
 
 		/* getting new values */
-		cl_active += atoi(PQgetvalue(res, row, column++));
-		cl_waiting += atoi(PQgetvalue(res, row, column++));
-		sv_active += atoi(PQgetvalue(res, row, column++));
-		sv_idle += atoi(PQgetvalue(res, row, column++));
-		sv_used += atoi(PQgetvalue(res, row, column++));
-		sv_tested += atoi(PQgetvalue(res, row, column++));
-		sv_login += atoi(PQgetvalue(res, row, column++));
-		maxwait += atoi(PQgetvalue(res, row, column++));
+		cl_active += atol(PQgetvalue(res, row, column++));
+		cl_waiting += atol(PQgetvalue(res, row, column++));
+		sv_active += atol(PQgetvalue(res, row, column++));
+		sv_idle += atol(PQgetvalue(res, row, column++));
+		sv_used += atol(PQgetvalue(res, row, column++));
+		sv_tested += atol(PQgetvalue(res, row, column++));
+		sv_login += atol(PQgetvalue(res, row, column++));
+		maxwait += atol(PQgetvalue(res, row, column++));
 	}
 
 	/* printing the diff...
 	 * note that the first line will be the current value, rather than the diff */
-	(void)printf(" %6d   %6d    %6d  %6d  %6d  %6d  %6d    %6d\n",
+	(void)printf(" %6lu   %6lu    %6lu  %6lu  %6lu  %6lu  %6lu    %6lu\n",
 		cl_active - previous_pgbouncerpools->cl_active,
 		cl_waiting - previous_pgbouncerpools->cl_waiting,
 		sv_active - previous_pgbouncerpools->sv_active,
@@ -1599,10 +1604,10 @@ print_pgbouncerstats()
 	int			nrows;
 	int			row, column;
 
-    int total_request = 0;
-    int total_received = 0;
-    int total_sent = 0;
-    int total_query_time = 0;
+    long total_request = 0;
+    long total_received = 0;
+    long total_sent = 0;
+    long total_query_time = 0;
 
 	/*
 	 * We cannot use a filter now, we need to get all rows.
@@ -1630,15 +1635,15 @@ print_pgbouncerstats()
 		column = 1;
 
 		/* getting new values */
-		total_request += atoi(PQgetvalue(res, row, column++));
-		total_received += atoi(PQgetvalue(res, row, column++));
-		total_sent += atoi(PQgetvalue(res, row, column++));
-		total_query_time += atoi(PQgetvalue(res, row, column++));
+		total_request += atol(PQgetvalue(res, row, column++));
+		total_received += atol(PQgetvalue(res, row, column++));
+		total_sent += atol(PQgetvalue(res, row, column++));
+		total_query_time += atol(PQgetvalue(res, row, column++));
 	}
 
 	/* printing the diff...
 	 * note that the first line will be the current value, rather than the diff */
-	(void)printf("  %6d    %6d  %6d      %6d\n",
+	(void)printf("  %6lu    %6lu  %6lu      %6lu\n",
 		total_request - previous_pgbouncerstats->total_request,
 		total_received - previous_pgbouncerstats->total_received,
 		total_sent - previous_pgbouncerstats->total_sent,
