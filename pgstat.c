@@ -37,6 +37,7 @@ typedef enum
 	TABLEIO,
 	INDEX,
 	FUNCTION,
+	STATEMENT,
 	PBPOOLS,
 	PBSTATS
 } stat_t;
@@ -178,6 +179,32 @@ struct pgstatfunction
     float self_time;
 };
 
+/* pg_stat_statements struct */
+struct pgstatstatement
+{
+	/*
+	int userid;
+	int dbid;
+	long queryid;
+	text query;
+	*/
+	int calls;
+	float total_time;
+	int rows;
+	int shared_blks_hit;
+	int shared_blks_read;
+	int shared_blks_dirtied;
+	int shared_blks_written;
+	int local_blks_hit;
+	int local_blks_read;
+	int local_blks_dirtied;
+	int local_blks_written;
+	int temp_blks_read;
+	int temp_blks_written;
+	float blk_read_time;
+	float blk_write_time;
+};
+
 /* pgBouncer pools stats struct */
 struct pgbouncerpools
 {
@@ -214,21 +241,22 @@ struct pgbouncerstats
 /*
  * Global variables
  */
-PGconn	   		      *conn;
-struct options	      *opts;
-extern char           *optarg;
-struct pgstatarchiver *previous_pgstatarchiver;
-struct pgstatbgwriter *previous_pgstatbgwriter;
-struct pgstatdatabase *previous_pgstatdatabase;
-struct pgstattable    *previous_pgstattable;
-struct pgstattableio  *previous_pgstattableio;
-struct pgstatindex    *previous_pgstatindex;
-struct pgstatfunction *previous_pgstatfunction;
-struct pgbouncerpools *previous_pgbouncerpools;
-struct pgbouncerstats *previous_pgbouncerstats;
-int                    hdrcnt = 0;
-volatile sig_atomic_t  wresized;
-static int             winlines = PGSTAT_DEFAULT_LINES;
+PGconn	   		       *conn;
+struct options	       *opts;
+extern char            *optarg;
+struct pgstatarchiver  *previous_pgstatarchiver;
+struct pgstatbgwriter  *previous_pgstatbgwriter;
+struct pgstatdatabase  *previous_pgstatdatabase;
+struct pgstattable     *previous_pgstattable;
+struct pgstattableio   *previous_pgstattableio;
+struct pgstatindex     *previous_pgstatindex;
+struct pgstatfunction  *previous_pgstatfunction;
+struct pgstatstatement *previous_pgstatstatement;
+struct pgbouncerpools  *previous_pgbouncerpools;
+struct pgbouncerstats  *previous_pgbouncerstats;
+int                     hdrcnt = 0;
+volatile sig_atomic_t   wresized;
+static int              winlines = PGSTAT_DEFAULT_LINES;
 
 /*
  * Function prototypes
@@ -246,6 +274,7 @@ void        print_pgstattable(void);
 void		print_pgstattableio(void);
 void        print_pgstatindex(void);
 void        print_pgstatfunction(void);
+void        print_pgstatstatement(void);
 void        print_pgbouncerpools(void);
 void        print_pgbouncerstats(void);
 void		fetch_version(void);
@@ -289,6 +318,7 @@ help(const char *progname)
 		   "  * tableio    for pg_statio_all_tables\n"
 		   "  * index      for pg_stat_all_indexes\n"
 		   "  * function   for pg_stat_user_function\n"
+		   "  * statement  for pg_stat_statements (needs the extension)\n"
 		   "  * pbpools    for pgBouncer pools statistics\n"
 		   "  * pbstats    for pgBouncer statistics\n\n"
 		   "Report bugs to <guillaume@lelarge.info>.\n",
@@ -390,6 +420,10 @@ get_opts(int argc, char **argv)
 				if (!strcmp(optarg, "function"))
 				{
 					opts->stat = FUNCTION;
+				}
+				if (!strcmp(optarg, "statement"))
+				{
+					opts->stat = STATEMENT;
 				}
 				if (!strcmp(optarg, "pbpools"))
 				{
@@ -1354,6 +1388,119 @@ print_pgstatfunction()
 }
 
 /*
+ * Dump all statement stats.
+ */
+void
+print_pgstatstatement()
+{
+	char		sql[1024];
+	PGresult   *res;
+	int			nrows;
+	int			row, column;
+
+	int calls = 0;
+	float total_time = 0;
+	int rows = 0;
+	int shared_blks_hit = 0;
+	int shared_blks_read = 0;
+	int shared_blks_dirtied = 0;
+	int shared_blks_written = 0;
+	int local_blks_hit = 0;
+	int local_blks_read = 0;
+	int local_blks_dirtied = 0;
+	int local_blks_written = 0;
+	int temp_blks_read = 0;
+	int temp_blks_written = 0;
+	float blk_read_time = 0;
+	float blk_write_time = 0;
+
+	snprintf(sql, sizeof(sql),
+			 "SELECT sum(calls), sum(total_time), sum(rows),"
+	         " sum(shared_blks_hit), sum(shared_blks_read), sum(shared_blks_dirtied), sum(shared_blks_written),"
+	         " sum(local_blks_hit), sum(local_blks_read), sum(local_blks_dirtied), sum(local_blks_written),"
+	         " sum(temp_blks_read), sum(temp_blks_written),"
+	         " sum(blk_read_time), sum(blk_write_time)"
+             " FROM pg_stat_statements ");
+	res = PQexec(conn, sql);
+
+	/* check and deal with errors */
+	if (!res || PQresultStatus(res) > 2)
+	{
+		warnx("pgstats: query failed: %s", PQerrorMessage(conn));
+		PQclear(res);
+		PQfinish(conn);
+		err(1, "pgstats: query was: %s", sql);
+	}
+
+	/* get the number of fields */
+	nrows = PQntuples(res);
+
+	/* for each row, dump the information */
+	/* this is stupid, a simple if would do the trick, but it will help for other cases */
+	for (row = 0; row < nrows; row++)
+	{
+		column = 0;
+
+		/* getting new values */
+		calls = atoi(PQgetvalue(res, row, column++));
+		total_time = atof(PQgetvalue(res, row, column++));
+		rows = atoi(PQgetvalue(res, row, column++));
+		shared_blks_hit = atoi(PQgetvalue(res, row, column++));
+		shared_blks_read = atoi(PQgetvalue(res, row, column++));
+		shared_blks_dirtied = atoi(PQgetvalue(res, row, column++));
+		shared_blks_written = atoi(PQgetvalue(res, row, column++));
+		local_blks_hit = atoi(PQgetvalue(res, row, column++));
+		local_blks_read = atoi(PQgetvalue(res, row, column++));
+		local_blks_dirtied = atoi(PQgetvalue(res, row, column++));
+		local_blks_written = atoi(PQgetvalue(res, row, column++));
+		temp_blks_read = atoi(PQgetvalue(res, row, column++));
+		temp_blks_written = atoi(PQgetvalue(res, row, column++));
+		blk_read_time = atof(PQgetvalue(res, row, column++));
+		blk_write_time = atof(PQgetvalue(res, row, column++));
+
+		/* printing the diff...
+		 * note that the first line will be the current value, rather than the diff */
+		(void)printf(" %6d   %6.2f %6d   %6d %6d %6d  %6d   %6d %6d %6d  %6d  %6d  %6d      %6.2f    %6.2f\n",
+			calls - previous_pgstatstatement->calls,
+			total_time - previous_pgstatstatement->total_time,
+			rows - previous_pgstatstatement->rows,
+			shared_blks_hit - previous_pgstatstatement->shared_blks_hit,
+			shared_blks_read - previous_pgstatstatement->shared_blks_read,
+			shared_blks_dirtied - previous_pgstatstatement->shared_blks_dirtied,
+			shared_blks_written - previous_pgstatstatement->shared_blks_written,
+			local_blks_hit - previous_pgstatstatement->local_blks_hit,
+			local_blks_read - previous_pgstatstatement->local_blks_read,
+			local_blks_dirtied - previous_pgstatstatement->local_blks_dirtied,
+			local_blks_written - previous_pgstatstatement->local_blks_written,
+			temp_blks_read - previous_pgstatstatement->temp_blks_read,
+			temp_blks_written - previous_pgstatstatement->temp_blks_written,
+			blk_read_time - previous_pgstatstatement->blk_read_time,
+			blk_write_time - previous_pgstatstatement->blk_write_time
+		    );
+
+		/* setting the new old value */
+		previous_pgstatstatement->calls = calls;
+		previous_pgstatstatement->total_time = total_time;
+		previous_pgstatstatement->rows = rows;
+		previous_pgstatstatement->shared_blks_hit = shared_blks_hit;
+		previous_pgstatstatement->shared_blks_read = shared_blks_read;
+		previous_pgstatstatement->shared_blks_dirtied = shared_blks_dirtied;
+		previous_pgstatstatement->shared_blks_written = shared_blks_written;
+		previous_pgstatstatement->local_blks_hit = local_blks_hit;
+		previous_pgstatstatement->local_blks_read = local_blks_read;
+		previous_pgstatstatement->local_blks_dirtied = local_blks_dirtied;
+		previous_pgstatstatement->local_blks_written = local_blks_written;
+		previous_pgstatstatement->temp_blks_read = temp_blks_read;
+		previous_pgstatstatement->temp_blks_written = temp_blks_written;
+		previous_pgstatstatement->blk_read_time = blk_read_time;
+		previous_pgstatstatement->blk_write_time = blk_write_time;
+	};
+
+	/* cleanup */
+	PQclear(res);
+}
+
+/*
  * Dump all pgBouncer pools stats.
  */
 void
@@ -1586,6 +1733,10 @@ print_header(void)
 			(void)printf("-- count -- ------ time ------\n");
 			(void)printf("             total     self\n");
 			break;
+		case STATEMENT:
+			(void)printf("--------- misc ---------- ----------- shared ----------- ----------- local ----------- ----- temp ----- -------- time --------\n");
+			(void)printf("  calls      time   rows      hit   read  dirty written      hit   read  dirty written    read written        read   written\n");
+			break;
 		case PBPOOLS:
 			(void)printf("---- client -----  ---------------- server ----------------  -- misc --\n");
 			(void)printf(" active  waiting    active    idle    used  tested   login    maxwait\n");
@@ -1635,6 +1786,9 @@ print_line(void)
 			break;
 		case FUNCTION:
 			print_pgstatfunction();
+			break;
+		case STATEMENT:
+			print_pgstatstatement();
 			break;
 		case PBPOOLS:
 			print_pgbouncerpools();
@@ -1731,6 +1885,24 @@ allocate_struct(void)
 		    previous_pgstatfunction->calls = 0;
 		    previous_pgstatfunction->total_time = 0;
 		    previous_pgstatfunction->self_time = 0;
+			break;
+		case STATEMENT:
+			previous_pgstatstatement = (struct pgstatstatement *) myalloc(sizeof(struct pgstatstatement));
+			previous_pgstatstatement->calls = 0;
+			previous_pgstatstatement->total_time = 0;
+			previous_pgstatstatement->rows = 0;
+			previous_pgstatstatement->shared_blks_hit = 0;
+			previous_pgstatstatement->shared_blks_read = 0;
+			previous_pgstatstatement->shared_blks_dirtied = 0;
+			previous_pgstatstatement->shared_blks_written = 0;
+			previous_pgstatstatement->local_blks_hit = 0;
+			previous_pgstatstatement->local_blks_read = 0;
+			previous_pgstatstatement->local_blks_dirtied = 0;
+			previous_pgstatstatement->local_blks_written = 0;
+			previous_pgstatstatement->temp_blks_read = 0;
+			previous_pgstatstatement->temp_blks_written = 0;
+			previous_pgstatstatement->blk_read_time = 0;
+			previous_pgstatstatement->blk_write_time = 0;
 			break;
 		case PBPOOLS:
 			previous_pgbouncerpools = (struct pgbouncerpools *) myalloc(sizeof(struct pgbouncerpools));
