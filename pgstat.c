@@ -479,7 +479,15 @@ get_opts(int argc, char **argv)
 
 	if (opts->dbname == NULL)
 	{
-		opts->dbname = "postgres";
+		/*
+		 * We want to use dbname for possible error reports later,
+		 * and in case someone has set and is using PGDATABASE
+		 * in its environment preserve that name for later usage
+		 */
+		if (!getenv("PGDATABASE"))
+			opts->dbname = "postgres";
+		else
+			opts->dbname = getenv("PGDATABASE");
 	}
 }
 
