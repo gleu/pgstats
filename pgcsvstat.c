@@ -2,9 +2,11 @@
  * pgstats, a PostgreSQL app to gather statistical informations
  * from a PostgreSQL database.
  *
+ * This software is released under the PostgreSQL Licence.
+ *
  * Guillaume Lelarge, guillaume@lelarge.info, 2011-2015.
  *
- * contrib/pgstats/pgstats.c
+ * pgstats/pgcsvstat.c
  */
 
 #include "postgres_fe.h"
