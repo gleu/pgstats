@@ -564,8 +564,8 @@ sql_conn()
 	/* check to see that the backend connection was successfully made */
 	if (PQstatus(my_conn) == CONNECTION_BAD)
 	{
-		PQfinish(my_conn);
 		errx(1, "could not connect to database %s: %s", opts->dbname, PQerrorMessage(my_conn));
+		PQfinish(my_conn);
 	}
 
 	/* return the conn if good */
