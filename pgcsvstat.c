@@ -220,7 +220,7 @@ sql_conn()
 
 #if PG_VERSION_NUM >= 80200
 		if (PQstatus(my_conn) == CONNECTION_BAD &&
-			PQconnectionNeedsPassword(conn) &&
+			PQconnectionNeedsPassword(my_conn) &&
 			password == NULL)
 		{
 			PQfinish(my_conn);
