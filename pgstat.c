@@ -29,7 +29,7 @@
 /*
  * Structs and enums
  */
-typedef enum 
+typedef enum
 {
 	NONE = 0,
 	ARCHIVER,
@@ -44,6 +44,7 @@ typedef enum
 	PBPOOLS,
 	PBSTATS
 } stat_t;
+
 
 /* these are the options structure for command line parameters */
 struct options
@@ -541,14 +542,30 @@ sql_conn()
 	 */
 	do
 	{
-		new_pass = false;
-		my_conn = PQsetdbLogin(opts->hostname,
-							opts->port,
-							NULL,		/* options */
-							NULL,		/* tty */
-							opts->dbname,
-							opts->username,
-							password);
+
+#define PARAMS_ARRAY_SIZE   8
+        const char **keywords = pg_malloc(PARAMS_ARRAY_SIZE * sizeof(*keywords));
+        const char **values = pg_malloc(PARAMS_ARRAY_SIZE * sizeof(*values));
+
+        keywords[0] = "host";
+        values[0] = opts->hostname,
+        keywords[1] = "port";
+        values[1] = opts->port;
+        keywords[2] = "user";
+        values[2] = opts->username;
+        keywords[3] = "password";
+        values[3] = password;
+        keywords[4] = "dbname";
+        values[4] = opts->dbname;
+        keywords[5] = "fallback_application_name";
+        values[5] = "pgstat";
+        keywords[7] = NULL;
+        values[7] = NULL;
+
+        new_pass = false;
+
+        my_conn = PQconnectdbParams(keywords, values, true);
+
 		if (!my_conn)
 		{
 			errx(1, "could not connect to database %s\n", opts->dbname);
@@ -2137,10 +2154,10 @@ main(int argc, char **argv)
 		print_line();
 
 		(void)fflush(stdout);
-		
+
 		if (--opts->count == 0)
 			break;
-		
+
 		(void)usleep(opts->interval * 1000000);
 	}
 
