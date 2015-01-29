@@ -25,6 +25,7 @@
 #endif
 
 #include "libpq-fe.h"
+#include "libpq/pqsignal.h"
 
 /*
  * Structs and enums
@@ -270,8 +271,10 @@ static int              winlines = PGSTAT_DEFAULT_LINES;
  */
 static void help(const char *progname);
 void		get_opts(int, char **);
-void	   *myalloc(size_t size);
-char	   *mystrdup(const char *str);
+#ifndef FE_MEMUTILS_H
+void	   *pg_malloc(size_t size);
+char	   *pg_strdup(const char *in);
+#endif
 PGconn	   *sql_conn(void);
 void		print_pgstatarchiver(void);
 void		print_pgstatbgwriter(void);
@@ -378,12 +381,12 @@ get_opts(int argc, char **argv)
 		{
 				/* specify the database */
 			case 'd':
-				opts->dbname = mystrdup(optarg);
+				opts->dbname = pg_strdup(optarg);
 				break;
 
 				/* specify the filter */
 			case 'f':
-				opts->filter = mystrdup(optarg);
+				opts->filter = pg_strdup(optarg);
 				break;
 
 				/* do not redisplay the header */
@@ -451,17 +454,17 @@ get_opts(int argc, char **argv)
 
 				/* host to connect to */
 			case 'h':
-				opts->hostname = mystrdup(optarg);
+				opts->hostname = pg_strdup(optarg);
 				break;
 
 				/* port to connect to on remote host */
 			case 'p':
-				opts->port = mystrdup(optarg);
+				opts->port = pg_strdup(optarg);
 				break;
 
 				/* username */
 			case 'U':
-				opts->username = mystrdup(optarg);
+				opts->username = pg_strdup(optarg);
 				break;
 
 			default:
@@ -494,37 +497,50 @@ get_opts(int argc, char **argv)
 	}
 }
 
+#ifndef FE_MEMUTILS_H
+
 /*
- * Handle memory allocation
- * and error out if none is available
+ * "Safe" wrapper around malloc().
  */
 void *
-myalloc(size_t size)
+pg_malloc(size_t size)
 {
-	void	   *ptr = malloc(size);
+	void       *tmp;
 
-	if (!ptr)
+	/* Avoid unportable behavior of malloc(0) */
+	if (size == 0)
+		size = 1;
+	tmp = malloc(size);
+	if (!tmp)
 	{
-		err(1, "out of memory");
+		fprintf(stderr, "out of memory\n");
+		exit(EXIT_FAILURE);
 	}
-	return ptr;
+	return tmp;
 }
 
 /*
- * Duplicate a string
- * and error out if there's no memory left
+ * "Safe" wrapper around strdup().
  */
 char *
-mystrdup(const char *str)
+pg_strdup(const char *in)
 {
-	char	   *result = strdup(str);
+	char       *tmp;
 
-	if (!result)
+	if (!in)
 	{
-		err(1, "out of memory");
+		fprintf(stderr, "cannot duplicate null pointer (internal error)\n");
+		exit(EXIT_FAILURE);
 	}
-	return result;
+	tmp = strdup(in);
+	if (!tmp)
+	{
+		fprintf(stderr, "out of memory\n");
+		exit(EXIT_FAILURE);
+	}
+	return tmp;
 }
+#endif
 
 /*
  * Establish the PostgreSQL connection
@@ -535,6 +551,13 @@ sql_conn()
 	PGconn	   *my_conn;
 	char	   *password = NULL;
 	bool		new_pass;
+#if PG_VERSION_NUM >= 90300
+    const char **keywords;
+    const char **values;
+#else
+	int size;
+	char *dns;
+#endif
 
 	/*
 	 * Start the connection.  Loop until we have a password if requested by
@@ -543,9 +566,10 @@ sql_conn()
 	do
 	{
 
+#if PG_VERSION_NUM >= 90300
 #define PARAMS_ARRAY_SIZE   8
-        const char **keywords = pg_malloc(PARAMS_ARRAY_SIZE * sizeof(*keywords));
-        const char **values = pg_malloc(PARAMS_ARRAY_SIZE * sizeof(*values));
+        keywords = pg_malloc(PARAMS_ARRAY_SIZE * sizeof(*keywords));
+        values = pg_malloc(PARAMS_ARRAY_SIZE * sizeof(*values));
 
         keywords[0] = "host";
         values[0] = opts->hostname,
@@ -562,9 +586,32 @@ sql_conn()
         keywords[7] = NULL;
         values[7] = NULL;
 
-        new_pass = false;
-
         my_conn = PQconnectdbParams(keywords, values, true);
+#else
+		size = opts->hostname ? strlen(opts->hostname) + 6 : 0
+		         + opts->port? strlen(opts->port) + 6 : 0
+		         + opts->username? strlen(opts->username) + 6 : 0
+		         + opts->dbname? strlen(opts->dbname) + 8 : 0;
+		dns = pg_malloc(size);
+		if (strchr(opts->dbname, '=') != NULL)
+		{
+			sprintf(dns, "%s", opts->dbname);
+		}
+		else
+		{
+			if (opts->hostname)
+				sprintf(dns, "%shost=%s ", dns, opts->hostname);
+			if (opts->port)
+				sprintf(dns, "%sport=%s ", dns, opts->port);
+			if (opts->username)
+				sprintf(dns, "%suser=%s ", dns, opts->username);
+			if (opts->dbname)
+				sprintf(dns, "%sdbname=%s ", dns, opts->dbname);
+		}
+		my_conn = PQconnectdb(dns);
+#endif
+
+        new_pass = false;
 
 		if (!my_conn)
 		{
@@ -875,7 +922,7 @@ print_pgstatdatabase()
 			backend_minimum_version(9, 1) ? ", conflicts" : "",
 			backend_minimum_version(9, 2) ? ", temp_files, temp_bytes, deadlocks, blk_read_time, blk_write_time" : "");
 
-		paramValues[0] = mystrdup(opts->filter);
+		paramValues[0] = pg_strdup(opts->filter);
 
 	    res = PQexecParams(conn,
 	                       sql,
@@ -1038,7 +1085,7 @@ print_pgstattable()
 	        backend_minimum_version(9, 4) ? ", sum(n_mod_since_analyze)" : "",
 	        backend_minimum_version(9, 1) ? ", sum(vacuum_count), sum(autovacuum_count), sum(analyze_count), sum(autoanalyze_count)" : "");
 
-		paramValues[0] = mystrdup(opts->filter);
+		paramValues[0] = pg_strdup(opts->filter);
 
 	    res = PQexecParams(conn,
 	                       sql,
@@ -1179,7 +1226,7 @@ print_pgstattableio()
 			     "WHERE schemaname <> 'information_schema' "
 			     "  AND relname = $1");
 
-		paramValues[0] = mystrdup(opts->filter);
+		paramValues[0] = pg_strdup(opts->filter);
 
 	    res = PQexecParams(conn,
 	                       sql,
@@ -1284,7 +1331,7 @@ print_pgstatindex()
 		     "WHERE schemaname <> 'information_schema' "
 		     "  AND indexrelname = $1");
 
-		paramValues[0] = mystrdup(opts->filter);
+		paramValues[0] = pg_strdup(opts->filter);
 
 	    res = PQexecParams(conn,
 	                       sql,
@@ -1374,7 +1421,7 @@ print_pgstatfunction()
 		     "WHERE schemaname <> 'information_schema' "
 		     "  AND funcname = $1");
 
-		paramValues[0] = mystrdup(opts->filter);
+		paramValues[0] = pg_strdup(opts->filter);
 
 	    res = PQexecParams(conn,
 	                       sql,
@@ -1754,7 +1801,7 @@ fetch_pgstatstatements_namespace()
 	if (PQntuples(res) > 0)
 	{
 		/* get the only row, and parse it to get major and minor numbers */
-		opts->namespace = mystrdup(PQgetvalue(res, 0, 0));
+		opts->namespace = pg_strdup(PQgetvalue(res, 0, 0));
 
 		/* print version */
 		if (opts->verbose)
@@ -1897,12 +1944,12 @@ allocate_struct(void)
 			/* That shouldn't happen */
 		    break;
 		case ARCHIVER:
-			previous_pgstatarchiver = (struct pgstatarchiver *) myalloc(sizeof(struct pgstatarchiver));
+			previous_pgstatarchiver = (struct pgstatarchiver *) pg_malloc(sizeof(struct pgstatarchiver));
 			previous_pgstatarchiver->archived_count = 0;
 		    previous_pgstatarchiver->failed_count = 0;
 		    break;
 		case BGWRITER:
-			previous_pgstatbgwriter = (struct pgstatbgwriter *) myalloc(sizeof(struct pgstatbgwriter));
+			previous_pgstatbgwriter = (struct pgstatbgwriter *) pg_malloc(sizeof(struct pgstatbgwriter));
 			previous_pgstatbgwriter->checkpoints_timed = 0;
 		    previous_pgstatbgwriter->checkpoints_req = 0;
 		    previous_pgstatbgwriter->checkpoint_write_time = 0;
@@ -1918,7 +1965,7 @@ allocate_struct(void)
 			// nothing to do
 			break;
 		case DATABASE:
-			previous_pgstatdatabase = (struct pgstatdatabase *) myalloc(sizeof(struct pgstatdatabase));
+			previous_pgstatdatabase = (struct pgstatdatabase *) pg_malloc(sizeof(struct pgstatdatabase));
 			previous_pgstatdatabase->xact_commit = 0;
 			previous_pgstatdatabase->xact_rollback = 0;
 			previous_pgstatdatabase->blks_read = 0;
@@ -1936,7 +1983,7 @@ allocate_struct(void)
 			previous_pgstatdatabase->blk_write_time = 0;
 			break;
 		case TABLE:
-			previous_pgstattable = (struct pgstattable *) myalloc(sizeof(struct pgstattable));
+			previous_pgstattable = (struct pgstattable *) pg_malloc(sizeof(struct pgstattable));
 		    previous_pgstattable->seq_scan = 0;
 		    previous_pgstattable->seq_tup_read = 0;
 		    previous_pgstattable->idx_scan = 0;
@@ -1953,7 +2000,7 @@ allocate_struct(void)
 		    previous_pgstattable->autoanalyze_count = 0;
 			break;
 		case TABLEIO:
-			previous_pgstattableio = (struct pgstattableio *) myalloc(sizeof(struct pgstattableio));
+			previous_pgstattableio = (struct pgstattableio *) pg_malloc(sizeof(struct pgstattableio));
 			previous_pgstattableio->heap_blks_read = 0;
 			previous_pgstattableio->heap_blks_hit = 0;
 			previous_pgstattableio->idx_blks_read = 0;
@@ -1964,19 +2011,19 @@ allocate_struct(void)
 			previous_pgstattableio->tidx_blks_hit = 0;
 			break;
 		case INDEX:
-			previous_pgstatindex = (struct pgstatindex *) myalloc(sizeof(struct pgstatindex));
+			previous_pgstatindex = (struct pgstatindex *) pg_malloc(sizeof(struct pgstatindex));
 			previous_pgstatindex->idx_scan = 0;
 			previous_pgstatindex->idx_tup_read = 0;
 			previous_pgstatindex->idx_tup_fetch = 0;
 			break;
 		case FUNCTION:
-			previous_pgstatfunction = (struct pgstatfunction *) myalloc(sizeof(struct pgstatfunction));
+			previous_pgstatfunction = (struct pgstatfunction *) pg_malloc(sizeof(struct pgstatfunction));
 		    previous_pgstatfunction->calls = 0;
 		    previous_pgstatfunction->total_time = 0;
 		    previous_pgstatfunction->self_time = 0;
 			break;
 		case STATEMENT:
-			previous_pgstatstatement = (struct pgstatstatement *) myalloc(sizeof(struct pgstatstatement));
+			previous_pgstatstatement = (struct pgstatstatement *) pg_malloc(sizeof(struct pgstatstatement));
 			previous_pgstatstatement->calls = 0;
 			previous_pgstatstatement->total_time = 0;
 			previous_pgstatstatement->rows = 0;
@@ -1994,7 +2041,7 @@ allocate_struct(void)
 			previous_pgstatstatement->blk_write_time = 0;
 			break;
 		case PBPOOLS:
-			previous_pgbouncerpools = (struct pgbouncerpools *) myalloc(sizeof(struct pgbouncerpools));
+			previous_pgbouncerpools = (struct pgbouncerpools *) pg_malloc(sizeof(struct pgbouncerpools));
     		previous_pgbouncerpools->cl_active = 0;
     		previous_pgbouncerpools->cl_waiting = 0;
     		previous_pgbouncerpools->sv_active = 0;
@@ -2005,7 +2052,7 @@ allocate_struct(void)
     		previous_pgbouncerpools->maxwait = 0;
 			break;
 		case PBSTATS:
-			previous_pgbouncerstats = (struct pgbouncerstats *) myalloc(sizeof(struct pgbouncerstats));
+			previous_pgbouncerstats = (struct pgbouncerstats *) pg_malloc(sizeof(struct pgbouncerstats));
 			previous_pgbouncerstats->total_request = 0;
 			previous_pgbouncerstats->total_received = 0;
 			previous_pgbouncerstats->total_sent = 0;
@@ -2083,18 +2130,13 @@ main(int argc, char **argv)
 	 * If the user stops the program (control-Z) and then resumes it,
 	 * print out the header again.
 	 */
-#if PG_VERSION_NUM >= 90200
 	pqsignal(SIGCONT, needhdr);
 	pqsignal(SIGINT, quit_properly);
-#else
-	signal(SIGCONT, needhdr);
-	signal(SIGINT, quit_properly);
-#endif
 
 	/*
 	 * If our standard output is a tty, then install a SIGWINCH handler
 	 * and set wresized so that our first iteration through the main
-	 * vmstat loop will peek at the terminal's current rows to find out
+	 * pgstat loop will peek at the terminal's current rows to find out
 	 * how many lines can fit in a screenful of output.
 	 */
 	if (isatty(fileno(stdout)) != 0) {
@@ -2105,25 +2147,30 @@ main(int argc, char **argv)
 		winlines = PGSTAT_DEFAULT_LINES;
 	}
 
-	opts = (struct options *) myalloc(sizeof(struct options));
+	/* Allocate the options struct */
+	opts = (struct options *) pg_malloc(sizeof(struct options));
 
-	/* parse the opts */
+	/* Parse the options */
 	get_opts(argc, argv);
 
-	/* connect to the database */
+	/* Connect to the database */
 	conn = sql_conn();
 
-	/* get version */
+	/* Get PostgreSQL version
+	 * (if we are not connected to the pseudo pgBouncer database
+	 */
 	if (opts->stat != PBPOOLS && opts->stat != PBSTATS)
 	{
 		fetch_version();
 	}
 
+	/* Without the -s option, defaults to the bgwriter statistics */
 	if (opts->stat == NONE)
 	{
 		opts->stat = BGWRITER;
 	}
 
+	/* Check if the release number matches the statistics */
 	if (opts->stat == ARCHIVER && !backend_minimum_version(9, 4))
 	{
 		errx(1, "You need at least 9.4 for this statistic.");
@@ -2143,10 +2190,10 @@ main(int argc, char **argv)
 		}
 	}
 
-    /* allocate and initialize statistics struct */
-    allocate_struct();
+	/* Allocate and initialize statistics struct */
+	allocate_struct();
 
-	/* grap cluster stats info */
+	/* Grab cluster stats info */
 	for (hdrcnt = 1;;) {
 		if (!--hdrcnt)
 			print_header();
