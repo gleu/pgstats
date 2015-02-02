@@ -1800,10 +1800,19 @@ fetch_pgstatstatements_namespace()
 	char		sql[1024];
 	PGresult   *res;
 
-	/* get the cluster version */
-	snprintf(sql, sizeof(sql), "SELECT nspname FROM pg_extension e "
-	  "JOIN pg_namespace n ON e.extnamespace=n.oid "
-	  "WHERE extname='pg_stat_statements'");
+	/* get the pg_stat_statement installation schema */
+	if (backend_minimum_version(9, 1))
+	{
+		snprintf(sql, sizeof(sql), "SELECT nspname FROM pg_extension e "
+		  "JOIN pg_namespace n ON e.extnamespace=n.oid "
+		  "WHERE extname='pg_stat_statements'");
+	}
+	else
+	{
+		snprintf(sql, sizeof(sql), "SELECT nspname FROM pg_proc p "
+		  "JOIN pg_namespace n ON p.pronamespace=n.oid "
+		  "WHERE proname='pg_stat_statements'");
+	}
 
 	/* make the call */
 	res = PQexec(conn, sql);
