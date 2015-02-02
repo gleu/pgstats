@@ -567,6 +567,11 @@ sql_conn()
 	{
 
 #if PG_VERSION_NUM >= 90300
+		/*
+		 * We don't need to check if the database name is actually a complete
+		 * connection string, PQconnectdbParams being smart enough to check
+		 * this itself.
+		 */
 #define PARAMS_ARRAY_SIZE   8
         keywords = pg_malloc(PARAMS_ARRAY_SIZE * sizeof(*keywords));
         values = pg_malloc(PARAMS_ARRAY_SIZE * sizeof(*values));
@@ -588,26 +593,40 @@ sql_conn()
 
         my_conn = PQconnectdbParams(keywords, values, true);
 #else
-		size = opts->hostname ? strlen(opts->hostname) + 6 : 0
-		         + opts->port? strlen(opts->port) + 6 : 0
-		         + opts->username? strlen(opts->username) + 6 : 0
-		         + opts->dbname? strlen(opts->dbname) + 8 : 0;
+		/* 34 is the length of the fallback application name setting */
+		size = 34;
+		if (opts->hostname)
+			size += strlen(opts->hostname) + 6;
+		if (opts->port)
+			size += strlen(opts->port) + 6;
+		if (opts->username)
+			size += strlen(opts->username) + 6;
+		if (opts->dbname)
+			size += strlen(opts->dbname) + 8;
 		dns = pg_malloc(size);
+		/*
+		 * Checking the presence of a = sign is our way to check that the
+		 * database name is actually a connection string. In such a case, we
+		 * keep this string as the connection string, and add other parameters
+		 * if they are supplied.
+		 */
+		sprintf(dns, "%s", "fallback_application_name='pgstat' ");
+
 		if (strchr(opts->dbname, '=') != NULL)
-		{
-			sprintf(dns, "%s", opts->dbname);
-		}
-		else
-		{
-			if (opts->hostname)
-				sprintf(dns, "%shost=%s ", dns, opts->hostname);
-			if (opts->port)
-				sprintf(dns, "%sport=%s ", dns, opts->port);
-			if (opts->username)
-				sprintf(dns, "%suser=%s ", dns, opts->username);
-			if (opts->dbname)
-				sprintf(dns, "%sdbname=%s ", dns, opts->dbname);
-		}
+			sprintf(dns, "%s%s", dns, opts->dbname);
+		else if (opts->dbname)
+			sprintf(dns, "%sdbname=%s ", dns, opts->dbname);
+
+		if (opts->hostname)
+			sprintf(dns, "%shost=%s ", dns, opts->hostname);
+		if (opts->port)
+			sprintf(dns, "%sport=%s ", dns, opts->port);
+		if (opts->username)
+			sprintf(dns, "%suser=%s ", dns, opts->username);
+
+		if (opts->verbose)
+			printf("Connection string: %s\n", dns);
+
 		my_conn = PQconnectdb(dns);
 #endif
 
