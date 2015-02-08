@@ -13,7 +13,7 @@ include $(PGXS)
 all: $(PROGRAMS)
 
 %: %.o $(WIN32RES)
-	   $(CC) $(CFLAGS) $^ $(libpq_pgport) $(LDFLAGS) $(LDFLAGS_EX) $(LIBS) -o $@$(X)
+	   $(CC) $(CFLAGS) $^ $(libpq_pgport) $(LDFLAGS) -o $@$(X)
 
 pgcsvstat: pgcsvstat.o
 pgstat: pgstat.o
