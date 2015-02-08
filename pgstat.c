@@ -709,7 +709,7 @@ print_pgstatarchiver()
 
 		/* printing the diff...
 		 * note that the first line will be the current value, rather than the diff */
-		(void)printf("   %6lu   %6lu\n",
+		(void)printf("   %6ld   %6ld\n",
 		    archived_count - previous_pgstatarchiver->archived_count,
 		    failed_count - previous_pgstatarchiver->failed_count
 		    );
@@ -794,7 +794,7 @@ print_pgstatbgwriter()
 
 		/* printing the diff...
 		 * note that the first line will be the current value, rather than the diff */
-		(void)printf(" %6lu    %6lu     %6lu    %6lu       %6lu %6lu  %6lu %6lu         %4lu            %2lu\n",
+		(void)printf(" %6ld    %6ld     %6ld    %6ld       %6ld %6ld  %6ld %6ld         %4ld            %2ld\n",
 		    checkpoints_timed - previous_pgstatbgwriter->checkpoints_timed,
 		    checkpoints_req - previous_pgstatbgwriter->checkpoints_req,
 		    checkpoint_write_time - previous_pgstatbgwriter->checkpoint_write_time,
@@ -876,7 +876,7 @@ print_pgstatconnection()
 		idle = atol(PQgetvalue(res, row, column++));
 
 		/* printing the actual values for once */
-		(void)printf("    %4lu     %4lu          %4lu                  %4lu   %4lu  \n",
+		(void)printf("    %4ld     %4ld          %4ld                  %4ld   %4ld  \n",
 		    total, active, lockwaiting, idleintransaction, idle);
 	}
 
@@ -1000,7 +1000,7 @@ print_pgstatdatabase()
 
 		/* printing the diff...
 		 * note that the first line will be the current value, rather than the diff */
-		(void)printf("      %4lu      %6lu   %6lu   %6lu %6lu    %6lu     %6lu   %6lu %6lu %6lu %6lu %6lu   %6lu %9lu   %9lu %9lu\n",
+		(void)printf("      %4ld      %6ld   %6ld   %6ld %6ld    %6ld     %6ld   %6ld %6ld %6ld %6ld %6ld   %6ld %9ld   %9ld %9ld\n",
 		    numbackends,
 		    xact_commit - previous_pgstatdatabase->xact_commit,
 		    xact_rollback - previous_pgstatdatabase->xact_rollback,
@@ -1161,7 +1161,7 @@ print_pgstattable()
 		}
 
 		/* printing the diff... note that the first line will be the current value, rather than the diff */
-		(void)printf(" %6lu  %6lu   %6lu  %6lu      %6lu %6lu %6lu %6lu %6lu %6lu %6lu  %6lu     %6lu  %6lu      %6lu\n",
+		(void)printf(" %6ld  %6ld   %6ld  %6ld      %6ld %6ld %6ld %6ld %6ld %6ld %6ld  %6ld     %6ld  %6ld      %6ld\n",
 		    seq_scan - previous_pgstattable->seq_scan,
 		    seq_tup_read - previous_pgstattable->seq_tup_read,
 		    idx_scan - previous_pgstattable->idx_scan,
@@ -1287,7 +1287,7 @@ print_pgstattableio()
 
 		/* printing the diff...
 		 * note that the first line will be the current value, rather than the diff */
-		(void)printf(" %6lu    %6lu    %7lu   %7lu    %7lu    %7lu     %9lu %9lu\n",
+		(void)printf(" %6ld    %6ld    %7ld   %7ld    %7ld    %7ld     %9ld %9ld\n",
 		    heap_blks_read - previous_pgstattableio->heap_blks_read,
 		    heap_blks_hit - previous_pgstattableio->heap_blks_hit,
 		    idx_blks_read - previous_pgstattableio->idx_blks_read,
@@ -1387,7 +1387,7 @@ print_pgstatindex()
 
 		/* printing the diff...
 		 * note that the first line will be the current value, rather than the diff */
-		(void)printf(" %8lu   %7lu %7lu\n",
+		(void)printf(" %8ld   %7ld %7ld\n",
 		    idx_scan - previous_pgstatindex->idx_scan,
 		    idx_tup_read - previous_pgstatindex->idx_tup_read,
 		    idx_tup_fetch - previous_pgstatindex->idx_tup_fetch
@@ -1477,7 +1477,7 @@ print_pgstatfunction()
 
 		/* printing the diff...
 		 * note that the first line will be the current value, rather than the diff */
-		(void)printf(" %9lu   %5f    %5f\n",
+		(void)printf(" %9ld   %5f    %5f\n",
 		    calls - previous_pgstatfunction->calls,
 		    total_time - previous_pgstatfunction->total_time,
 		    self_time - previous_pgstatfunction->self_time
@@ -1566,7 +1566,7 @@ print_pgstatstatement()
 
 		/* printing the diff...
 		 * note that the first line will be the current value, rather than the diff */
-		(void)printf(" %6lu   %6.2f %6lu   %6lu %6lu %6lu  %6lu   %6lu %6lu %6lu  %6lu  %6lu  %6lu      %6.2f    %6.2f\n",
+		(void)printf(" %6ld   %6.2f %6ld   %6ld %6ld %6ld  %6ld   %6ld %6ld %6ld  %6ld  %6ld  %6ld      %6.2f    %6.2f\n",
 			calls - previous_pgstatstatement->calls,
 			total_time - previous_pgstatstatement->total_time,
 			rows - previous_pgstatstatement->rows,
@@ -1664,7 +1664,7 @@ print_pgbouncerpools()
 
 	/* printing the diff...
 	 * note that the first line will be the current value, rather than the diff */
-	(void)printf(" %6lu   %6lu    %6lu  %6lu  %6lu  %6lu  %6lu    %6lu\n",
+	(void)printf(" %6ld   %6ld    %6ld  %6ld  %6ld  %6ld  %6ld    %6ld\n",
 		cl_active - previous_pgbouncerpools->cl_active,
 		cl_waiting - previous_pgbouncerpools->cl_waiting,
 		sv_active - previous_pgbouncerpools->sv_active,
@@ -1739,7 +1739,7 @@ print_pgbouncerstats()
 
 	/* printing the diff...
 	 * note that the first line will be the current value, rather than the diff */
-	(void)printf("  %6lu    %6lu  %6lu      %6lu\n",
+	(void)printf("  %6ld    %6ld  %6ld      %6ld\n",
 		total_request - previous_pgbouncerstats->total_request,
 		total_received - previous_pgbouncerstats->total_received,
 		total_sent - previous_pgbouncerstats->total_sent,
