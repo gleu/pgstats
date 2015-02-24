@@ -488,13 +488,21 @@ get_opts(int argc, char **argv)
 
 	if (optind < argc)
 	{
-		opts->interval = atol(argv[optind]);
+		opts->interval = atoi(argv[optind]);
+		if (opts->interval == 0)
+		{
+			errx(1, "Invalid delay.\nTry \"%s --help\" for more information.\n", progname);
+		}
 		optind++;
 	}
 
 	if (optind < argc)
 	{
-		opts->count = atol(argv[optind]);
+		opts->count = atoi(argv[optind]);
+		if (opts -> count == 0)
+		{
+			errx(1, "Invalid count.\nTry \"%s --help\" for more information.\n", progname);
+		}
 	}
 
 	if (opts->dbname == NULL)
