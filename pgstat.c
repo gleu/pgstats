@@ -42,6 +42,7 @@ typedef enum
 	INDEX,
 	FUNCTION,
 	STATEMENT,
+	XLOG,
 	PBPOOLS,
 	PBSTATS
 } stat_t;
@@ -213,6 +214,12 @@ struct pgstatstatement
 	float blk_write_time;
 };
 
+/* xlogstats struct */
+struct xlogstats
+{
+	long locationdiff;
+};
+
 /* pgBouncer pools stats struct */
 struct pgbouncerpools
 {
@@ -260,6 +267,7 @@ struct pgstattableio   *previous_pgstattableio;
 struct pgstatindex     *previous_pgstatindex;
 struct pgstatfunction  *previous_pgstatfunction;
 struct pgstatstatement *previous_pgstatstatement;
+struct xlogstats       *previous_xlogstats;
 struct pgbouncerpools  *previous_pgbouncerpools;
 struct pgbouncerstats  *previous_pgbouncerstats;
 int                     hdrcnt = 0;
@@ -285,6 +293,7 @@ void		print_pgstattableio(void);
 void        print_pgstatindex(void);
 void        print_pgstatfunction(void);
 void        print_pgstatstatement(void);
+void        print_xlogstats(void);
 void        print_pgbouncerpools(void);
 void        print_pgbouncerstats(void);
 void		fetch_version(void);
@@ -330,6 +339,7 @@ help(const char *progname)
 		   "  * index      for pg_stat_all_indexes\n"
 		   "  * function   for pg_stat_user_function\n"
 		   "  * statement  for pg_stat_statements (needs the extension)\n"
+		   "  * xlog       for xlog writes (only for > 9.2)\n"
 		   "  * pbpools    for pgBouncer pools statistics\n"
 		   "  * pbstats    for pgBouncer statistics\n\n"
 		   "Report bugs to <guillaume@lelarge.info>.\n",
@@ -441,6 +451,10 @@ get_opts(int argc, char **argv)
 				if (!strcmp(optarg, "statement"))
 				{
 					opts->stat = STATEMENT;
+				}
+				if (!strcmp(optarg, "xlog"))
+				{
+					opts->stat = XLOG;
 				}
 				if (!strcmp(optarg, "pbpools"))
 				{
@@ -1607,6 +1621,50 @@ print_pgstatstatement()
 }
 
 /*
+ * Dump all xlog writes stats.
+ */
+void
+print_xlogstats()
+{
+	char		sql[1024];
+	PGresult   *res;
+
+	char *xlogfilename;
+	char *currentlocation;
+	long locationdiff;
+
+	snprintf(sql, sizeof(sql),
+			 "SELECT "
+			 "  pg_xlogfile_name(pg_current_xlog_location()), "
+			 "  pg_current_xlog_location(), "
+			 "  pg_xlog_location_diff(pg_current_xlog_location(), '0/0')");
+
+	res = PQexec(conn, sql);
+
+	/* check and deal with errors */
+	if (!res || PQresultStatus(res) > 2)
+	{
+		warnx("pgstats: query failed: %s", PQerrorMessage(conn));
+		PQclear(res);
+		PQfinish(conn);
+		err(1, "pgstats: query was: %s", sql);
+	}
+
+	xlogfilename = pg_strdup(PQgetvalue(res, 0, 0));
+	currentlocation = pg_strdup(PQgetvalue(res, 0, 1));
+	locationdiff = atol(PQgetvalue(res, 0, 2));
+
+	/* printing the actual values for once */
+	(void)printf(" %s   %s      %12ld\n", xlogfilename, currentlocation, locationdiff - previous_xlogstats->locationdiff);
+
+	/* setting the new old value */
+	previous_xlogstats->locationdiff = locationdiff;
+
+	/* cleanup */
+	PQclear(res);
+}
+
+/*
  * Dump all pgBouncer pools stats.
  */
 void
@@ -1895,6 +1953,9 @@ print_header(void)
 			(void)printf("--------- misc ---------- ----------- shared ----------- ----------- local ----------- ----- temp ----- -------- time --------\n");
 			(void)printf("  calls      time   rows      hit   read  dirty written      hit   read  dirty written    read written        read   written\n");
 			break;
+		case XLOG:
+			(void)printf("-------- filename -------- -- location -- ---- bytes ----\n");
+			break;
 		case PBPOOLS:
 			(void)printf("---- client -----  ---------------- server ----------------  -- misc --\n");
 			(void)printf(" active  waiting    active    idle    used  tested   login    maxwait\n");
@@ -1950,6 +2011,9 @@ print_line(void)
 			break;
 		case STATEMENT:
 			print_pgstatstatement();
+			break;
+		case XLOG:
+			print_xlogstats();
 			break;
 		case PBPOOLS:
 			print_pgbouncerpools();
@@ -2067,6 +2131,10 @@ allocate_struct(void)
 			previous_pgstatstatement->temp_blks_written = 0;
 			previous_pgstatstatement->blk_read_time = 0;
 			previous_pgstatstatement->blk_write_time = 0;
+			break;
+		case XLOG:
+			previous_xlogstats = (struct xlogstats *) pg_malloc(sizeof(struct xlogstats));
+			previous_xlogstats->locationdiff = 0;
 			break;
 		case PBPOOLS:
 			previous_pgbouncerpools = (struct pgbouncerpools *) pg_malloc(sizeof(struct pgbouncerpools));
@@ -2204,7 +2272,7 @@ main(int argc, char **argv)
 		errx(1, "You need at least 9.4 for this statistic.");
 	}
 
-	if (opts->stat == CONNECTION && !backend_minimum_version(9, 2))
+	if ((opts->stat == CONNECTION || opts->stat == XLOG) && !backend_minimum_version(9, 2))
 	{
 		errx(1, "You need at least 9.2 for this statistic.");
 	}
