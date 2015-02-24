@@ -385,7 +385,7 @@ get_opts(int argc, char **argv)
 	}
 
 	/* get opts */
-	while ((c = getopt(argc, argv, "h:p:U:d:f:n:s:v")) != -1)
+	while ((c = getopt(argc, argv, "h:p:U:d:f:ns:v")) != -1)
 	{
 		switch (c)
 		{
