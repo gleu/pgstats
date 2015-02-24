@@ -413,7 +413,7 @@ get_opts(int argc, char **argv)
 			case 's':
 				if (opts->stat != NONE)
 				{
-					err(1, "You can only use once the -s command line switch.\n");
+					errx(1, "You can only use once the -s command line switch.\n");
 				}
 
 				if (!strcmp(optarg, "archiver"))
@@ -482,7 +482,7 @@ get_opts(int argc, char **argv)
 				break;
 
 			default:
-				err(1, "Try \"%s --help\" for more information.\n", progname);
+				errx(1, "Try \"%s --help\" for more information.\n", progname);
 		}
 	}
 
@@ -705,7 +705,7 @@ print_pgstatarchiver()
 		warnx("pgstats: query failed: %s", PQerrorMessage(conn));
 		PQclear(res);
 		PQfinish(conn);
-		err(1, "pgstats: query was: %s", sql);
+		errx(1, "pgstats: query was: %s", sql);
 	}
 
 	/* get the number of fields */
@@ -776,7 +776,7 @@ print_pgstatbgwriter()
 		warnx("pgstats: query failed: %s", PQerrorMessage(conn));
 		PQclear(res);
 		PQfinish(conn);
-		err(1, "pgstats: query was: %s", sql);
+		errx(1, "pgstats: query was: %s", sql);
 	}
 
 	/* get the number of fields */
@@ -871,7 +871,7 @@ print_pgstatconnection()
 		warnx("pgstats: query failed: %s", PQerrorMessage(conn));
 		PQclear(res);
 		PQfinish(conn);
-		err(1, "pgstats: query was: %s", sql);
+		errx(1, "pgstats: query was: %s", sql);
 	}
 
 	/* get the number of fields */
@@ -973,7 +973,7 @@ print_pgstatdatabase()
 		warnx("pgstats: query failed: %s", PQerrorMessage(conn));
 		PQclear(res);
 		PQfinish(conn);
-		err(1, "pgstats: query was: %s", sql);
+		errx(1, "pgstats: query was: %s", sql);
 	}
 
 	/* get the number of fields */
@@ -1136,7 +1136,7 @@ print_pgstattable()
 		warnx("pgstats: query failed: %s", PQerrorMessage(conn));
 		PQclear(res);
 		PQfinish(conn);
-		err(1, "pgstats: query was: %s", sql);
+		errx(1, "pgstats: query was: %s", sql);
 	}
 
 	/* get the number of fields */
@@ -1277,7 +1277,7 @@ print_pgstattableio()
 		warnx("pgstats: query failed: %s", PQerrorMessage(conn));
 		PQclear(res);
 		PQfinish(conn);
-		err(1, "pgstats: query was: %s", sql);
+		errx(1, "pgstats: query was: %s", sql);
 	}
 
 	/* get the number of fields */
@@ -1382,7 +1382,7 @@ print_pgstatindex()
 		warnx("pgstats: query failed: %s", PQerrorMessage(conn));
 		PQclear(res);
 		PQfinish(conn);
-		err(1, "pgstats: query was: %s", sql);
+		errx(1, "pgstats: query was: %s", sql);
 	}
 
 	/* get the number of fields */
@@ -1472,7 +1472,7 @@ print_pgstatfunction()
 		warnx("pgstats: query failed: %s", PQerrorMessage(conn));
 		PQclear(res);
 		PQfinish(conn);
-		err(1, "pgstats: query was: %s", sql);
+		errx(1, "pgstats: query was: %s", sql);
 	}
 
 	/* get the number of fields */
@@ -1549,7 +1549,7 @@ print_pgstatstatement()
 		warnx("pgstats: query failed: %s", PQerrorMessage(conn));
 		PQclear(res);
 		PQfinish(conn);
-		err(1, "pgstats: query was: %s", sql);
+		errx(1, "pgstats: query was: %s", sql);
 	}
 
 	/* get the number of fields */
@@ -1647,7 +1647,7 @@ print_xlogstats()
 		warnx("pgstats: query failed: %s", PQerrorMessage(conn));
 		PQclear(res);
 		PQfinish(conn);
-		err(1, "pgstats: query was: %s", sql);
+		errx(1, "pgstats: query was: %s", sql);
 	}
 
 	xlogfilename = pg_strdup(PQgetvalue(res, 0, 0));
@@ -1696,7 +1696,7 @@ print_pgbouncerpools()
 		warnx("pgstats: query failed: %s", PQerrorMessage(conn));
 		PQclear(res);
 		PQfinish(conn);
-		err(1, "pgstats: query was: %s", sql);
+		errx(1, "pgstats: query was: %s", sql);
 	}
 
 	/* get the number of fields */
@@ -1775,7 +1775,7 @@ print_pgbouncerstats()
 		warnx("pgstats: query failed: %s", PQerrorMessage(conn));
 		PQclear(res);
 		PQfinish(conn);
-		err(1, "pgstats: query was: %s", sql);
+		errx(1, "pgstats: query was: %s", sql);
 	}
 
 	/* get the number of fields */
@@ -1835,7 +1835,7 @@ fetch_version()
 		warnx("pgstats: query failed: %s", PQerrorMessage(conn));
 		PQclear(res);
 		PQfinish(conn);
-		err(1, "pgstats: query was: %s", sql);
+		errx(1, "pgstats: query was: %s", sql);
 	}
 
 	/* get the only row, and parse it to get major and minor numbers */
@@ -1881,7 +1881,7 @@ fetch_pgstatstatements_namespace()
 		warnx("pgstats: query failed: %s", PQerrorMessage(conn));
 		PQclear(res);
 		PQfinish(conn);
-		err(1, "pgstats: query was: %s", sql);
+		errx(1, "pgstats: query was: %s", sql);
 	}
 
 	if (PQntuples(res) > 0)
@@ -2191,7 +2191,7 @@ doresize(void)
 		if (status == -1 && errno == EINTR)
 			continue;
 		else if (status == -1)
-			err(1, "ioctl");
+			errx(1, "ioctl");
 		if (w.ws_row > 3)
 			winlines = w.ws_row - 3;
 		else
