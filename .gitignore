@@ -1,1 +1,3 @@
-/pgstats
+/pgstat
+/pgcsvstat
+*.o
