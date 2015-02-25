@@ -28,6 +28,12 @@
 #include "libpq/pqsignal.h"
 
 /*
+ * Defines
+ */
+#define	PGSTAT_DEFAULT_LINES 20
+#define	PGSTAT_DEFAULT_STRING_SIZE 1024
+
+/*
  * Structs and enums
  */
 typedef enum
@@ -56,6 +62,7 @@ struct options
 	bool        dontredisplayheader;
 	stat_t      stat;
 	char	   *filter;
+	bool        human_readable;
 
 	/* connection parameters */
 	char	   *dbname;
@@ -217,6 +224,7 @@ struct pgstatstatement
 /* xlogstats struct */
 struct xlogstats
 {
+	char *location;
 	long locationdiff;
 };
 
@@ -247,11 +255,6 @@ struct pgbouncerstats
     float avg_query;
 	*/
 };
-
-/*
- * Defines
- */
-#define	PGSTAT_DEFAULT_LINES 20
 
 /*
  * Global variables
@@ -318,6 +321,7 @@ help(const char *progname)
 		   "  %s [OPTIONS] [delay [count]]\n"
 		   "\nGeneral options:\n"
 		   "  -f FILTER      include only this object\n"
+		   "  -H             display human-readable values\n"
 		   "  -n             do not redisplay header\n"
 		   "  -s STAT        stats to collect\n"
 		   "  -v             verbose\n"
@@ -362,6 +366,7 @@ get_opts(int argc, char **argv)
 	opts->dontredisplayheader = false;
 	opts->stat = NONE;
 	opts->filter = NULL;
+	opts->human_readable = false;
 	opts->dbname = NULL;
 	opts->hostname = NULL;
 	opts->port = NULL;
@@ -385,7 +390,7 @@ get_opts(int argc, char **argv)
 	}
 
 	/* get opts */
-	while ((c = getopt(argc, argv, "h:p:U:d:f:ns:v")) != -1)
+	while ((c = getopt(argc, argv, "h:Hp:U:d:f:ns:v")) != -1)
 	{
 		switch (c)
 		{
@@ -469,6 +474,11 @@ get_opts(int argc, char **argv)
 				/* host to connect to */
 			case 'h':
 				opts->hostname = pg_strdup(optarg);
+				break;
+
+				/* display human-readable values */
+			case 'H':
+				opts->human_readable = true;
 				break;
 
 				/* port to connect to on remote host */
@@ -1639,13 +1649,17 @@ print_xlogstats()
 
 	char *xlogfilename;
 	char *currentlocation;
+	char *prettylocation;
 	long locationdiff;
+	char h_locationdiff[PGSTAT_DEFAULT_STRING_SIZE];
 
 	snprintf(sql, sizeof(sql),
 			 "SELECT "
 			 "  pg_xlogfile_name(pg_current_xlog_location()), "
 			 "  pg_current_xlog_location(), "
-			 "  pg_xlog_location_diff(pg_current_xlog_location(), '0/0')");
+			 "  pg_xlog_location_diff(pg_current_xlog_location(), '0/0'), "
+			 "  pg_size_pretty(pg_xlog_location_diff(pg_current_xlog_location(), '%s'))",
+			 previous_xlogstats->location);
 
 	res = PQexec(conn, sql);
 
@@ -1661,11 +1675,23 @@ print_xlogstats()
 	xlogfilename = pg_strdup(PQgetvalue(res, 0, 0));
 	currentlocation = pg_strdup(PQgetvalue(res, 0, 1));
 	locationdiff = atol(PQgetvalue(res, 0, 2));
+	prettylocation = pg_strdup(PQgetvalue(res, 0, 3));
+
+	/* get the human-readable diff if asked */
+	if (opts->human_readable)
+	{
+		snprintf(h_locationdiff, sizeof(h_locationdiff), "%s", prettylocation);
+	}
+	else
+	{
+		snprintf(h_locationdiff, sizeof(h_locationdiff), "%12ld", locationdiff - previous_xlogstats->locationdiff);
+	}
 
 	/* printing the actual values for once */
-	(void)printf(" %s   %s      %12ld\n", xlogfilename, currentlocation, locationdiff - previous_xlogstats->locationdiff);
+	(void)printf(" %s   %s      %s\n", xlogfilename, currentlocation, h_locationdiff);
 
 	/* setting the new old value */
+	previous_xlogstats->location = pg_strdup(currentlocation);
 	previous_xlogstats->locationdiff = locationdiff;
 
 	/* cleanup */
@@ -2142,6 +2168,7 @@ allocate_struct(void)
 			break;
 		case XLOG:
 			previous_xlogstats = (struct xlogstats *) pg_malloc(sizeof(struct xlogstats));
+			previous_xlogstats->location = pg_strdup("0/0");
 			previous_xlogstats->locationdiff = 0;
 			break;
 		case PBPOOLS:
