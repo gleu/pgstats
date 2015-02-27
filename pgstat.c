@@ -49,6 +49,7 @@ typedef enum
 	FUNCTION,
 	STATEMENT,
 	XLOG,
+	TEMPFILE,
 	PBPOOLS,
 	PBSTATS
 } stat_t;
@@ -297,6 +298,7 @@ void        print_pgstatindex(void);
 void        print_pgstatfunction(void);
 void        print_pgstatstatement(void);
 void        print_xlogstats(void);
+void        print_tempfilestats(void);
 void        print_pgbouncerpools(void);
 void        print_pgbouncerstats(void);
 void		fetch_version(void);
@@ -344,6 +346,7 @@ help(const char *progname)
 		   "  * function     for pg_stat_user_function\n"
 		   "  * statement    for pg_stat_statements (needs the extension)\n"
 		   "  * xlog         for xlog writes (only for > 9.2)\n"
+		   "  * tempfile     for temporary file usage\n"
 		   "  * pbpools      for pgBouncer pools statistics\n"
 		   "  * pbstats      for pgBouncer statistics\n\n"
 		   "Report bugs to <guillaume@lelarge.info>.\n",
@@ -460,6 +463,10 @@ get_opts(int argc, char **argv)
 				if (!strcmp(optarg, "xlog"))
 				{
 					opts->stat = XLOG;
+				}
+				if (!strcmp(optarg, "tempfile"))
+				{
+					opts->stat = TEMPFILE;
 				}
 				if (!strcmp(optarg, "pbpools"))
 				{
@@ -1699,6 +1706,78 @@ print_xlogstats()
 }
 
 /*
+ * Dump all temporary files stats.
+ */
+void
+print_tempfilestats()
+{
+	char		sql[2048];
+	PGresult   *res;
+	long        size = 0;
+	long        count = 0;
+	int			nrows;
+	int			row, column;
+
+	snprintf(sql, sizeof(sql),
+             "SELECT unnest(regexp_matches(agg.tmpfile, 'pgsql_tmp([0-9]*)')) AS pid, "
+			 "  SUM((pg_stat_file(agg.dir||'/'||agg.tmpfile)).size), "
+			 "  count(*) "
+		     "FROM "
+		     "  (SELECT ls.oid, ls.spcname, "
+			 "     ls.dir||'/'||ls.sub AS dir, CASE gs.i WHEN 1 THEN '' ELSE pg_ls_dir(dir||'/'||ls.sub) END AS tmpfile "
+			 "   FROM "
+			 "     (SELECT sr.oid, sr.spcname, "
+			 "             'pg_tblspc/'||sr.oid||'/'||sr.spc_root AS dir, "
+			 "             pg_ls_dir('pg_tblspc/'||sr.oid||'/'||sr.spc_root) AS sub "
+			 "      FROM (SELECT spc.oid, spc.spcname, "
+			 "                   pg_ls_dir('pg_tblspc/'||spc.oid) AS spc_root, "
+			 "				     trim(trailing E'\n ' FROM pg_read_file('PG_VERSION')) as v "
+			 "            FROM (SELECT oid, spcname FROM pg_tablespace WHERE spcname !~ '^pg_') AS spc "
+			 "           ) sr "
+			 "      WHERE sr.spc_root ~ ('^PG_'||sr.v) "
+			 "      UNION ALL "
+			 "	    SELECT 0, 'pg_default', "
+			 "             'base' AS dir, "
+			 "             'pgsql_tmp' AS sub "
+			 "		FROM pg_ls_dir('base') AS l "
+			 "		WHERE l='pgsql_tmp' "
+			 "     ) AS ls, "
+			 "     (SELECT generate_series(1,2) AS i) AS gs "
+			 "   WHERE ls.sub = 'pgsql_tmp') agg "
+			 "GROUP BY 1");
+
+	res = PQexec(conn, sql);
+
+	/* check and deal with errors */
+	if (!res || PQresultStatus(res) > 2)
+	{
+		warnx("pgstats: query failed: %s", PQerrorMessage(conn));
+		PQclear(res);
+		PQfinish(conn);
+		errx(1, "pgstats: query was: %s", sql);
+	}
+
+	/* get the number of fields */
+	nrows = PQntuples(res);
+
+	/* for each row, dump the information */
+	for (row = 0; row < nrows; row++)
+	{
+		column = 1;
+
+		/* getting new values */
+		size += atol(PQgetvalue(res, row, column++));
+		count += atol(PQgetvalue(res, row, column++));
+	}
+
+	/* printing the diff... */
+	(void)printf(" %9ld     %9ld\n", size, count);
+
+	/* cleanup */
+	PQclear(res);
+}
+
+/*
  * Dump all pgBouncer pools stats.
  */
 void
@@ -1990,6 +2069,9 @@ print_header(void)
 		case XLOG:
 			(void)printf("-------- filename -------- -- location -- ---- bytes ----\n");
 			break;
+		case TEMPFILE:
+			(void)printf("--- size --- --- count ---\n");
+			break;
 		case PBPOOLS:
 			(void)printf("---- client -----  ---------------- server ----------------  -- misc --\n");
 			(void)printf(" active  waiting    active    idle    used  tested   login    maxwait\n");
@@ -2048,6 +2130,9 @@ print_line(void)
 			break;
 		case XLOG:
 			print_xlogstats();
+			break;
+		case TEMPFILE:
+			print_tempfilestats();
 			break;
 		case PBPOOLS:
 			print_pgbouncerpools();
@@ -2170,6 +2255,9 @@ allocate_struct(void)
 			previous_xlogstats = (struct xlogstats *) pg_malloc(sizeof(struct xlogstats));
 			previous_xlogstats->location = pg_strdup("0/0");
 			previous_xlogstats->locationdiff = 0;
+			break;
+		case TEMPFILE:
+			// no initialization worth doing...
 			break;
 		case PBPOOLS:
 			previous_pgbouncerpools = (struct pgbouncerpools *) pg_malloc(sizeof(struct pgbouncerpools));
