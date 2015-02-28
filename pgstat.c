@@ -694,7 +694,7 @@ sql_conn()
 void
 print_pgstatarchiver()
 {
-	char		sql[1024];
+	char		sql[PGSTAT_DEFAULT_STRING_SIZE];
 	PGresult   *res;
 	int			nrows;
 	int			row, column;
@@ -754,7 +754,7 @@ print_pgstatarchiver()
 void
 print_pgstatbgwriter()
 {
-	char		sql[1024];
+	char		sql[PGSTAT_DEFAULT_STRING_SIZE];
 	PGresult   *res;
 	int			nrows;
 	int			row, column;
@@ -855,7 +855,7 @@ print_pgstatbgwriter()
 void
 print_pgstatconnection()
 {
-	char		sql[1024];
+	char		sql[PGSTAT_DEFAULT_STRING_SIZE];
 	PGresult   *res;
 	int			nrows;
 	int			row, column;
@@ -915,7 +915,7 @@ print_pgstatconnection()
 void
 print_pgstatdatabase()
 {
-	char		sql[1024];
+	char		sql[PGSTAT_DEFAULT_STRING_SIZE];
 	PGresult   *res;
     const char *paramValues[1];
 	int			nrows;
@@ -1072,7 +1072,7 @@ print_pgstatdatabase()
 void
 print_pgstattable()
 {
-	char		sql[1024];
+	char		sql[PGSTAT_DEFAULT_STRING_SIZE];
 	PGresult   *res;
     const char *paramValues[1];
 	int			nrows;
@@ -1232,7 +1232,7 @@ print_pgstattable()
 void
 print_pgstattableio()
 {
-	char		sql[1024];
+	char		sql[PGSTAT_DEFAULT_STRING_SIZE];
 	PGresult   *res;
     const char *paramValues[1];
 	int			nrows;
@@ -1344,7 +1344,7 @@ print_pgstattableio()
 void
 print_pgstatindex()
 {
-	char		sql[1024];
+	char		sql[PGSTAT_DEFAULT_STRING_SIZE];
 	PGresult   *res;
     const char *paramValues[1];
 	int			nrows;
@@ -1434,7 +1434,7 @@ print_pgstatindex()
 void
 print_pgstatfunction()
 {
-	char		sql[1024];
+	char		sql[PGSTAT_DEFAULT_STRING_SIZE];
 	PGresult   *res;
     const char *paramValues[1];
 	int			nrows;
@@ -1524,7 +1524,7 @@ print_pgstatfunction()
 void
 print_pgstatstatement()
 {
-	char		sql[1024];
+	char		sql[PGSTAT_DEFAULT_STRING_SIZE];
 	PGresult   *res;
 	int			nrows;
 	int			row, column;
@@ -1637,7 +1637,7 @@ print_pgstatstatement()
 void
 print_xlogstats()
 {
-	char		sql[1024];
+	char		sql[PGSTAT_DEFAULT_STRING_SIZE];
 	PGresult   *res;
 
 	char *xlogfilename;
@@ -1697,7 +1697,7 @@ print_xlogstats()
 void
 print_tempfilestats()
 {
-	char		sql[2048];
+	char		sql[2*PGSTAT_DEFAULT_STRING_SIZE];
 	PGresult   *res;
 	long        size = 0;
 	long        count = 0;
@@ -1769,7 +1769,7 @@ print_tempfilestats()
 void
 print_pgbouncerpools()
 {
-	char		sql[1024];
+	char		sql[PGSTAT_DEFAULT_STRING_SIZE];
 	PGresult   *res;
 	int			nrows;
 	int			row, column;
@@ -1842,7 +1842,7 @@ print_pgbouncerpools()
 void
 print_pgbouncerstats()
 {
-	char		sql[1024];
+	char		sql[PGSTAT_DEFAULT_STRING_SIZE];
 	PGresult   *res;
 	int			nrows;
 	int			row, column;
@@ -1909,7 +1909,7 @@ print_pgbouncerstats()
 void
 fetch_version()
 {
-	char		sql[1024];
+	char		sql[PGSTAT_DEFAULT_STRING_SIZE];
 	PGresult   *res;
 
 	/* get the cluster version */
@@ -1944,7 +1944,7 @@ fetch_version()
 void
 fetch_pgstatstatements_namespace()
 {
-	char		sql[1024];
+	char		sql[PGSTAT_DEFAULT_STRING_SIZE];
 	PGresult   *res;
 
 	/* get the pg_stat_statement installation schema */
