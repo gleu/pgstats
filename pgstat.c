@@ -509,6 +509,15 @@ get_opts(int argc, char **argv)
 		}
 	}
 
+	if (opts->stat == PBPOOLS || opts->stat == PBSTATS)
+	{
+		/*
+		 * Set (or override) database name.
+		 * It should always be pgbouncer
+		 */
+		opts->dbname = pg_strdup("pgbouncer");
+	}
+
 	if (opts->dbname == NULL)
 	{
 		/*
