@@ -229,19 +229,6 @@ struct xlogstats
 	long locationdiff;
 };
 
-/* pgBouncer pools stats struct */
-struct pgbouncerpools
-{
-    long cl_active;
-    long cl_waiting;
-    long sv_active;
-    long sv_idle;
-    long sv_used;
-    long sv_tested;
-    long sv_login;
-    long maxwait;
-};
-
 /* pgBouncer stats struct */
 struct pgbouncerstats
 {
@@ -272,7 +259,6 @@ struct pgstatindex     *previous_pgstatindex;
 struct pgstatfunction  *previous_pgstatfunction;
 struct pgstatstatement *previous_pgstatstatement;
 struct xlogstats       *previous_xlogstats;
-struct pgbouncerpools  *previous_pgbouncerpools;
 struct pgbouncerstats  *previous_pgbouncerstats;
 int                     hdrcnt = 0;
 volatile sig_atomic_t   wresized;
@@ -1836,25 +1822,15 @@ print_pgbouncerpools()
 	/* printing the diff...
 	 * note that the first line will be the current value, rather than the diff */
 	(void)printf(" %6ld   %6ld    %6ld  %6ld  %6ld  %6ld  %6ld    %6ld\n",
-		cl_active - previous_pgbouncerpools->cl_active,
-		cl_waiting - previous_pgbouncerpools->cl_waiting,
-		sv_active - previous_pgbouncerpools->sv_active,
-		sv_idle - previous_pgbouncerpools->sv_idle,
-		sv_used - previous_pgbouncerpools->sv_used,
-		sv_tested - previous_pgbouncerpools->sv_tested,
-		sv_login - previous_pgbouncerpools->sv_login,
-		maxwait - previous_pgbouncerpools->maxwait
+		cl_active,
+		cl_waiting,
+		sv_active,
+		sv_idle,
+		sv_used,
+		sv_tested,
+		sv_login,
+		maxwait
 	    );
-
-	/* setting the new old value */
-	previous_pgbouncerpools->cl_active = cl_active;
-	previous_pgbouncerpools->cl_waiting = cl_waiting;
-	previous_pgbouncerpools->sv_active = sv_active;
-	previous_pgbouncerpools->sv_idle = sv_idle;
-	previous_pgbouncerpools->sv_used = sv_used;
-	previous_pgbouncerpools->sv_tested = sv_tested;
-	previous_pgbouncerpools->sv_login = sv_login;
-	previous_pgbouncerpools->maxwait = maxwait;
 
 	/* cleanup */
 	PQclear(res);
@@ -2260,15 +2236,7 @@ allocate_struct(void)
 			// no initialization worth doing...
 			break;
 		case PBPOOLS:
-			previous_pgbouncerpools = (struct pgbouncerpools *) pg_malloc(sizeof(struct pgbouncerpools));
-    		previous_pgbouncerpools->cl_active = 0;
-    		previous_pgbouncerpools->cl_waiting = 0;
-    		previous_pgbouncerpools->sv_active = 0;
-    		previous_pgbouncerpools->sv_idle = 0;
-    		previous_pgbouncerpools->sv_used = 0;
-    		previous_pgbouncerpools->sv_tested = 0;
-    		previous_pgbouncerpools->sv_login = 0;
-    		previous_pgbouncerpools->maxwait = 0;
+			// no initialization worth doing...
 			break;
 		case PBSTATS:
 			previous_pgbouncerstats = (struct pgbouncerstats *) pg_malloc(sizeof(struct pgbouncerstats));
