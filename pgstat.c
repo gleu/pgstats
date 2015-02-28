@@ -2,7 +2,7 @@
  * pgstat, a PostgreSQL app to gather statistical informations
  * from a PostgreSQL database, and act like a vmstat tool.
  *
- * This software is released under the PostgreSQL Licence
+ * This software is released under the PostgreSQL Licence.
  *
  * Guillaume Lelarge, guillaume@lelarge.info, 2014-2015.
  *
@@ -30,6 +30,7 @@
 /*
  * Defines
  */
+#define PGSTAT_VERSION "1.0.0"
 #define	PGSTAT_DEFAULT_LINES 20
 #define	PGSTAT_DEFAULT_STRING_SIZE 1024
 
@@ -83,7 +84,7 @@ struct options
 	int			count;
 };
 
-/* pg_stat_bgwriter struct */
+/* pg_stat_archiver struct */
 struct pgstatarchiver
 {
 	long archived_count;
@@ -373,7 +374,7 @@ get_opts(int argc, char **argv)
 		}
 		if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0)
 		{
-			puts("pgstats (PostgreSQL) " PG_VERSION);
+			puts("pgstats " PGSTAT_VERSION " (compiled with PostgreSQL " PG_VERSION ")");
 			exit(0);
 		}
 	}
