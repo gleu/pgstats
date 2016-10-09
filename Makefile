@@ -1,7 +1,7 @@
 PGFILEDESC = "Statistics utilities"
 PGAPPICON = win32
 
-PROGRAMS = pgcsvstat pgstat
+PROGRAMS = pgcsvstat pgstat pgdisplay
 
 PG_CPPFLAGS = -I$(libpq_srcdir)
 PG_LIBS = $(libpq_pgport)
