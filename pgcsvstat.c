@@ -224,7 +224,11 @@ sql_conn()
 			password == NULL)
 		{
 			PQfinish(my_conn);
+#if PG_VERSION_NUM < 100000
 			password = simple_prompt("Password: ", 100, false);
+#else
+			simple_prompt("Password: ", password, 100, false);
+#endif
 			new_pass = true;
 		}
 #endif

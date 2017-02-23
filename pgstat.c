@@ -678,7 +678,11 @@ sql_conn()
 			password == NULL)
 		{
 			PQfinish(my_conn);
+#if PG_VERSION_NUM < 100000
 			password = simple_prompt("Password: ", 100, false);
+#else
+			simple_prompt("Password: ", password, 100, false);
+#endif
 			new_pass = true;
 		}
 #endif
@@ -1669,13 +1673,26 @@ print_xlogstats()
 	long locationdiff;
 	char h_locationdiff[PGSTAT_DEFAULT_STRING_SIZE];
 
-	snprintf(sql, sizeof(sql),
+	if (backend_minimum_version(10, 0))
+	{
+		snprintf(sql, sizeof(sql),
+			 "SELECT "
+			 "  pg_walfile_name(pg_current_wal_location()), "
+			 "  pg_current_wal_location(), "
+			 "  pg_wal_location_diff(pg_current_wal_location(), '0/0'), "
+			 "  pg_size_pretty(pg_wal_location_diff(pg_current_wal_location(), '%s'))",
+			 previous_xlogstats->location);
+	}
+	else
+	{
+		snprintf(sql, sizeof(sql),
 			 "SELECT "
 			 "  pg_xlogfile_name(pg_current_xlog_location()), "
 			 "  pg_current_xlog_location(), "
 			 "  pg_xlog_location_diff(pg_current_xlog_location(), '0/0'), "
 			 "  pg_size_pretty(pg_xlog_location_diff(pg_current_xlog_location(), '%s'))",
 			 previous_xlogstats->location);
+	}
 
 	res = PQexec(conn, sql);
 
