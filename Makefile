@@ -16,6 +16,7 @@ all: $(PROGRAMS)
 	   $(CC) $(CFLAGS) $^ $(libpq_pgport) $(LDFLAGS) -o $@$(X)
 
 pgcsvstat: pgcsvstat.o
+pgdisplay: pgdisplay.o
 pgstat: pgstat.o
 
 clean:
