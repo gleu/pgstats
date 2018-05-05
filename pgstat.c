@@ -1677,10 +1677,10 @@ print_xlogstats()
 	{
 		snprintf(sql, sizeof(sql),
 			 "SELECT "
-			 "  pg_walfile_name(pg_current_wal_location()), "
-			 "  pg_current_wal_location(), "
-			 "  pg_wal_location_diff(pg_current_wal_location(), '0/0'), "
-			 "  pg_size_pretty(pg_wal_location_diff(pg_current_wal_location(), '%s'))",
+			 "  pg_walfile_name(pg_current_wal_lsn()), "
+			 "  pg_current_wal_lsn(), "
+			 "  pg_wal_lsn_diff(pg_current_wal_lsn(), '0/0'), "
+			 "  pg_size_pretty(pg_wal_lsn_diff(pg_current_wal_lsn(), '%s'))",
 			 previous_xlogstats->location);
 	}
 	else
