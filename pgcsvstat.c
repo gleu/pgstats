@@ -4,7 +4,7 @@
  *
  * This software is released under the PostgreSQL Licence.
  *
- * Guillaume Lelarge, guillaume@lelarge.info, 2011-2016.
+ * Guillaume Lelarge, guillaume@lelarge.info, 2011-2018.
  *
  * pgstats/pgcsvstat.c
  */
