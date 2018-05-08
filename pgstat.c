@@ -415,53 +415,58 @@ get_opts(int argc, char **argv)
 				{
 					opts->stat = ARCHIVER;
 				}
-				if (!strcmp(optarg, "bgwriter"))
+				else if (!strcmp(optarg, "bgwriter"))
 				{
 					opts->stat = BGWRITER;
 				}
-				if (!strcmp(optarg, "connection"))
+				else if (!strcmp(optarg, "connection"))
 				{
 					opts->stat = CONNECTION;
 				}
-				if (!strcmp(optarg, "database"))
+				else if (!strcmp(optarg, "database"))
 				{
 					opts->stat = DATABASE;
 				}
-				if (!strcmp(optarg, "table"))
+				else if (!strcmp(optarg, "table"))
 				{
 					opts->stat = TABLE;
 				}
-				if (!strcmp(optarg, "tableio"))
+				else if (!strcmp(optarg, "tableio"))
 				{
 					opts->stat = TABLEIO;
 				}
-				if (!strcmp(optarg, "index"))
+				else if (!strcmp(optarg, "index"))
 				{
 					opts->stat = INDEX;
 				}
-				if (!strcmp(optarg, "function"))
+				else if (!strcmp(optarg, "function"))
 				{
 					opts->stat = FUNCTION;
 				}
-				if (!strcmp(optarg, "statement"))
+				else if (!strcmp(optarg, "statement"))
 				{
 					opts->stat = STATEMENT;
 				}
-				if (!strcmp(optarg, "xlog"))
+				else if (!strcmp(optarg, "xlog"))
 				{
 					opts->stat = XLOG;
 				}
-				if (!strcmp(optarg, "tempfile"))
+				else if (!strcmp(optarg, "tempfile"))
 				{
 					opts->stat = TEMPFILE;
 				}
-				if (!strcmp(optarg, "pbpools"))
+				else if (!strcmp(optarg, "pbpools"))
 				{
 					opts->stat = PBPOOLS;
 				}
-				if (!strcmp(optarg, "pbstats"))
+				else if (!strcmp(optarg, "pbstats"))
 				{
 					opts->stat = PBSTATS;
+				}
+				else
+				{
+					errx(1, "Unknown service \"%s\".\nTry \"%s --help\" for more information.\n",
+					     optarg, progname);
 				}
 				break;
 
