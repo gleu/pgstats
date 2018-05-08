@@ -1744,7 +1744,40 @@ print_tempfilestats()
 	int			nrows;
 	int			row, column;
 
-	snprintf(sql, sizeof(sql),
+	if (backend_minimum_version(9, 3))
+	{
+		snprintf(sql, sizeof(sql),
+             "SELECT unnest(regexp_matches(agg.tmpfile, 'pgsql_tmp([0-9]*)')) AS pid, "
+			 "  SUM((pg_stat_file(agg.dir||'/'||agg.tmpfile)).size), "
+			 "  count(*) "
+		     "FROM "
+		     "  (SELECT ls.oid, ls.spcname, "
+			 "     ls.dir||'/'||ls.sub AS dir, CASE gs.i WHEN 1 THEN '' ELSE pglsdir END AS tmpfile "
+			 "   FROM "
+			 "     (SELECT sr.oid, sr.spcname, "
+			 "             'pg_tblspc/'||sr.oid||'/'||sr.spc_root AS dir, "
+			 "             pg_ls_dir('pg_tblspc/'||sr.oid||'/'||sr.spc_root) AS sub "
+			 "      FROM (SELECT spc.oid, spc.spcname, "
+			 "                   pg_ls_dir('pg_tblspc/'||spc.oid) AS spc_root, "
+			 "				     trim(trailing E'\n ' FROM pg_read_file('PG_VERSION')) as v "
+			 "            FROM (SELECT oid, spcname FROM pg_tablespace WHERE spcname !~ '^pg_') AS spc "
+			 "           ) sr "
+			 "      WHERE sr.spc_root ~ ('^PG_'||sr.v) "
+			 "      UNION ALL "
+			 "	    SELECT 0, 'pg_default', "
+			 "             'base' AS dir, "
+			 "             'pgsql_tmp' AS sub "
+			 "		FROM pg_ls_dir('base') AS l "
+			 "		WHERE l='pgsql_tmp' "
+			 "     ) AS ls, "
+			 "     (SELECT generate_series(1,2) AS i) AS gs, "
+			 "     LATERAL pg_ls_dir(dir||'/'||ls.sub) pglsdir "
+			 "   WHERE ls.sub = 'pgsql_tmp') agg "
+			 "GROUP BY 1");
+	}
+	else
+	{
+		snprintf(sql, sizeof(sql),
              "SELECT unnest(regexp_matches(agg.tmpfile, 'pgsql_tmp([0-9]*)')) AS pid, "
 			 "  SUM((pg_stat_file(agg.dir||'/'||agg.tmpfile)).size), "
 			 "  count(*) "
@@ -1771,6 +1804,7 @@ print_tempfilestats()
 			 "     (SELECT generate_series(1,2) AS i) AS gs "
 			 "   WHERE ls.sub = 'pgsql_tmp') agg "
 			 "GROUP BY 1");
+	}
 
 	res = PQexec(conn, sql);
 
