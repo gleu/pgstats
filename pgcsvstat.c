@@ -1,5 +1,5 @@
 /*
- * pgstats, a PostgreSQL app to gather statistical informations
+ * pgcsvstat, a PostgreSQL app to gather statistical informations
  * from a PostgreSQL database.
  *
  * This software is released under the PostgreSQL Licence.
