@@ -9,6 +9,10 @@
  * pgstats/pgcsvstat.c
  */
 
+
+/*
+ * Headers
+ */
 #include "postgres_fe.h"
 #include <sys/stat.h>
 
@@ -20,6 +24,11 @@
 extern char *optarg;
 
 #include "libpq-fe.h"
+
+/*
+ * Defines
+ */
+#define PGCSVSTAT_VERSION "1.0.1"
 
 /* these are the opts structures for command line params */
 struct options
@@ -95,7 +104,7 @@ get_opts(int argc, char **argv)
 		}
 		if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0)
 		{
-			puts("pgstats (PostgreSQL) " PG_VERSION);
+			puts("pgcsvstats " PGCSVSTAT_VERSION " (compiled with PostgreSQL " PG_VERSION ")");
 			exit(0);
 		}
 	}

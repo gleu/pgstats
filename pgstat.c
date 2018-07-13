@@ -30,7 +30,7 @@
 /*
  * Defines
  */
-#define PGSTAT_VERSION "1.0.0"
+#define PGSTAT_VERSION "1.0.1"
 #define	PGSTAT_DEFAULT_LINES 20
 #define	PGSTAT_DEFAULT_STRING_SIZE 1024
 
