@@ -311,6 +311,7 @@ help(const char *progname)
 		   "  %s [OPTIONS] [delay [count]]\n"
 		   "\nGeneral options:\n"
 		   "  -f FILTER      include only this object\n"
+		   "                 (only works for database, table, tableio, index, and function statistics)\n"
 		   "  -H             display human-readable values\n"
 		   "  -n             do not redisplay header\n"
 		   "  -s STAT        stats to collect\n"
