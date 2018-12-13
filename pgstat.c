@@ -311,7 +311,8 @@ help(const char *progname)
 		   "  %s [OPTIONS] [delay [count]]\n"
 		   "\nGeneral options:\n"
 		   "  -f FILTER      include only this object\n"
-		   "                 (only works for database, table, tableio, index, and function statistics)\n"
+		   "                 (only works for database, table, tableio, index, function,\n"
+		   "                  and statement statistics)\n"
 		   "  -H             display human-readable values\n"
 		   "  -n             do not redisplay header\n"
 		   "  -s STAT        stats to collect\n"
@@ -323,8 +324,8 @@ help(const char *progname)
 		   "  -p PORT        database server port number\n"
 		   "  -U USER        connect as specified database user\n"
 		   "  -d DBNAME      database to connect to\n"
-		   "\nThe default stat is pg_stat_bgwriter, but you can change it with the -s command line option,\n"
-		   "and one of its value (STAT):\n"
+		   "\nThe default stat is pg_stat_bgwriter, but you can change it with the\n"
+		   "-s command line option, and one of its value (STAT):\n"
 		   "  * archiver     for pg_stat_archiver\n"
 		   "  * bgwriter     for pg_stat_bgwriter\n"
 		   "  * connection   (only for > 9.1)\n"
@@ -1571,6 +1572,7 @@ void
 print_pgstatstatement()
 {
 	char		sql[PGSTAT_DEFAULT_STRING_SIZE];
+    const char *paramValues[1];
 	PGresult   *res;
 	int			nrows;
 	int			row, column;
@@ -1591,14 +1593,40 @@ print_pgstatstatement()
 	float blk_read_time = 0;
 	float blk_write_time = 0;
 
-	snprintf(sql, sizeof(sql),
+	if (opts->filter == NULL)
+	{
+		snprintf(sql, sizeof(sql),
 			 "SELECT sum(calls), sum(total_time), sum(rows),"
 	         " sum(shared_blks_hit), sum(shared_blks_read), sum(shared_blks_dirtied), sum(shared_blks_written),"
 	         " sum(local_blks_hit), sum(local_blks_read), sum(local_blks_dirtied), sum(local_blks_written),"
 	         " sum(temp_blks_read), sum(temp_blks_written),"
 	         " sum(blk_read_time), sum(blk_write_time)"
              " FROM %s.pg_stat_statements ", opts->namespace);
-	res = PQexec(conn, sql);
+
+		res = PQexec(conn, sql);
+	}
+	else
+	{
+		snprintf(sql, sizeof(sql),
+			 "SELECT calls, total_time, rows,"
+	         " shared_blks_hit, shared_blks_read, shared_blks_dirtied, shared_blks_written,"
+	         " local_blks_hit, local_blks_read, local_blks_dirtied, local_blks_written,"
+	         " temp_blks_read, temp_blks_written,"
+	         " blk_read_time, blk_write_time"
+             " FROM %s.pg_stat_statements "
+			 "WHERE queryid=$1", opts->namespace);
+
+		paramValues[0] = pg_strdup(opts->filter);
+
+	    res = PQexecParams(conn,
+	                       sql,
+	                       1,       /* one param */
+	                       NULL,    /* let the backend deduce param type */
+	                       paramValues,
+	                       NULL,    /* don't need param lengths since text */
+	                       NULL,    /* default to all text params */
+	                       0);      /* ask for text results */
+    }
 
 	/* check and deal with errors */
 	if (!res || PQresultStatus(res) > 2)
