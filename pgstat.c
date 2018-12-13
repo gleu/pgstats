@@ -289,6 +289,7 @@ void        print_tempfilestats(void);
 void        print_pgbouncerpools(void);
 void        print_pgbouncerstats(void);
 void		fetch_version(void);
+char	   *fetch_setting(char *name);
 void		fetch_pgstatstatements_namespace(void);
 bool		backend_minimum_version(int major, int minor);
 void        print_header(void);
@@ -2030,6 +2031,44 @@ fetch_version()
 }
 
 /*
+ * Fetch setting value
+ */
+char
+*fetch_setting(char *name)
+{
+	char		sql[PGSTAT_DEFAULT_STRING_SIZE];
+	PGresult   *res;
+	char       *setting;
+
+	/* get the cluster version */
+	snprintf(sql, sizeof(sql), "SELECT setting FROM pg_settings WHERE name='%s'", name);
+
+	/* make the call */
+	res = PQexec(conn, sql);
+
+	/* check and deal with errors */
+	if (!res || PQresultStatus(res) > 2)
+	{
+		warnx("pgstats: query failed: %s", PQerrorMessage(conn));
+		PQclear(res);
+		PQfinish(conn);
+		errx(1, "pgstats: query was: %s", sql);
+	}
+
+	/* get the only row as the setting value */
+	setting = pg_strdup(PQgetvalue(res, 0, 0));
+
+	/* print version */
+	if (opts->verbose)
+	    printf("%s is set to %s\n", name, setting);
+
+	/* cleanup */
+	PQclear(res);
+
+	return setting;
+}
+
+/*
  * Fetch pg_stat_statement namespace
  */
 void
@@ -2457,6 +2496,14 @@ main(int argc, char **argv)
 	if ((opts->stat == CONNECTION || opts->stat == XLOG) && !backend_minimum_version(9, 2))
 	{
 		errx(1, "You need at least 9.2 for this statistic.");
+	}
+
+	if (opts->stat == FUNCTION)
+	{
+		if (strcmp(fetch_setting("track_functions"), "none") == 0)
+		{
+			errx(1, "track_functions is set to \"none\".");
+		}
 	}
 
 	if (opts->stat == STATEMENT)
