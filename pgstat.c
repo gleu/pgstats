@@ -885,12 +885,24 @@ print_pgstatconnection()
 	long idleintransaction = 0;
 	long idle = 0;
 
-	if (backend_minimum_version(9, 6))
+	if (backend_minimum_version(10, 0))
+	{
+		snprintf(sql, sizeof(sql),
+				 "SELECT count(*) AS total, "
+    	         "  sum(CASE WHEN backend_type='client backend' and state='active' and wait_event IS NULL "
+				 "THEN 1 ELSE 0 end) AS active, "
+    	         "  sum(CASE WHEN backend_type='client backend' and state='active' and wait_event IS NOT NULL "
+				 "THEN 1 ELSE 0 end) AS lockwaiting, "
+    	         "  sum(CASE WHEN state='idle in transaction' THEN 1 ELSE 0 end) AS idleintransaction, "
+    	         "  sum(CASE WHEN state='idle' THEN 1 ELSE 0 end) AS idle "
+    	         "FROM pg_stat_activity");
+	}
+	else if (backend_minimum_version(9, 6))
 	{
 		snprintf(sql, sizeof(sql),
 				 "SELECT count(*) AS total, "
     	         "  sum(CASE WHEN state='active' and wait_event IS NULL THEN 1 ELSE 0 end) AS active, "
-    	         "  sum(CASE WHEN wait_event IS NOT NULL THEN 1 ELSE 0 end) AS lockwaiting, "
+    	         "  sum(CASE WHEN state='active' and wait_event IS NOT NULL THEN 1 ELSE 0 end) AS lockwaiting, "
     	         "  sum(CASE WHEN state='idle in transaction' THEN 1 ELSE 0 end) AS idleintransaction, "
     	         "  sum(CASE WHEN state='idle' THEN 1 ELSE 0 end) AS idle "
     	         "FROM pg_stat_activity");
