@@ -33,6 +33,7 @@
 #define PGSTAT_VERSION "1.0.1"
 #define	PGSTAT_DEFAULT_LINES 20
 #define	PGSTAT_DEFAULT_STRING_SIZE 1024
+#define	PGSTAT_OLDEST_STAT_RESET "0001-01-01"
 
 /*
  * Structs and enums
@@ -98,8 +99,8 @@ struct pgstatarchiver
 	we don't put these columns here because it makes no sense to get a diff between the new and the old values
 	? last_failed_wal;
     ? last_failed_time;
-    ? stats_reset;
 	*/
+	char *stats_reset;
 };
 
 /* pg_stat_bgwriter struct */
@@ -115,6 +116,7 @@ struct pgstatbgwriter
 	long buffers_backend;
 	long buffers_backend_fsync;
 	long buffers_alloc;
+	char *stats_reset;
 };
 
 /* pg_stat_database struct */
@@ -139,6 +141,7 @@ struct pgstatdatabase
 	long deadlocks;
 	long blk_read_time;
 	long blk_write_time;
+	char *stats_reset;
 };
 
 /* pg_stat_all_tables struct */
@@ -723,11 +726,14 @@ print_pgstatarchiver()
 
 	long archived_count;
 	long failed_count;
+	char *stats_reset;
+	bool has_been_reset;
 
 	/* grab the stats (this is the only stats on one line) */
 	snprintf(sql, sizeof(sql),
-			 "SELECT archived_count, failed_count "
-             "FROM pg_stat_archiver ");
+			 "SELECT archived_count, failed_count, stats_reset, stats_reset>'%s' "
+             "FROM pg_stat_archiver ",
+		previous_pgstatarchiver->stats_reset);
 
 	/* make the call */
 	res = PQexec(conn, sql);
@@ -753,6 +759,13 @@ print_pgstatarchiver()
 		/* getting new values */
 		archived_count = atol(PQgetvalue(res, row, column++));
 		failed_count = atol(PQgetvalue(res, row, column++));
+		stats_reset = PQgetvalue(res, row, column++);
+		has_been_reset = strcmp(PQgetvalue(res, row, column++), "f") && strcmp(previous_pgstatarchiver->stats_reset, PGSTAT_OLDEST_STAT_RESET);
+
+		if (has_been_reset)
+		{
+			(void)printf("pg_stat_archiver has been reset!\n");
+		}
 
 		/* printing the diff...
 		 * note that the first line will be the current value, rather than the diff */
@@ -764,6 +777,7 @@ print_pgstatarchiver()
 		/* setting the new old value */
 		previous_pgstatarchiver->archived_count = archived_count;
 	    previous_pgstatarchiver->failed_count = failed_count;
+	    previous_pgstatarchiver->stats_reset = stats_reset;
 	}
 
 	/* cleanup */
@@ -791,14 +805,17 @@ print_pgstatbgwriter()
 	long buffers_backend = 0;
 	long buffers_backend_fsync = 0;
 	long buffers_alloc = 0;
+	char *stats_reset;
+	bool has_been_reset;
 
 	/* grab the stats (this is the only stats on one line) */
 	snprintf(sql, sizeof(sql),
 			 "SELECT checkpoints_timed, checkpoints_req, %sbuffers_checkpoint, buffers_clean, "
-			 "maxwritten_clean, buffers_backend, %sbuffers_alloc "
+			 "maxwritten_clean, buffers_backend, %sbuffers_alloc, stats_reset, stats_reset>'%s' "
              "FROM pg_stat_bgwriter ",
 		backend_minimum_version(9, 2) ? "checkpoint_write_time, checkpoint_sync_time, " : "",
-		backend_minimum_version(9, 1) ? "buffers_backend_fsync, " : "");
+		backend_minimum_version(9, 1) ? "buffers_backend_fsync, " : "",
+		previous_pgstatbgwriter->stats_reset);
 
 	/* make the call */
 	res = PQexec(conn, sql);
@@ -838,6 +855,13 @@ print_pgstatbgwriter()
 			buffers_backend_fsync = atol(PQgetvalue(res, row, column++));
 		}
 		buffers_alloc = atol(PQgetvalue(res, row, column++));
+		stats_reset = PQgetvalue(res, row, column++);
+		has_been_reset = strcmp(PQgetvalue(res, row, column++), "f") && strcmp(previous_pgstatbgwriter->stats_reset, PGSTAT_OLDEST_STAT_RESET);
+
+		if (has_been_reset)
+		{
+			(void)printf("pg_stat_bgwriter has been reset!\n");
+		}
 
 		/* printing the diff...
 		 * note that the first line will be the current value, rather than the diff */
@@ -865,6 +889,7 @@ print_pgstatbgwriter()
 	    previous_pgstatbgwriter->buffers_backend = buffers_backend;
 	    previous_pgstatbgwriter->buffers_backend_fsync = buffers_backend_fsync;
 	    previous_pgstatbgwriter->buffers_alloc = buffers_alloc;
+	    previous_pgstatbgwriter->stats_reset = stats_reset;
 	}
 
 	/* cleanup */
@@ -984,7 +1009,8 @@ print_pgstatdatabase()
 	long deadlocks = 0;
 	long blk_read_time = 0;
 	long blk_write_time = 0;
-
+	char *stats_reset;
+	bool has_been_reset;
 
 	/*
 	 * With a filter, we assume we'll get only one row.
@@ -994,8 +1020,10 @@ print_pgstatdatabase()
 	{
 		snprintf(sql, sizeof(sql),
 				 "SELECT sum(numbackends), sum(xact_commit), sum(xact_rollback), sum(blks_read), sum(blks_hit)"
+				 ", max(stats_reset), max(stats_reset)>'%s'"
 	             "%s%s%s "
 	             "FROM pg_stat_database ",
+            previous_pgstatdatabase->stats_reset,
 			backend_minimum_version(8, 3) ? ", sum(tup_returned), sum(tup_fetched), sum(tup_inserted), sum(tup_updated), sum(tup_deleted)" : "",
 			backend_minimum_version(9, 1) ? ", sum(conflicts)" : "",
 			backend_minimum_version(9, 2) ? ", sum(temp_files), sum(temp_bytes), sum(deadlocks), sum(blk_read_time), sum(blk_write_time)" : "");
@@ -1006,9 +1034,11 @@ print_pgstatdatabase()
 	{
 		snprintf(sql, sizeof(sql),
 				 "SELECT numbackends, xact_commit, xact_rollback, blks_read, blks_hit"
+	             ", stats_reset, stats_reset>'%s'"
 	             "%s%s%s "
 	             "FROM pg_stat_database "
 	             "WHERE datname=$1",
+            previous_pgstatdatabase->stats_reset,
 			backend_minimum_version(8, 3) ? ", tup_returned, tup_fetched, tup_inserted, tup_updated, tup_deleted" : "",
 			backend_minimum_version(9, 1) ? ", conflicts" : "",
 			backend_minimum_version(9, 2) ? ", temp_files, temp_bytes, deadlocks, blk_read_time, blk_write_time" : "");
@@ -1049,6 +1079,8 @@ print_pgstatdatabase()
 		xact_rollback = atol(PQgetvalue(res, row, column++));
 		blks_read = atol(PQgetvalue(res, row, column++));
 		blks_hit = atol(PQgetvalue(res, row, column++));
+		stats_reset = PQgetvalue(res, row, column++);
+		has_been_reset = strcmp(PQgetvalue(res, row, column++), "f") && strcmp(previous_pgstatdatabase->stats_reset, PGSTAT_OLDEST_STAT_RESET);
 		if (backend_minimum_version(8, 3))
 		{
 			tup_returned = atol(PQgetvalue(res, row, column++));
@@ -1068,6 +1100,11 @@ print_pgstatdatabase()
 			deadlocks = atol(PQgetvalue(res, row, column++));
 			blk_read_time = atol(PQgetvalue(res, row, column++));
 			blk_write_time = atol(PQgetvalue(res, row, column++));
+		}
+
+		if (has_been_reset)
+		{
+			(void)printf("pg_stat_database has been reset!\n");
 		}
 
 		/* printing the diff...
@@ -1107,6 +1144,10 @@ print_pgstatdatabase()
 		previous_pgstatdatabase->deadlocks = deadlocks;
 		previous_pgstatdatabase->blk_read_time = blk_read_time;
 		previous_pgstatdatabase->blk_write_time = blk_write_time;
+		if (strlen(stats_reset) == 0)
+			previous_pgstatdatabase->stats_reset = PGSTAT_OLDEST_STAT_RESET;
+		else
+			previous_pgstatdatabase->stats_reset = stats_reset;
 	}
 
 	/* cleanup */
@@ -2293,6 +2334,7 @@ allocate_struct(void)
 			previous_pgstatarchiver = (struct pgstatarchiver *) pg_malloc(sizeof(struct pgstatarchiver));
 			previous_pgstatarchiver->archived_count = 0;
 		    previous_pgstatarchiver->failed_count = 0;
+		    previous_pgstatarchiver->stats_reset = PGSTAT_OLDEST_STAT_RESET;
 		    break;
 		case BGWRITER:
 			previous_pgstatbgwriter = (struct pgstatbgwriter *) pg_malloc(sizeof(struct pgstatbgwriter));
@@ -2306,6 +2348,7 @@ allocate_struct(void)
 		    previous_pgstatbgwriter->buffers_backend = 0;
 		    previous_pgstatbgwriter->buffers_backend_fsync = 0;
 		    previous_pgstatbgwriter->buffers_alloc = 0;
+		    previous_pgstatbgwriter->stats_reset = PGSTAT_OLDEST_STAT_RESET;
 		    break;
 		case CONNECTION:
 			// nothing to do
@@ -2327,6 +2370,7 @@ allocate_struct(void)
 			previous_pgstatdatabase->deadlocks = 0;
 			previous_pgstatdatabase->blk_read_time = 0;
 			previous_pgstatdatabase->blk_write_time = 0;
+		    previous_pgstatdatabase->stats_reset = PGSTAT_OLDEST_STAT_RESET;
 			break;
 		case TABLE:
 			previous_pgstattable = (struct pgstattable *) pg_malloc(sizeof(struct pgstattable));
