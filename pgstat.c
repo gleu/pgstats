@@ -917,32 +917,33 @@ print_pgstatconnection()
 	{
 		snprintf(sql, sizeof(sql),
 				 "SELECT count(*) AS total, "
-    	         "  sum(CASE WHEN backend_type='client backend' and state='active' and wait_event IS NULL "
-				 "THEN 1 ELSE 0 end) AS active, "
-    	         "  sum(CASE WHEN backend_type='client backend' and state='active' and wait_event IS NOT NULL "
-				 "THEN 1 ELSE 0 end) AS lockwaiting, "
-    	         "  sum(CASE WHEN state='idle in transaction' THEN 1 ELSE 0 end) AS idleintransaction, "
-    	         "  sum(CASE WHEN state='idle' THEN 1 ELSE 0 end) AS idle "
-    	         "FROM pg_stat_activity");
+    	         "  sum(CASE WHEN state='active' AND wait_event IS NULL "
+				 "THEN 1 ELSE 0 END) AS active, "
+    	         "  sum(CASE WHEN state='active' AND wait_event IS NOT NULL "
+				 "THEN 1 ELSE 0 END) AS lockwaiting, "
+    	         "  sum(CASE WHEN state='idle in transaction' THEN 1 ELSE 0 END) AS idleintransaction, "
+    	         "  sum(CASE WHEN state='idle' THEN 1 ELSE 0 END) AS idle "
+    	         "FROM pg_stat_activity "
+				 "WHERE backend_type='client backend'");
 	}
 	else if (backend_minimum_version(9, 6))
 	{
 		snprintf(sql, sizeof(sql),
 				 "SELECT count(*) AS total, "
-    	         "  sum(CASE WHEN state='active' and wait_event IS NULL THEN 1 ELSE 0 end) AS active, "
-    	         "  sum(CASE WHEN state='active' and wait_event IS NOT NULL THEN 1 ELSE 0 end) AS lockwaiting, "
-    	         "  sum(CASE WHEN state='idle in transaction' THEN 1 ELSE 0 end) AS idleintransaction, "
-    	         "  sum(CASE WHEN state='idle' THEN 1 ELSE 0 end) AS idle "
+    	         "  sum(CASE WHEN state='active' AND wait_event IS NULL THEN 1 ELSE 0 END) AS active, "
+    	         "  sum(CASE WHEN state='active' AND wait_event IS NOT NULL THEN 1 ELSE 0 END) AS lockwaiting, "
+    	         "  sum(CASE WHEN state='idle in transaction' THEN 1 ELSE 0 END) AS idleintransaction, "
+    	         "  sum(CASE WHEN state='idle' THEN 1 ELSE 0 END) AS idle "
     	         "FROM pg_stat_activity");
 	}
 	else
 	{
 		snprintf(sql, sizeof(sql),
 				 "SELECT count(*) AS total, "
-    	         "  sum(CASE WHEN state='active' and not waiting THEN 1 ELSE 0 end) AS active, "
-    	         "  sum(CASE WHEN waiting THEN 1 ELSE 0 end) AS lockwaiting, "
-    	         "  sum(CASE WHEN state='idle in transaction' THEN 1 ELSE 0 end) AS idleintransaction, "
-    	         "  sum(CASE WHEN state='idle' THEN 1 ELSE 0 end) AS idle "
+    	         "  sum(CASE WHEN state='active' AND NOT waiting THEN 1 ELSE 0 END) AS active, "
+    	         "  sum(CASE WHEN waiting THEN 1 ELSE 0 END) AS lockwaiting, "
+    	         "  sum(CASE WHEN state='idle in transaction' THEN 1 ELSE 0 END) AS idleintransaction, "
+    	         "  sum(CASE WHEN state='idle' THEN 1 ELSE 0 END) AS idle "
     	         "FROM pg_stat_activity");
 	}
 
