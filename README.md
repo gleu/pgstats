@@ -41,13 +41,15 @@ switch to choose the one you want (-s):
 
 * archiver for pg_stat_archiver
 * bgwriter for pg_stat_bgwriter
-* connection for connections by type
+* connection for connections by type (9.1+)
 * database for pg_stat_database
 * table for pg_stat_all_tables
 * tableio for pg_statio_all_tables
 * index for pg_stat_all_indexes
 * function for pg_stat_user_function
 * statement for pg_stat_statements
+* xlog for xlog writes (9.2+)
+* tempfile for temporary file usage
 * pbpools for pgBouncer pools statistics
 * pbstats for pgBouncer general statistics
 
@@ -93,7 +95,8 @@ $ pgstat -s database 1
 ```
 
 You clearly see when it starts, when it stops, and what it did during the 10
-seconds. Here is what happens at the tables level:
+seconds. You can filter on a specific database with the -f command line
+option. Here is what happens at the tables level:
 
 ```
 $ pgstat -s table -d b1 1
@@ -127,7 +130,7 @@ $ pgstat -s table -d b1 1
       3     430        0       0           0      0      0      0      0      0      0       0          0       0           0
 ```
 
-You can alsop filter by table name with the -f command line switch:
+You can also filter by table name with the -f command line switch:
 
 ```
 $ pgstat -s table -d b1 -f pgbench_history 1
@@ -160,8 +163,9 @@ $ pgstat -s table -d b1 -f pgbench_history 1
 ```
 
 We see that the activity on this table is quite different from what happens to
-the other tables. Today, I added reporting from the pg_stat_statements
-extension. It works pretty well:
+the other tables.
+
+There's also a report from the pg_stat_statements extension. It works pretty well:
 
 ```
 $ pgstat -s statement -d b1
@@ -195,6 +199,8 @@ $ pgstat -s statement -d b1
       1     0.38      1        0      0      0       0        0      0      0       0       0       0        0.00      0.00
       1     0.62      1        0      0      0       0        0      0      0       0       0       0        0.00      0.00
 ```
+
+You can filter a specific statement by its query id.
 
 Of course, it first searches for the extension, and complains if it isn't there:
 
