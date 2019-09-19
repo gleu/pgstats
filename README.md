@@ -288,5 +288,6 @@ You see the file being stored.
 Ideas
 -----
 
-You could display the current wal and the last archived. You could also
-display the duration since the last archived wal.
+pg_stat_archiver: display the current wal and the last archived
+pg_stat_archiver: display the duration since the last archived wal
+pg_stat_*_tables: display the duration since the last *vacuum and *analyze

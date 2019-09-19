@@ -213,6 +213,12 @@ struct pgstatstatement
 	*/
 	long calls;
 	float total_time;
+	/*
+	float min_time;
+	float max_time;
+	float mean_time;
+	float stddev_time;
+	*/
 	long rows;
 	long shared_blks_hit;
 	long shared_blks_read;
