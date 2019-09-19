@@ -284,3 +284,9 @@ $ ./pgstat -s tempfile
 ```
 
 You see the file being stored.
+
+Ideas
+-----
+
+You could display the current wal and the last archived. You could also
+display the duration since the last archived wal.

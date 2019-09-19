@@ -139,6 +139,8 @@ struct pgstatdatabase
 	long temp_files;
 	long temp_bytes;
 	long deadlocks;
+	long checksum_failures;
+	/* checksum_last_failure */
 	long blk_read_time;
 	long blk_write_time;
 	char *stats_reset;
@@ -1008,6 +1010,7 @@ print_pgstatdatabase()
 	long temp_files = 0;
 	long temp_bytes = 0;
 	long deadlocks = 0;
+	long checksum_failures = 0;
 	long blk_read_time = 0;
 	long blk_write_time = 0;
 	char *stats_reset;
@@ -1022,12 +1025,13 @@ print_pgstatdatabase()
 		snprintf(sql, sizeof(sql),
 				 "SELECT sum(numbackends), sum(xact_commit), sum(xact_rollback), sum(blks_read), sum(blks_hit)"
 				 ", max(stats_reset), max(stats_reset)>'%s'"
-	             "%s%s%s "
+	             "%s%s%s%s "
 	             "FROM pg_stat_database ",
             previous_pgstatdatabase->stats_reset,
 			backend_minimum_version(8, 3) ? ", sum(tup_returned), sum(tup_fetched), sum(tup_inserted), sum(tup_updated), sum(tup_deleted)" : "",
 			backend_minimum_version(9, 1) ? ", sum(conflicts)" : "",
-			backend_minimum_version(9, 2) ? ", sum(temp_files), sum(temp_bytes), sum(deadlocks), sum(blk_read_time), sum(blk_write_time)" : "");
+			backend_minimum_version(9, 2) ? ", sum(temp_files), sum(temp_bytes), sum(deadlocks), sum(blk_read_time), sum(blk_write_time)" : "",
+			backend_minimum_version(12, 0) ? ", sum(checksum_failures)" : "");
 
 		res = PQexec(conn, sql);
 	}
@@ -1036,13 +1040,14 @@ print_pgstatdatabase()
 		snprintf(sql, sizeof(sql),
 				 "SELECT numbackends, xact_commit, xact_rollback, blks_read, blks_hit"
 	             ", stats_reset, stats_reset>'%s'"
-	             "%s%s%s "
+	             "%s%s%s%s "
 	             "FROM pg_stat_database "
 	             "WHERE datname=$1",
             previous_pgstatdatabase->stats_reset,
 			backend_minimum_version(8, 3) ? ", tup_returned, tup_fetched, tup_inserted, tup_updated, tup_deleted" : "",
 			backend_minimum_version(9, 1) ? ", conflicts" : "",
-			backend_minimum_version(9, 2) ? ", temp_files, temp_bytes, deadlocks, blk_read_time, blk_write_time" : "");
+			backend_minimum_version(9, 2) ? ", temp_files, temp_bytes, deadlocks, blk_read_time, blk_write_time" : "",
+			backend_minimum_version(12, 0) ? ", checksum_failures" : "");
 
 		paramValues[0] = pg_strdup(opts->filter);
 
@@ -1102,6 +1107,10 @@ print_pgstatdatabase()
 			blk_read_time = atol(PQgetvalue(res, row, column++));
 			blk_write_time = atol(PQgetvalue(res, row, column++));
 		}
+		if (backend_minimum_version(12, 0))
+		{
+			checksum_failures = atol(PQgetvalue(res, row, column++));
+		}
 
 		if (has_been_reset)
 		{
@@ -1110,7 +1119,7 @@ print_pgstatdatabase()
 
 		/* printing the diff...
 		 * note that the first line will be the current value, rather than the diff */
-		(void)printf("      %4ld      %6ld   %6ld   %6ld %6ld    %6ld     %6ld   %6ld %6ld %6ld %6ld %6ld   %6ld %9ld   %9ld %9ld\n",
+		(void)printf("      %4ld      %6ld   %6ld   %6ld %6ld    %6ld     %6ld   %6ld %6ld %6ld %6ld %6ld   %6ld %9ld   %9ld %9ld %9ld\n",
 		    numbackends,
 		    xact_commit - previous_pgstatdatabase->xact_commit,
 		    xact_rollback - previous_pgstatdatabase->xact_rollback,
@@ -1126,7 +1135,8 @@ print_pgstatdatabase()
 		    temp_files - previous_pgstatdatabase->temp_files,
 		    temp_bytes - previous_pgstatdatabase->temp_bytes,
 		    conflicts - previous_pgstatdatabase->conflicts,
-		    deadlocks - previous_pgstatdatabase->deadlocks
+		    deadlocks - previous_pgstatdatabase->deadlocks,
+		    checksum_failures - previous_pgstatdatabase->checksum_failures
 		    );
 
 		/* setting the new old value */
@@ -1145,6 +1155,7 @@ print_pgstatdatabase()
 		previous_pgstatdatabase->deadlocks = deadlocks;
 		previous_pgstatdatabase->blk_read_time = blk_read_time;
 		previous_pgstatdatabase->blk_write_time = blk_write_time;
+		previous_pgstatdatabase->checksum_failures = checksum_failures;
 		if (strlen(stats_reset) == 0)
 			previous_pgstatdatabase->stats_reset = PGSTAT_OLDEST_STAT_RESET;
 		else
@@ -2220,8 +2231,8 @@ print_header(void)
 			(void)printf(" - total - active - lockwaiting - idle in transaction - idle -\n");
 			break;
 		case DATABASE:
-			(void)printf("- backends - ------ xacts ------ -------------- blocks -------------- -------------- tuples -------------- ------ temp ------ ------- misc --------\n");
-			(void)printf("                commit rollback     read    hit read_time write_time      ret    fet    ins    upd    del    files     bytes   conflicts deadlocks\n");
+			(void)printf("- backends - ------ xacts ------ -------------- blocks -------------- -------------- tuples -------------- ------ temp ------ ------------ misc -------------\n");
+			(void)printf("                commit rollback     read    hit read_time write_time      ret    fet    ins    upd    del    files     bytes   conflicts deadlocks checksums\n");
 			break;
 		case TABLE:
 			(void)printf("-- sequential -- ------ index ------ ----------------- tuples -------------------------- -------------- maintenance --------------\n");
@@ -2369,6 +2380,7 @@ allocate_struct(void)
 			previous_pgstatdatabase->temp_files = 0;
 			previous_pgstatdatabase->temp_bytes = 0;
 			previous_pgstatdatabase->deadlocks = 0;
+			previous_pgstatdatabase->checksum_failures = 0;
 			previous_pgstatdatabase->blk_read_time = 0;
 			previous_pgstatdatabase->blk_write_time = 0;
 		    previous_pgstatdatabase->stats_reset = PGSTAT_OLDEST_STAT_RESET;
