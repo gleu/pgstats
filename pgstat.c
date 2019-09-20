@@ -53,6 +53,7 @@ typedef enum
 	XLOG,
 	TEMPFILE,
 	PROGRESS_VACUUM,
+	PROGRESS_CLUSTER,
 	PROGRESS_CREATEINDEX,
 	PBPOOLS,
 	PBSTATS
@@ -298,6 +299,7 @@ void        print_pgstatindex(void);
 void        print_pgstatfunction(void);
 void        print_pgstatstatement(void);
 void        print_pgstatprogressvacuum(void);
+void        print_pgstatprogresscluster(void);
 void        print_pgstatprogresscreateindex(void);
 void        print_xlogstats(void);
 void        print_tempfilestats(void);
@@ -353,6 +355,7 @@ help(const char *progname)
 		   "  * xlog                 for xlog writes (only for > 9.2)\n"
 		   "  * tempfile             for temporary file usage\n"
 		   "  * progress_vacuum      for vacuum progress monitoring\n"
+		   "  * progress_cluster     for cluster progress monitoring\n"
 		   "  * progress_createindex for create index progress monitoring\n"
 		   "  * pbpools              for pgBouncer pools statistics\n"
 		   "  * pbstats              for pgBouncer statistics\n\n"
@@ -478,6 +481,10 @@ get_opts(int argc, char **argv)
 				else if (!strcmp(optarg, "progress_vacuum"))
 				{
 					opts->stat = PROGRESS_VACUUM;
+				}
+				else if (!strcmp(optarg, "progress_cluster"))
+				{
+					opts->stat = PROGRESS_CLUSTER;
 				}
 				else if (!strcmp(optarg, "progress_createindex"))
 				{
@@ -1837,6 +1844,62 @@ print_pgstatprogressvacuum()
 }
 
 /*
+ * Dump cluster progress.
+ */
+void
+print_pgstatprogresscluster()
+{
+	char		sql[PGSTAT_DEFAULT_STRING_SIZE];
+	PGresult   *res;
+	int			nrows;
+	int			row;
+
+	snprintf(sql, sizeof(sql),
+		 "SELECT datname, t.relname, i.relname,"
+	 	 "		 phase, heap_tuples_scanned, heap_tuples_written,"
+		 "		 CASE WHEN heap_blks_total=0 THEN 'N/A' ELSE trunc(heap_blks_scanned::numeric*100/heap_blks_total,2)::text END,"
+		 "		 index_rebuild_count "
+		 "FROM pg_stat_progress_cluster s "
+		 "LEFT JOIN pg_class t ON t.oid=s.relid "
+		 "LEFT JOIN pg_class i ON i.oid=s.cluster_index_relid "
+		 "ORDER BY pid");
+
+	res = PQexec(conn, sql);
+
+	/* check and deal with errors */
+	if (!res || PQresultStatus(res) > 2)
+	{
+		warnx("pgstats: query failed: %s", PQerrorMessage(conn));
+		PQclear(res);
+		PQfinish(conn);
+		errx(1, "pgstats: query was: %s", sql);
+	}
+
+	/* get the number of fields */
+	nrows = PQntuples(res);
+
+	/* for each row, dump the information */
+	/* this is stupid, a simple if would do the trick, but it will help for other cases */
+	for (row = 0; row < nrows; row++)
+	{
+		/* printing the value... */
+		(void)printf(" %-16s %-20s  %-20s   %-46s    %12ld   %12ld    %5s     %10ld\n",
+			PQgetvalue(res, row, 0),
+			PQgetvalue(res, row, 1),
+			PQgetvalue(res, row, 2),
+			PQgetvalue(res, row, 3),
+		    atol(PQgetvalue(res, row, 4)),
+		    atol(PQgetvalue(res, row, 5)),
+		    PQgetvalue(res, row, 6),
+		    atol(PQgetvalue(res, row, 7))
+		    );
+	};
+
+	/* cleanup */
+	PQclear(res);
+}
+
+/*
  * Dump index creation progress.
  */
 void
@@ -2397,8 +2460,12 @@ print_header(void)
 			(void)printf("--- size --- --- count ---\n");
 			break;
 		case PROGRESS_VACUUM:
-			(void)printf("---------------------- objet --------------------- ---------- phase ---------- ---------------- stats ---------------\n");
+			(void)printf("--------------------- object --------------------- ---------- phase ---------- ---------------- stats ---------------\n");
 			(void)printf(" database         relation              size                                    %%scan  %%vacuum  #index  %%dead tuple\n");
+			break;
+		case PROGRESS_CLUSTER:
+			(void)printf("--------------------------- object -------------------------- -------------------- phase -------------------- ------------------- stats -------------------\n");
+			(void)printf(" database         table                 index                                                                  tuples scanned  tuples written  %%blocks  index rebuilt\n");
 			break;
 		case PROGRESS_CREATEINDEX:
 			(void)printf("--------------------------- object -------------------------- -------------------- phase -------------------- ------------------- stats -------------------\n");
@@ -2465,6 +2532,9 @@ print_line(void)
 			break;
 		case PROGRESS_VACUUM:
 			print_pgstatprogressvacuum();
+			break;
+		case PROGRESS_CLUSTER:
+			print_pgstatprogresscluster();
 			break;
 		case PROGRESS_CREATEINDEX:
 			print_pgstatprogresscreateindex();
@@ -2602,11 +2672,8 @@ allocate_struct(void)
 			// no initialization worth doing...
 			break;
 		case PROGRESS_VACUUM:
-			// no initialization worth doing...
-			break;
+		case PROGRESS_CLUSTER:
 		case PROGRESS_CREATEINDEX:
-			// no initialization worth doing...
-			break;
 		case PBPOOLS:
 			// no initialization worth doing...
 			break;
