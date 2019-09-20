@@ -343,20 +343,23 @@ help(const char *progname)
 		   "  -d DBNAME              database to connect to\n"
 		   "\nThe default stat is pg_stat_bgwriter, but you can change it with\n"
 		   "the -s command line option, and one of its value (STAT):\n"
-		   "  * archiver             for pg_stat_archiver\n"
+		   "  * archiver             for pg_stat_archiver (only for 9.4+)\n"
 		   "  * bgwriter             for pg_stat_bgwriter\n"
-		   "  * connection           (only for > 9.1)\n"
+		   "  * connection           (only for 9.2+)\n"
 		   "  * database             for pg_stat_database\n"
 		   "  * table                for pg_stat_all_tables\n"
 		   "  * tableio              for pg_statio_all_tables\n"
 		   "  * index                for pg_stat_all_indexes\n"
 		   "  * function             for pg_stat_user_function\n"
 		   "  * statement            for pg_stat_statements (needs the extension)\n"
-		   "  * xlog                 for xlog writes (only for > 9.2)\n"
+		   "  * xlog                 for xlog writes (only for 9.2+)\n"
 		   "  * tempfile             for temporary file usage\n"
-		   "  * progress_vacuum      for vacuum progress monitoring\n"
-		   "  * progress_cluster     for cluster progress monitoring\n"
-		   "  * progress_createindex for create index progress monitoring\n"
+		   "  * progress_vacuum      for vacuum progress monitoring (only for\n"
+		   "                         9.6+)\n"
+		   "  * progress_cluster     for cluster progress monitoring (only for\n"
+		   "                         12+)\n"
+		   "  * progress_createindex for create index progress monitoring (only\n"
+		   "                         for 12+)\n"
 		   "  * pbpools              for pgBouncer pools statistics\n"
 		   "  * pbstats              for pgBouncer statistics\n\n"
 		   "Report bugs to <guillaume@lelarge.info>.\n",
@@ -2797,16 +2800,27 @@ main(int argc, char **argv)
 	}
 
 	/* Check if the release number matches the statistics */
-	if (opts->stat == ARCHIVER && !backend_minimum_version(9, 4))
-	{
-		errx(1, "You need at least 9.4 for this statistic.");
-	}
-
 	if ((opts->stat == CONNECTION || opts->stat == XLOG) && !backend_minimum_version(9, 2))
 	{
-		errx(1, "You need at least 9.2 for this statistic.");
+		errx(1, "You need at least v9.2 for this statistic.");
 	}
 
+	if (opts->stat == ARCHIVER && !backend_minimum_version(9, 4))
+	{
+		errx(1, "You need at least v9.4 for this statistic.");
+	}
+
+	if (opts->stat == PROGRESS_VACUUM && !backend_minimum_version(9, 6))
+	{
+		errx(1, "You need at least v9.6 for this statistic.");
+	}
+
+	if ((opts->stat == PROGRESS_CREATEINDEX || opts->stat == PROGRESS_CLUSTER) && !backend_minimum_version(12, 0))
+	{
+		errx(1, "You need at least v12 for this statistic.");
+	}
+
+	/* Check if the configuration matches the statistics */
 	if (opts->stat == FUNCTION)
 	{
 		if (strcmp(fetch_setting("track_functions"), "none") == 0)
