@@ -52,6 +52,7 @@ typedef enum
 	STATEMENT,
 	XLOG,
 	TEMPFILE,
+	PROGRESS_VACUUM,
 	PBPOOLS,
 	PBSTATS
 } stat_t;
@@ -295,6 +296,7 @@ void		print_pgstattableio(void);
 void        print_pgstatindex(void);
 void        print_pgstatfunction(void);
 void        print_pgstatstatement(void);
+void        print_pgstatprogressvacuum(void);
 void        print_xlogstats(void);
 void        print_tempfilestats(void);
 void        print_pgbouncerpools(void);
@@ -321,35 +323,36 @@ help(const char *progname)
 		   "Usage:\n"
 		   "  %s [OPTIONS] [delay [count]]\n"
 		   "\nGeneral options:\n"
-		   "  -f FILTER      include only this object\n"
-		   "                 (only works for database, table, tableio, index, function,\n"
-		   "                  and statement statistics)\n"
-		   "  -H             display human-readable values\n"
-		   "  -n             do not redisplay header\n"
-		   "  -s STAT        stats to collect\n"
-		   "  -v             verbose\n"
-		   "  -?|--help      show this help, then exit\n"
-		   "  -V|--version   output version information, then exit\n"
+		   "  -f FILTER          include only this object\n"
+		   "                     (only works for database, table, tableio,\n"
+		   "                      index, function, and statement statistics)\n"
+		   "  -H                 display human-readable values\n"
+		   "  -n                 do not redisplay header\n"
+		   "  -s STAT            stats to collect\n"
+		   "  -v                 verbose\n"
+		   "  -?|--help          show this help, then exit\n"
+		   "  -V|--version       output version information, then exit\n"
 		   "\nConnection options:\n"
-		   "  -h HOSTNAME    database server host or socket directory\n"
-		   "  -p PORT        database server port number\n"
-		   "  -U USER        connect as specified database user\n"
-		   "  -d DBNAME      database to connect to\n"
+		   "  -h HOSTNAME        database server host or socket directory\n"
+		   "  -p PORT            database server port number\n"
+		   "  -U USER            connect as specified database user\n"
+		   "  -d DBNAME          database to connect to\n"
 		   "\nThe default stat is pg_stat_bgwriter, but you can change it with the\n"
 		   "-s command line option, and one of its value (STAT):\n"
-		   "  * archiver     for pg_stat_archiver\n"
-		   "  * bgwriter     for pg_stat_bgwriter\n"
-		   "  * connection   (only for > 9.1)\n"
-		   "  * database     for pg_stat_database\n"
-		   "  * table        for pg_stat_all_tables\n"
-		   "  * tableio      for pg_statio_all_tables\n"
-		   "  * index        for pg_stat_all_indexes\n"
-		   "  * function     for pg_stat_user_function\n"
-		   "  * statement    for pg_stat_statements (needs the extension)\n"
-		   "  * xlog         for xlog writes (only for > 9.2)\n"
-		   "  * tempfile     for temporary file usage\n"
-		   "  * pbpools      for pgBouncer pools statistics\n"
-		   "  * pbstats      for pgBouncer statistics\n\n"
+		   "  * archiver         for pg_stat_archiver\n"
+		   "  * bgwriter         for pg_stat_bgwriter\n"
+		   "  * connection       (only for > 9.1)\n"
+		   "  * database         for pg_stat_database\n"
+		   "  * table            for pg_stat_all_tables\n"
+		   "  * tableio          for pg_statio_all_tables\n"
+		   "  * index            for pg_stat_all_indexes\n"
+		   "  * function         for pg_stat_user_function\n"
+		   "  * statement        for pg_stat_statements (needs the extension)\n"
+		   "  * xlog             for xlog writes (only for > 9.2)\n"
+		   "  * tempfile         for temporary file usage\n"
+		   "  * progress_vacuum  for vacuum progress monitoring\n"
+		   "  * pbpools          for pgBouncer pools statistics\n"
+		   "  * pbstats          for pgBouncer statistics\n\n"
 		   "Report bugs to <guillaume@lelarge.info>.\n",
 		   progname, progname);
 }
@@ -468,6 +471,10 @@ get_opts(int argc, char **argv)
 				else if (!strcmp(optarg, "tempfile"))
 				{
 					opts->stat = TEMPFILE;
+				}
+				else if (!strcmp(optarg, "progress_vacuum"))
+				{
+					opts->stat = PROGRESS_VACUUM;
 				}
 				else if (!strcmp(optarg, "pbpools"))
 				{
@@ -1765,6 +1772,64 @@ print_pgstatstatement()
 }
 
 /*
+ * Dump vacuum progress.
+ */
+void
+print_pgstatprogressvacuum()
+{
+	char		sql[PGSTAT_DEFAULT_STRING_SIZE];
+	PGresult   *res;
+	int			nrows;
+	int			row;
+
+	snprintf(sql, sizeof(sql),
+		 "SELECT datname, relname,"
+		 "       pg_size_pretty(pg_table_size(relid)),"
+	 	 "		 phase,"
+		 "		 trunc(heap_blks_scanned::numeric*100/heap_blks_total,2)::text,"
+		 "		 trunc(heap_blks_vacuumed::numeric*100/heap_blks_total,2)::text,"
+		 "		 index_vacuum_count,"
+		 "		 trunc(num_dead_tuples::numeric*100/max_dead_tuples,2)::text "
+		 "FROM pg_stat_progress_vacuum s "
+		 "LEFT JOIN pg_class c ON c.oid=s.relid "
+		 "ORDER BY pid");
+
+	res = PQexec(conn, sql);
+
+	/* check and deal with errors */
+	if (!res || PQresultStatus(res) > 2)
+	{
+		warnx("pgstats: query failed: %s", PQerrorMessage(conn));
+		PQclear(res);
+		PQfinish(conn);
+		errx(1, "pgstats: query was: %s", sql);
+	}
+
+	/* get the number of fields */
+	nrows = PQntuples(res);
+
+	/* for each row, dump the information */
+	/* this is stupid, a simple if would do the trick, but it will help for other cases */
+	for (row = 0; row < nrows; row++)
+	{
+		/* printing the value... */
+		(void)printf(" %-16s %-20s %10s   %-24s    %5s    %5s   %5ld        %5s\n",
+			PQgetvalue(res, row, 0),
+			PQgetvalue(res, row, 1),
+			PQgetvalue(res, row, 2),
+			PQgetvalue(res, row, 3),
+		    PQgetvalue(res, row, 4),
+		    PQgetvalue(res, row, 5),
+		    atol(PQgetvalue(res, row, 6)),
+		    PQgetvalue(res, row, 7)
+		    );
+	};
+
+	/* cleanup */
+	PQclear(res);
+}
+
+/*
  * Dump all xlog writes stats.
  */
 void
@@ -2266,6 +2331,10 @@ print_header(void)
 		case TEMPFILE:
 			(void)printf("--- size --- --- count ---\n");
 			break;
+		case PROGRESS_VACUUM:
+			(void)printf("---------------------- objet --------------------- ---------- phase ---------- ---------------- stats ---------------\n");
+			(void)printf(" database         relation              size                                    %%scan  %%vacuum  #index  %%dead tuple\n");
+			break;
 		case PBPOOLS:
 			(void)printf("---- client -----  ---------------- server ----------------  -- misc --\n");
 			(void)printf(" active  waiting    active    idle    used  tested   login    maxwait\n");
@@ -2324,6 +2393,9 @@ print_line(void)
 			break;
 		case XLOG:
 			print_xlogstats();
+			break;
+		case PROGRESS_VACUUM:
+			print_pgstatprogressvacuum();
 			break;
 		case TEMPFILE:
 			print_tempfilestats();
@@ -2455,6 +2527,9 @@ allocate_struct(void)
 			previous_xlogstats->locationdiff = 0;
 			break;
 		case TEMPFILE:
+			// no initialization worth doing...
+			break;
+		case PROGRESS_VACUUM:
 			// no initialization worth doing...
 			break;
 		case PBPOOLS:
