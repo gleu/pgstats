@@ -636,6 +636,7 @@ sql_conn()
 	int size;
 	char *dns;
 #endif
+	char		*message;
 
 	/*
 	 * Start the connection.  Loop until we have a password if requested by
@@ -737,8 +738,9 @@ sql_conn()
 	/* check to see that the backend connection was successfully made */
 	if (PQstatus(my_conn) == CONNECTION_BAD)
 	{
-		errx(1, "could not connect to database %s: %s", opts->dbname, PQerrorMessage(my_conn));
+		message = PQerrorMessage(my_conn);
 		PQfinish(my_conn);
+		errx(1, "could not connect to database %s: %s", opts->dbname, message);
 	}
 
 	/* return the conn if good */
