@@ -2788,7 +2788,7 @@ main(int argc, char **argv)
 	conn = sql_conn();
 
 	/* Get PostgreSQL version
-	 * (if we are not connected to the pseudo pgBouncer database
+	 * (if we are not connected to the pseudo pgBouncer database)
 	 */
 	if (opts->stat != PBPOOLS && opts->stat != PBSTATS)
 	{

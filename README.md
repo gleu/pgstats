@@ -1,14 +1,17 @@
 README
 ======
 
-This repository contains the source of three executables.
+This repository contains the source of a collection of tools.
 
 pgstat is a vmstat-like tool for PostgreSQL.
+
+pgwaitevent gathers every wait event for a specific PID, grouping them by
+queries.
 
 pgcsvstat outputs PostgreSQL statistics views into CSV files. The idea is that
 you can load them on any spreadsheet to get the graphs you want.
 
-pgdisplay is 
+pgdisplay is whatever it is :)
 
 Requirements
 ------------
@@ -32,16 +35,16 @@ Usage
 Use --help to get informations on all command line options for these three
 tools.
 
-More information on pgstat
---------------------------
+More informations on pgstat
+---------------------------
 
 pgstat is an online command tool that connects to a database and grabs its
 activity statistics. As PostgreSQL has many statistics, you have a command
 switch to choose the one you want (-s):
 
-* archiver for pg_stat_archiver
+* archiver for pg_stat_archiver (9.4+)
 * bgwriter for pg_stat_bgwriter
-* connection for connections by type (9.1+)
+* connection for connections by type (9.2+)
 * database for pg_stat_database
 * table for pg_stat_all_tables
 * tableio for pg_statio_all_tables
@@ -50,6 +53,9 @@ switch to choose the one you want (-s):
 * statement for pg_stat_statements
 * xlog for xlog writes (9.2+)
 * tempfile for temporary file usage
+* progress_vacuum to get the progress on a VACUUM statement (9.6+)
+* progress_cluster to get the progress on a CLUSTER/VACUUM FULL statement (12+)
+* progress_createindex to get the progress on a CREATE INDEX statement (12+)
 * pbpools for pgBouncer pools statistics
 * pbstats for pgBouncer general statistics
 
@@ -284,6 +290,59 @@ $ ./pgstat -s tempfile
 ```
 
 You see the file being stored.
+
+More informations on pgwaitevent
+--------------------------------
+
+The pgwaitevent tool waits the execution of a query on a specific PID backend.
+It then gathers all the waiting events, and sums them up. At the end of the
+query, it prints a table with the waiting events, their occurences, and
+percentage.
+
+Here is an exemple of a session with this tool:
+
+```
+$ ./pgwaitevent -i 0.1 358468
+Tracing wait events for PID #358468, for 0.100s
+
+New query: select * from t1 where id<5000;
+┌───────────────────────────────────┬───────────┬────────────┬─────────┐
+│ Wait event                        │ WE type   │ Occurences │ Percent │
+├───────────────────────────────────┼───────────┼────────────┼─────────┤
+│ [Running]                         │           │          1 │  100.00 │
+└───────────────────────────────────┴───────────┴────────────┴─────────┘
+
+New query: select * from t1 where id<500000;
+┌───────────────────────────────────┬───────────┬────────────┬─────────┐
+│ Wait event                        │ WE type   │ Occurences │ Percent │
+├───────────────────────────────────┼───────────┼────────────┼─────────┤
+│ [Running]                         │           │         93 │   98.94 │
+│ DataFileRead                      │ IO        │          1 │    1.06 │
+└───────────────────────────────────┴───────────┴────────────┴─────────┘
+
+New query: insert into t1 select generate_series(1, 1000000);
+┌───────────────────────────────────┬───────────┬────────────┬─────────┐
+│ Wait event                        │ WE type   │ Occurences │ Percent │
+├───────────────────────────────────┼───────────┼────────────┼─────────┤
+│ WALSync                           │ IO        │         58 │   46.77 │
+│ [Running]                         │           │         33 │   26.61 │
+│ WALWriteLock                      │ LWLock    │         23 │   18.55 │
+│ DataFileWrite                     │ IO        │          7 │    5.65 │
+│ DataFileRead                      │ IO        │          2 │    1.61 │
+│ WALWrite                          │ IO        │          1 │    0.81 │
+└───────────────────────────────────┴───────────┴────────────┴─────────┘
+
+New query: drop index t1_id_idx;
+┌───────────────────────────────────┬───────────┬────────────┬─────────┐
+│ Wait event                        │ WE type   │ Occurences │ Percent │
+├───────────────────────────────────┼───────────┼────────────┼─────────┤
+│ [Running]                         │           │          2 │  100.00 │
+└───────────────────────────────────┴───────────┴────────────┴─────────┘
+```
+
+It sleeps 100msec before checking if a new query is being executed. It checks
+waiting events on an interval set up with the `-i` command line option. By
+default, it's 1 second (which is a bit on the high end).
 
 Ideas
 -----

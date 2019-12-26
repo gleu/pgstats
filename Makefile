@@ -1,7 +1,7 @@
 PGFILEDESC = "Statistics utilities"
 PGAPPICON = win32
 
-PROGRAMS = pgcsvstat pgstat pgdisplay
+PROGRAMS = pgcsvstat pgstat pgdisplay pgwaitevent
 
 PG_CPPFLAGS = -I$(libpq_srcdir)
 PG_LIBS = $(libpq_pgport)
@@ -18,6 +18,7 @@ all: $(PROGRAMS)
 pgcsvstat: pgcsvstat.o
 pgdisplay: pgdisplay.o
 pgstat: pgstat.o
+pgwaitevent: pgwaitevent.o
 
 clean:
 	rm -f $(addsuffix $(X), $(PROGRAMS)) $(addsuffix .o, $(PROGRAMS))
