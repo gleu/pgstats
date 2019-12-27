@@ -53,6 +53,7 @@ switch to choose the one you want (-s):
 * statement for pg_stat_statements
 * xlog for xlog writes (9.2+)
 * tempfile for temporary file usage
+* waitevent for wait events usage (9.6+)
 * progress_vacuum to get the progress on a VACUUM statement (9.6+)
 * progress_cluster to get the progress on a CLUSTER/VACUUM FULL statement (12+)
 * progress_createindex to get the progress on a CREATE INDEX statement (12+)
@@ -302,10 +303,32 @@ percentage.
 Here is an exemple of a session with this tool:
 
 ```
-$ ./pgwaitevent -i 0.1 358468
-Tracing wait events for PID #358468, for 0.100s
+$ ./pgwaitevent -i 0.1 548292
+Tracing wait events for PID 548292, sampling at 0.100s
+
+New query: truncate t1;
+Query duration: 00:00:00.324883
+Trace duration: 00:00:00.313353
+┌───────────────────────────────────┬───────────┬────────────┬─────────┐
+│ Wait event                        │ WE type   │ Occurences │ Percent │
+├───────────────────────────────────┼───────────┼────────────┼─────────┤
+│ [Running]                         │           │          3 │  100.00 │
+└───────────────────────────────────┴───────────┴────────────┴─────────┘
+
+New query: insert into t1 select generate_series(1, 1000000);
+Query duration: 00:00:02.077609
+Trace duration: 00:00:02.038534
+┌───────────────────────────────────┬───────────┬────────────┬─────────┐
+│ Wait event                        │ WE type   │ Occurences │ Percent │
+├───────────────────────────────────┼───────────┼────────────┼─────────┤
+│ WALSync                           │ IO        │         12 │   60.00 │
+│ [Running]                         │           │          5 │   25.00 │
+│ WALWriteLock                      │ LWLock    │          3 │   15.00 │
+└───────────────────────────────────┴───────────┴────────────┴─────────┘
 
 New query: select * from t1 where id<5000;
+Query duration: 00:00:00.207713
+Trace duration: 00:00:00.108132
 ┌───────────────────────────────────┬───────────┬────────────┬─────────┐
 │ Wait event                        │ WE type   │ Occurences │ Percent │
 ├───────────────────────────────────┼───────────┼────────────┼─────────┤
@@ -313,31 +336,72 @@ New query: select * from t1 where id<5000;
 └───────────────────────────────────┴───────────┴────────────┴─────────┘
 
 New query: select * from t1 where id<500000;
+Query duration: 00:00:00.357929
+Trace duration: 00:00:00.312559
 ┌───────────────────────────────────┬───────────┬────────────┬─────────┐
 │ Wait event                        │ WE type   │ Occurences │ Percent │
 ├───────────────────────────────────┼───────────┼────────────┼─────────┤
-│ [Running]                         │           │         93 │   98.94 │
-│ DataFileRead                      │ IO        │          1 │    1.06 │
+│ [Running]                         │           │          3 │  100.00 │
 └───────────────────────────────────┴───────────┴────────────┴─────────┘
 
 New query: insert into t1 select generate_series(1, 1000000);
+Query duration: 00:00:01.908082
+Trace duration: 00:00:01.8308
 ┌───────────────────────────────────┬───────────┬────────────┬─────────┐
 │ Wait event                        │ WE type   │ Occurences │ Percent │
 ├───────────────────────────────────┼───────────┼────────────┼─────────┤
-│ WALSync                           │ IO        │         58 │   46.77 │
-│ [Running]                         │           │         33 │   26.61 │
-│ WALWriteLock                      │ LWLock    │         23 │   18.55 │
-│ DataFileWrite                     │ IO        │          7 │    5.65 │
-│ DataFileRead                      │ IO        │          2 │    1.61 │
-│ WALWrite                          │ IO        │          1 │    0.81 │
+│ WALWriteLock                      │ LWLock    │          6 │   33.33 │
+│ [Running]                         │           │          5 │   27.78 │
+│ WALSync                           │ IO        │          4 │   22.22 │
+│ WALWrite                          │ IO        │          2 │   11.11 │
+│ DataFileExtend                    │ IO        │          1 │    5.56 │
 └───────────────────────────────────┴───────────┴────────────┴─────────┘
 
-New query: drop index t1_id_idx;
+New query: insert into t1 select generate_series(1, 1000000);
+Query duration: 00:00:01.602976
+Trace duration: 00:00:01.524851
 ┌───────────────────────────────────┬───────────┬────────────┬─────────┐
 │ Wait event                        │ WE type   │ Occurences │ Percent │
 ├───────────────────────────────────┼───────────┼────────────┼─────────┤
-│ [Running]                         │           │          2 │  100.00 │
+│ WALSync                           │ IO        │          7 │   46.67 │
+│ [Running]                         │           │          4 │   26.67 │
+│ WALWriteLock                      │ LWLock    │          3 │   20.00 │
+│ WALWrite                          │ IO        │          1 │    6.67 │
 └───────────────────────────────────┴───────────┴────────────┴─────────┘
+
+New query: insert into t1 select generate_series(1, 1000000);
+Query duration: 00:00:01.638675
+Trace duration: 00:00:01.630696
+┌───────────────────────────────────┬───────────┬────────────┬─────────┐
+│ Wait event                        │ WE type   │ Occurences │ Percent │
+├───────────────────────────────────┼───────────┼────────────┼─────────┤
+│ [Running]                         │           │          8 │   50.00 │
+│ WALWriteLock                      │ LWLock    │          4 │   25.00 │
+│ WALSync                           │ IO        │          4 │   25.00 │
+└───────────────────────────────────┴───────────┴────────────┴─────────┘
+
+New query: select * from t1 where id<500000;
+Query duration: 00:00:00.893073
+Trace duration: 00:00:00.819036
+┌───────────────────────────────────┬───────────┬────────────┬─────────┐
+│ Wait event                        │ WE type   │ Occurences │ Percent │
+├───────────────────────────────────┼───────────┼────────────┼─────────┤
+│ [Running]                         │           │          8 │  100.00 │
+└───────────────────────────────────┴───────────┴────────────┴─────────┘
+
+New query: create index on t1(id);
+Query duration: 00:00:04.051142
+Trace duration: 00:00:03.955806
+┌───────────────────────────────────┬───────────┬────────────┬─────────┐
+│ Wait event                        │ WE type   │ Occurences │ Percent │
+├───────────────────────────────────┼───────────┼────────────┼─────────┤
+│ [Running]                         │           │         15 │   38.46 │
+│ WALSync                           │ IO        │         15 │   38.46 │
+│ DataFileImmediateSync             │ IO        │          5 │   12.82 │
+│ WALWriteLock                      │ LWLock    │          4 │   10.26 │
+└───────────────────────────────────┴───────────┴────────────┴─────────┘
+
+No more session with PID 548292, exiting...
 ```
 
 It sleeps 100msec before checking if a new query is being executed. It checks

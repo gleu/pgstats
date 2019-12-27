@@ -52,6 +52,7 @@ typedef enum
 	STATEMENT,
 	XLOG,
 	TEMPFILE,
+	WAITEVENT,
 	PROGRESS_VACUUM,
 	PROGRESS_CLUSTER,
 	PROGRESS_CREATEINDEX,
@@ -303,6 +304,7 @@ void        print_pgstatprogresscluster(void);
 void        print_pgstatprogresscreateindex(void);
 void        print_xlogstats(void);
 void        print_tempfilestats(void);
+void        print_pgstatwaitevent(void);
 void        print_pgbouncerpools(void);
 void        print_pgbouncerstats(void);
 void		fetch_version(void);
@@ -354,6 +356,7 @@ help(const char *progname)
 		   "  * statement            for pg_stat_statements (needs the extension)\n"
 		   "  * xlog                 for xlog writes (only for 9.2+)\n"
 		   "  * tempfile             for temporary file usage\n"
+		   "  * waitevent            for wait events usage\n"
 		   "  * progress_vacuum      for vacuum progress monitoring (only for\n"
 		   "                         9.6+)\n"
 		   "  * progress_cluster     for cluster progress monitoring (only for\n"
@@ -480,6 +483,10 @@ get_opts(int argc, char **argv)
 				else if (!strcmp(optarg, "tempfile"))
 				{
 					opts->stat = TEMPFILE;
+				}
+				else if (!strcmp(optarg, "waitevent"))
+				{
+					opts->stat = WAITEVENT;
 				}
 				else if (!strcmp(optarg, "progress_vacuum"))
 				{
@@ -2142,6 +2149,69 @@ print_tempfilestats()
 }
 
 /*
+ * Dump all wait event stats.
+ */
+void
+print_pgstatwaitevent()
+{
+	char		sql[2*PGSTAT_DEFAULT_STRING_SIZE];
+	PGresult   *res;
+	int			nrows;
+	int			row;
+
+	snprintf(sql, sizeof(sql),
+         "SELECT "
+         "  count(*) FILTER (WHERE wait_event_type='LWLock') AS LWLock, "
+         "  count(*) FILTER (WHERE wait_event_type='Lock') AS Lock, "
+         "  count(*) FILTER (WHERE wait_event_type='BufferPin') AS BufferPin, "
+         "  count(*) FILTER (WHERE wait_event_type='Activity') AS Activity, "
+         "  count(*) FILTER (WHERE wait_event_type='Client') AS Client, "
+         "  count(*) FILTER (WHERE wait_event_type='Extension') AS Extension, "
+         "  count(*) FILTER (WHERE wait_event_type='IPC') AS IPC, "
+         "  count(*) FILTER (WHERE wait_event_type='Timeout') AS Timeout, "
+         "  count(*) FILTER (WHERE wait_event_type='IO') AS IO, "
+         "  count(*) FILTER (WHERE wait_event_type IS NULL) AS Running, "
+         "  count(*) AS All "
+         "FROM pg_stat_activity;");
+
+	res = PQexec(conn, sql);
+
+	/* check and deal with errors */
+	if (!res || PQresultStatus(res) > 2)
+	{
+		warnx("pgstats: query failed: %s", PQerrorMessage(conn));
+		PQclear(res);
+		PQfinish(conn);
+		errx(1, "pgstats: query was: %s", sql);
+	}
+
+	/* get the number of fields */
+	nrows = PQntuples(res);
+
+	/* for each row, dump the information */
+	for (row = 0; row < nrows; row++)
+	{
+		/* printing new values */
+		(void)printf(" %12d %8d %13d %12d %10d %13d %7d %11d %6d %11d %7d\n",
+			atoi(PQgetvalue(res, row, 0)),
+			atoi(PQgetvalue(res, row, 1)),
+			atoi(PQgetvalue(res, row, 2)),
+			atoi(PQgetvalue(res, row, 3)),
+			atoi(PQgetvalue(res, row, 4)),
+			atoi(PQgetvalue(res, row, 5)),
+			atoi(PQgetvalue(res, row, 6)),
+			atoi(PQgetvalue(res, row, 7)),
+			atoi(PQgetvalue(res, row, 8)),
+			atoi(PQgetvalue(res, row, 9)),
+			atoi(PQgetvalue(res, row, 10))
+		);
+	}
+
+	/* cleanup */
+	PQclear(res);
+}
+
+/*
  * Dump all pgBouncer pools stats.
  */
 void
@@ -2464,6 +2534,9 @@ print_header(void)
 		case TEMPFILE:
 			(void)printf("--- size --- --- count ---\n");
 			break;
+		case WAITEVENT:
+			(void)printf("--- LWLock --- Lock --- BufferPin --- Activity --- Client --- Extension --- IPC --- Timeout --- IO --- Running --- All ---\n");
+			break;
 		case PROGRESS_VACUUM:
 			(void)printf("--------------------- object --------------------- ---------- phase ---------- ---------------- stats ---------------\n");
 			(void)printf(" database         relation              size                                    %%scan  %%vacuum  #index  %%dead tuple\n");
@@ -2546,6 +2619,9 @@ print_line(void)
 			break;
 		case TEMPFILE:
 			print_tempfilestats();
+			break;
+		case WAITEVENT:
+			print_pgstatwaitevent();
 			break;
 		case PBPOOLS:
 			print_pgbouncerpools();
@@ -2674,8 +2750,7 @@ allocate_struct(void)
 			previous_xlogstats->locationdiff = 0;
 			break;
 		case TEMPFILE:
-			// no initialization worth doing...
-			break;
+		case WAITEVENT:
 		case PROGRESS_VACUUM:
 		case PROGRESS_CLUSTER:
 		case PROGRESS_CREATEINDEX:
@@ -2812,7 +2887,7 @@ main(int argc, char **argv)
 		errx(1, "You need at least v9.4 for this statistic.");
 	}
 
-	if (opts->stat == PROGRESS_VACUUM && !backend_minimum_version(9, 6))
+	if ((opts->stat == PROGRESS_VACUUM || opts->stat == WAITEVENT) && !backend_minimum_version(9, 6))
 	{
 		errx(1, "You need at least v9.6 for this statistic.");
 	}
