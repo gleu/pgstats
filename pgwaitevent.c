@@ -60,6 +60,10 @@ struct options
 
 	/* frequency */
 	float	interval;
+
+	/* query and trace timestamps */
+	char	*query_start;
+	char	*trace_start;
 };
 
 
@@ -567,7 +571,7 @@ active_session()
 
 	/* build the query */
 	snprintf(sql, sizeof(sql),
-		"SELECT state, query FROM pg_stat_activity\n"
+		"SELECT state, query, query_start, now() FROM pg_stat_activity\n"
 		"WHERE backend_type='client backend'\n"
 		"AND pid=%d",
 		opts->pid);
@@ -600,6 +604,8 @@ active_session()
 		{
 			active = true;
 			printf("\nNew query: %s\n", PQgetvalue(res, 0, 1));
+			opts->query_start = pg_strdup(PQgetvalue(res, 0, 2));
+			opts->trace_start = pg_strdup(PQgetvalue(res, 0, 3));
 		}
 	}
 
@@ -620,28 +626,49 @@ void
 handle_current_query()
 {
 	char		sql[PGWAITEVENT_DEFAULT_STRING_SIZE];
-	PGresult   *res;
+	PGresult	*trace_res;
+	PGresult	*duration_res;
 	int			nrows;
 	int			row;
 
-	/* build the query*/
+	/* build the trace query */
 	snprintf(sql, sizeof(sql), "SELECT * FROM trace_wait_events_for_pid(%d, %f);",
 		opts->pid, opts->interval);
 
 	/* execute it */
-	res = PQexec(conn, sql);
+	trace_res = PQexec(conn, sql);
 
 	/* check and deal with errors */
-	if (!res || PQresultStatus(res) > 2)
+	if (!trace_res || PQresultStatus(trace_res) > 2)
 	{
 		warnx("pgwaitevent: query failed: %s", PQerrorMessage(conn));
-		PQclear(res);
+		PQclear(trace_res);
 		PQfinish(conn);
 		errx(1, "pgwaitevent: query was: %s", sql);
 	}
 
+	/* build the duration query */
+	snprintf(sql, sizeof(sql), "SELECT now()-'%s'::timestamptz, now()-'%s'::timestamptz;",
+		opts->query_start, opts->trace_start);
+
+	/* execute it */
+	duration_res = PQexec(conn, sql);
+
+	/* check and deal with errors */
+	if (!duration_res || PQresultStatus(duration_res) > 2)
+	{
+		warnx("pgwaitevent: query failed: %s", PQerrorMessage(conn));
+		PQclear(duration_res);
+		PQfinish(conn);
+		errx(1, "pgwaitevent: query was: %s", sql);
+	}
+
+	/* show durations */
+	(void)printf("Query duration: %s\n", PQgetvalue(duration_res, 0, 0));
+	(void)printf("Trace duration: %s\n", PQgetvalue(duration_res, 0, 1));
+
 	/* get the number of rows */
-	nrows = PQntuples(res);
+	nrows = PQntuples(trace_res);
 
 	/* print headers */
 	(void)printf(
@@ -653,10 +680,10 @@ handle_current_query()
 	for (row = 0; row < nrows; row++)
 	{
 		(void)printf("│ %-33s │ %-9s │ %10ld │  %6.2f │\n",
-			PQgetvalue(res, row, 0),
-			PQgetvalue(res, row, 1),
-			atol(PQgetvalue(res, row, 2)),
-			atof(PQgetvalue(res, row, 3))
+			PQgetvalue(trace_res, row, 0),
+			PQgetvalue(trace_res, row, 1),
+			atol(PQgetvalue(trace_res, row, 2)),
+			atof(PQgetvalue(trace_res, row, 3))
 		    );
 	}
 
@@ -665,7 +692,8 @@ handle_current_query()
 "└───────────────────────────────────┴───────────┴────────────┴─────────┘\n");
 
 	/* cleanup */
-	PQclear(res);
+	PQclear(duration_res);
+	PQclear(trace_res);
 }
 
 
