@@ -6,7 +6,7 @@
  *
  * Guillaume Lelarge, guillaume@lelarge.info, 2014-2019.
  *
- * pgstat/pgstat.c
+ * pgstats/pgstat.c
  */
 
 

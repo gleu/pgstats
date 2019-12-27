@@ -6,7 +6,7 @@
  *
  * Guillaume Lelarge, guillaume@lelarge.info, 2019.
  *
- * pgwaitevent/pgwaitevent.c
+ * pgstats/pgwaitevent.c
  */
 
 
@@ -500,7 +500,7 @@ build_env()
 "	END IF;\n"
 "\n"
 "	-- logging\n"
-"	RAISE LOG 'Tracing PID #%%, sampling at %%s', p, s;\n"
+"	RAISE LOG 'Tracing PID %%, sampling at %%s', p, s;\n"
 "	RAISE LOG 'Query is <%%>', q;\n"
 "\n"
 "	-- drop if exists, then create temp table\n"
@@ -730,7 +730,7 @@ main(int argc, char **argv)
 	build_env();
 
 	/* show what we're doing */
-	printf("Tracing wait events for PID #%d, for %.3fs\n",
+	printf("Tracing wait events for PID %d, sampling at %.3fs\n",
 		   opts->pid,
 		   opts->interval);
 
