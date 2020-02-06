@@ -408,6 +408,9 @@ It sleeps 100msec before checking if a new query is being executed. It checks
 waiting events on an interval set up with the `-i` command line option. By
 default, it's 1 second (which is a bit on the high end).
 
+Starting with PostgreSQL 13 (yet to be released), pgwaitevent is able to
+include leader and workers. You need the -g command line option for this.
+
 Ideas
 -----
 

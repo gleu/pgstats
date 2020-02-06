@@ -58,6 +58,9 @@ struct options
 	/* pid */
 	int		pid;
 
+	/* include leader and workers PIDs */
+	bool	includeleaderworkers;
+
 	/* frequency */
 	float	interval;
 
@@ -104,6 +107,7 @@ help(const char *progname)
 		   "Usage:\n"
 		   "  %s [OPTIONS] PID\n"
 		   "\nGeneral options:\n"
+		   "  -g                     include leader and workers (parallel queries)\n"
 		   "  -i                     interval (default is 1s)\n"
 		   "  -v                     verbose\n"
 		   "  -?|--help              show this help, then exit\n"
@@ -136,6 +140,7 @@ get_opts(int argc, char **argv)
 	opts->port = NULL;
 	opts->username = NULL;
 	opts->pid = 0;
+	opts->includeleaderworkers = false;
 	opts->interval = 1;
 
 	/* we should deal quickly with help and version */
@@ -154,7 +159,7 @@ get_opts(int argc, char **argv)
 	}
 
 	/* get options */
-	while ((c = getopt(argc, argv, "h:p:U:d:i:v")) != -1)
+	while ((c = getopt(argc, argv, "h:p:U:d:i:gv")) != -1)
 	{
 		switch (c)
 		{
@@ -166,6 +171,11 @@ get_opts(int argc, char **argv)
 				/* host to connect to */
 			case 'h':
 				opts->hostname = pg_strdup(optarg);
+				break;
+
+				/* parallel queries */
+			case 'g':
+				opts->includeleaderworkers = true;
 				break;
 
 				/* interval */
@@ -486,7 +496,7 @@ build_env()
 
 	/* build the DDL query */
 	snprintf(sql, sizeof(sql),
-"CREATE OR REPLACE FUNCTION trace_wait_events_for_pid(p integer, s numeric default 1)\n"
+"CREATE OR REPLACE FUNCTION trace_wait_events_for_pid(p integer, leader boolean, s numeric default 1)\n"
 "RETURNS TABLE (wait_event text, wait_event_type text, occurences integer, percent numeric(5,2))\n"
 "LANGUAGE plpgsql\n"
 "AS $$\n"
@@ -513,11 +523,19 @@ build_env()
 "	-- loop till the end of the query\n"
 "	LOOP\n"
 "		-- get wait event\n"
-"		SELECT COALESCE(psa.wait_event, '[Running]') AS wait_event,\n"
-"		       COALESCE(psa.wait_event_type, '')   AS wait_event_type\n"
-"		INTO   r\n"
-"		FROM   pg_stat_activity psa\n"
-"		WHERE  pid=p;\n"
+"		IF leader THEN\n"
+"			SELECT COALESCE(psa.wait_event, '[Running]') AS wait_event,\n"
+"				   COALESCE(psa.wait_event_type, '')   AS wait_event_type\n"
+"			INTO   r\n"
+"			FROM   pg_stat_activity psa\n"
+"			WHERE  pid=p OR leader_pid=p;\n"
+"		ELSE\n"
+"			SELECT COALESCE(psa.wait_event, '[Running]') AS wait_event,\n"
+"				   COALESCE(psa.wait_event_type, '')   AS wait_event_type\n"
+"			INTO   r\n"
+"			FROM   pg_stat_activity psa\n"
+"			WHERE  pid=p;\n"
+"		END IF;\n"
 "\n"
 "		-- loop control\n"
 "		EXIT WHEN r.wait_event = 'ClientRead';\n"
@@ -632,8 +650,8 @@ handle_current_query()
 	int			row;
 
 	/* build the trace query */
-	snprintf(sql, sizeof(sql), "SELECT * FROM trace_wait_events_for_pid(%d, %f);",
-		opts->pid, opts->interval);
+	snprintf(sql, sizeof(sql), "SELECT * FROM trace_wait_events_for_pid(%d, %s, %f);",
+		opts->pid, opts->includeleaderworkers ? "'t'" : "'f'", opts->interval);
 
 	/* execute it */
 	trace_res = PQexec(conn, sql);
@@ -710,7 +728,7 @@ drop_env()
 
 	/* drop function */
 	snprintf(sql, sizeof(sql),
-		"DROP FUNCTION trace_wait_events_for_pid(integer, numeric)");
+		"DROP FUNCTION trace_wait_events_for_pid(integer, boolean, numeric)");
 
 	/* make the call */
 	res = PQexec(conn, sql);
@@ -758,9 +776,10 @@ main(int argc, char **argv)
 	build_env();
 
 	/* show what we're doing */
-	printf("Tracing wait events for PID %d, sampling at %.3fs\n",
+	printf("Tracing wait events for PID %d, sampling at %.3fs, %s\n",
 		   opts->pid,
-		   opts->interval);
+		   opts->interval,
+		   opts->includeleaderworkers ? "including leader and workers" : "PID only");
 
 	while(true)
 	{
