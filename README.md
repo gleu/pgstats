@@ -54,9 +54,11 @@ switch to choose the one you want (-s):
 * xlog for xlog writes (9.2+)
 * tempfile for temporary file usage
 * waitevent for wait events usage (9.6+)
-* progress_vacuum to get the progress on a VACUUM statement (9.6+)
+* progress_analyze to get the progress on an ANALYZE statement (13+)
+* progress_basebackup to get the progress on a BASE BACKUP (replication) statement (13+)
 * progress_cluster to get the progress on a CLUSTER/VACUUM FULL statement (12+)
 * progress_createindex to get the progress on a CREATE INDEX statement (12+)
+* progress_vacuum to get the progress on a VACUUM statement (9.6+)
 * pbpools for pgBouncer pools statistics
 * pbstats for pgBouncer general statistics
 
