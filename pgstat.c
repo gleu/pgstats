@@ -53,9 +53,10 @@ typedef enum
 	XLOG,
 	TEMPFILE,
 	WAITEVENT,
-	PROGRESS_VACUUM,
+	PROGRESS_ANALYZE,
 	PROGRESS_CLUSTER,
 	PROGRESS_CREATEINDEX,
+	PROGRESS_VACUUM,
 	PBPOOLS,
 	PBSTATS
 } stat_t;
@@ -299,9 +300,10 @@ void		print_pgstattableio(void);
 void        print_pgstatindex(void);
 void        print_pgstatfunction(void);
 void        print_pgstatstatement(void);
-void        print_pgstatprogressvacuum(void);
+void        print_pgstatprogressanalyze(void);
 void        print_pgstatprogresscluster(void);
 void        print_pgstatprogresscreateindex(void);
+void        print_pgstatprogressvacuum(void);
 void        print_xlogstats(void);
 void        print_tempfilestats(void);
 void        print_pgstatwaitevent(void);
@@ -488,9 +490,9 @@ get_opts(int argc, char **argv)
 				{
 					opts->stat = WAITEVENT;
 				}
-				else if (!strcmp(optarg, "progress_vacuum"))
+				else if (!strcmp(optarg, "progress_analyze"))
 				{
-					opts->stat = PROGRESS_VACUUM;
+					opts->stat = PROGRESS_ANALYZE;
 				}
 				else if (!strcmp(optarg, "progress_cluster"))
 				{
@@ -499,6 +501,10 @@ get_opts(int argc, char **argv)
 				else if (!strcmp(optarg, "progress_createindex"))
 				{
 					opts->stat = PROGRESS_CREATEINDEX;
+				}
+				else if (!strcmp(optarg, "progress_vacuum"))
+				{
+					opts->stat = PROGRESS_VACUUM;
 				}
 				else if (!strcmp(optarg, "pbpools"))
 				{
@@ -1801,7 +1807,7 @@ print_pgstatstatement()
  * Dump vacuum progress.
  */
 void
-print_pgstatprogressvacuum()
+print_pgstatprogressanalyze()
 {
 	char		sql[PGSTAT_DEFAULT_STRING_SIZE];
 	PGresult   *res;
@@ -1812,11 +1818,16 @@ print_pgstatprogressvacuum()
 		 "SELECT datname, relname,"
 		 "       pg_size_pretty(pg_table_size(relid)),"
 	 	 "		 phase,"
-		 "		 trunc(heap_blks_scanned::numeric*100/heap_blks_total,2)::text,"
-		 "		 trunc(heap_blks_vacuumed::numeric*100/heap_blks_total,2)::text,"
-		 "		 index_vacuum_count,"
-		 "		 trunc(num_dead_tuples::numeric*100/max_dead_tuples,2)::text "
-		 "FROM pg_stat_progress_vacuum s "
+		 "		 CASE WHEN sample_blks_total>0"
+         "            THEN trunc(sample_blks_scanned::numeric*100/sample_blks_total,2)::text"
+         "            ELSE 'N/A' END,"
+		 "		 CASE WHEN ext_stats_total>0"
+         "            THEN trunc(ext_stats_computed::numeric*100/ext_stats_total,2)::text"
+         "            ELSE 'N/A' END,"
+         "       CASE WHEN child_tables_total>0"
+		 "		      THEN trunc(child_tables_done::numeric*100/child_tables_total,2)::text"
+         "            ELSE 'N/A' END "
+		 "FROM pg_stat_progress_analyze s "
 		 "LEFT JOIN pg_class c ON c.oid=s.relid "
 		 "ORDER BY pid");
 
@@ -1839,15 +1850,14 @@ print_pgstatprogressvacuum()
 	for (row = 0; row < nrows; row++)
 	{
 		/* printing the value... */
-		(void)printf(" %-16s %-20s %10s   %-24s    %5s    %5s   %5ld        %5s\n",
+		(void)printf(" %-16s %-20s %10s   %-24s    %6s       %6s      %6s\n",
 			PQgetvalue(res, row, 0),
 			PQgetvalue(res, row, 1),
 			PQgetvalue(res, row, 2),
 			PQgetvalue(res, row, 3),
 		    PQgetvalue(res, row, 4),
 		    PQgetvalue(res, row, 5),
-		    atol(PQgetvalue(res, row, 6)),
-		    PQgetvalue(res, row, 7)
+		    PQgetvalue(res, row, 6)
 		    );
 	};
 
@@ -1961,6 +1971,64 @@ print_pgstatprogresscreateindex()
 		    PQgetvalue(res, row, 4),
 		    PQgetvalue(res, row, 5),
 		    PQgetvalue(res, row, 6),
+		    PQgetvalue(res, row, 7)
+		    );
+	};
+
+	/* cleanup */
+	PQclear(res);
+}
+
+/*
+ * Dump vacuum progress.
+ */
+void
+print_pgstatprogressvacuum()
+{
+	char		sql[PGSTAT_DEFAULT_STRING_SIZE];
+	PGresult   *res;
+	int			nrows;
+	int			row;
+
+	snprintf(sql, sizeof(sql),
+		 "SELECT datname, relname,"
+		 "       pg_size_pretty(pg_table_size(relid)),"
+	 	 "		 phase,"
+		 "		 trunc(heap_blks_scanned::numeric*100/heap_blks_total,2)::text,"
+		 "		 trunc(heap_blks_vacuumed::numeric*100/heap_blks_total,2)::text,"
+		 "		 index_vacuum_count,"
+		 "		 trunc(num_dead_tuples::numeric*100/max_dead_tuples,2)::text "
+		 "FROM pg_stat_progress_vacuum s "
+		 "LEFT JOIN pg_class c ON c.oid=s.relid "
+		 "ORDER BY pid");
+
+	res = PQexec(conn, sql);
+
+	/* check and deal with errors */
+	if (!res || PQresultStatus(res) > 2)
+	{
+		warnx("pgstats: query failed: %s", PQerrorMessage(conn));
+		PQclear(res);
+		PQfinish(conn);
+		errx(1, "pgstats: query was: %s", sql);
+	}
+
+	/* get the number of fields */
+	nrows = PQntuples(res);
+
+	/* for each row, dump the information */
+	/* this is stupid, a simple if would do the trick, but it will help for other cases */
+	for (row = 0; row < nrows; row++)
+	{
+		/* printing the value... */
+		(void)printf(" %-16s %-20s %10s   %-24s    %5s    %5s   %5ld        %5s\n",
+			PQgetvalue(res, row, 0),
+			PQgetvalue(res, row, 1),
+			PQgetvalue(res, row, 2),
+			PQgetvalue(res, row, 3),
+		    PQgetvalue(res, row, 4),
+		    PQgetvalue(res, row, 5),
+		    atol(PQgetvalue(res, row, 6)),
 		    PQgetvalue(res, row, 7)
 		    );
 	};
@@ -2537,9 +2605,9 @@ print_header(void)
 		case WAITEVENT:
 			(void)printf("--- LWLock --- Lock --- BufferPin --- Activity --- Client --- Extension --- IPC --- Timeout --- IO --- Running --- All ---\n");
 			break;
-		case PROGRESS_VACUUM:
+		case PROGRESS_ANALYZE:
 			(void)printf("--------------------- object --------------------- ---------- phase ---------- ---------------- stats ---------------\n");
-			(void)printf(" database         relation              size                                    %%scan  %%vacuum  #index  %%dead tuple\n");
+			(void)printf(" database         relation              size                                    %%sample blocks  %%ext stats  %%child tables\n");
 			break;
 		case PROGRESS_CLUSTER:
 			(void)printf("--------------------------- object -------------------------- -------------------- phase -------------------- ------------------- stats -------------------\n");
@@ -2548,6 +2616,10 @@ print_header(void)
 		case PROGRESS_CREATEINDEX:
 			(void)printf("--------------------------- object -------------------------- -------------------- phase -------------------- ------------------- stats -------------------\n");
 			(void)printf(" database         table                 index                                                                  %%lockers  %%blocks  %%tuples  %%partitions\n");
+			break;
+		case PROGRESS_VACUUM:
+			(void)printf("--------------------- object --------------------- ---------- phase ---------- ---------------- stats ---------------\n");
+			(void)printf(" database         relation              size                                    %%scan  %%vacuum  #index  %%dead tuple\n");
 			break;
 		case PBPOOLS:
 			(void)printf("---- client -----  ---------------- server ----------------  -- misc --\n");
@@ -2608,14 +2680,17 @@ print_line(void)
 		case XLOG:
 			print_xlogstats();
 			break;
-		case PROGRESS_VACUUM:
-			print_pgstatprogressvacuum();
+		case PROGRESS_ANALYZE:
+			print_pgstatprogressanalyze();
 			break;
 		case PROGRESS_CLUSTER:
 			print_pgstatprogresscluster();
 			break;
 		case PROGRESS_CREATEINDEX:
 			print_pgstatprogresscreateindex();
+			break;
+		case PROGRESS_VACUUM:
+			print_pgstatprogressvacuum();
 			break;
 		case TEMPFILE:
 			print_tempfilestats();
@@ -2751,9 +2826,10 @@ allocate_struct(void)
 			break;
 		case TEMPFILE:
 		case WAITEVENT:
-		case PROGRESS_VACUUM:
+		case PROGRESS_ANALYZE:
 		case PROGRESS_CLUSTER:
 		case PROGRESS_CREATEINDEX:
+		case PROGRESS_VACUUM:
 		case PBPOOLS:
 			// no initialization worth doing...
 			break;
@@ -2895,6 +2971,11 @@ main(int argc, char **argv)
 	if ((opts->stat == PROGRESS_CREATEINDEX || opts->stat == PROGRESS_CLUSTER) && !backend_minimum_version(12, 0))
 	{
 		errx(1, "You need at least v12 for this statistic.");
+	}
+
+	if (opts->stat == PROGRESS_ANALYZE && !backend_minimum_version(13, 0))
+	{
+		errx(1, "You need at least v13 for this statistic.");
 	}
 
 	/* Check if the configuration matches the statistics */
