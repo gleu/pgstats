@@ -54,6 +54,7 @@ typedef enum
 	TEMPFILE,
 	WAITEVENT,
 	PROGRESS_ANALYZE,
+	PROGRESS_BASEBACKUP,
 	PROGRESS_CLUSTER,
 	PROGRESS_CREATEINDEX,
 	PROGRESS_VACUUM,
@@ -301,6 +302,7 @@ void        print_pgstatindex(void);
 void        print_pgstatfunction(void);
 void        print_pgstatstatement(void);
 void        print_pgstatprogressanalyze(void);
+void        print_pgstatprogressbasebackup(void);
 void        print_pgstatprogresscluster(void);
 void        print_pgstatprogresscreateindex(void);
 void        print_pgstatprogressvacuum(void);
@@ -359,12 +361,16 @@ help(const char *progname)
 		   "  * xlog                 for xlog writes (only for 9.2+)\n"
 		   "  * tempfile             for temporary file usage\n"
 		   "  * waitevent            for wait events usage\n"
-		   "  * progress_vacuum      for vacuum progress monitoring (only for\n"
-		   "                         9.6+)\n"
+		   "  * progress_analyze     for analyze progress monitoring (only for\n"
+		   "                         13+)\n"
+		   "  * progress_basebackup  for base backup progress monitoring (only\n"
+		   "                         for 13+)\n"
 		   "  * progress_cluster     for cluster progress monitoring (only for\n"
 		   "                         12+)\n"
 		   "  * progress_createindex for create index progress monitoring (only\n"
 		   "                         for 12+)\n"
+		   "  * progress_vacuum      for vacuum progress monitoring (only for\n"
+		   "                         9.6+)\n"
 		   "  * pbpools              for pgBouncer pools statistics\n"
 		   "  * pbstats              for pgBouncer statistics\n\n"
 		   "Report bugs to <guillaume@lelarge.info>.\n",
@@ -493,6 +499,10 @@ get_opts(int argc, char **argv)
 				else if (!strcmp(optarg, "progress_analyze"))
 				{
 					opts->stat = PROGRESS_ANALYZE;
+				}
+				else if (!strcmp(optarg, "progress_basebackup"))
+				{
+					opts->stat = PROGRESS_BASEBACKUP;
 				}
 				else if (!strcmp(optarg, "progress_cluster"))
 				{
@@ -1804,7 +1814,64 @@ print_pgstatstatement()
 }
 
 /*
- * Dump vacuum progress.
+ * Dump base backup progress.
+ */
+void
+print_pgstatprogressbasebackup()
+{
+	char		sql[PGSTAT_DEFAULT_STRING_SIZE];
+	PGresult   *res;
+	int			nrows;
+	int			row;
+
+	snprintf(sql, sizeof(sql),
+		 "SELECT pid,"
+	 	 "		 phase,"
+		 "       pg_size_pretty(backup_streamed),"
+		 "       pg_size_pretty(backup_total),"
+         "       CASE WHEN backup_total>0"
+		 "       THEN trunc(backup_streamed::numeric*100/backup_total,2)::text"
+		 "       ELSE 'N/A' END,"
+         "       CASE WHEN tablespaces_total>0"
+		 "       THEN trunc(tablespaces_streamed::numeric*100/tablespaces_total,2)::text"
+		 "       ELSE 'N/A' END "
+		 "FROM pg_stat_progress_basebackup "
+		 "ORDER BY pid");
+
+	res = PQexec(conn, sql);
+
+	/* check and deal with errors */
+	if (!res || PQresultStatus(res) > 2)
+	{
+		warnx("pgstats: query failed: %s", PQerrorMessage(conn));
+		PQclear(res);
+		PQfinish(conn);
+		errx(1, "pgstats: query was: %s", sql);
+	}
+
+	/* get the number of fields */
+	nrows = PQntuples(res);
+
+	/* for each row, dump the information */
+	for (row = 0; row < nrows; row++)
+	{
+		/* printing the value... */
+		(void)printf(" %-10s  %-28s %-10s  %-10s %6s %6s\n",
+			PQgetvalue(res, row, 0),
+			PQgetvalue(res, row, 1),
+			PQgetvalue(res, row, 2),
+			PQgetvalue(res, row, 3),
+		    PQgetvalue(res, row, 4),
+		    PQgetvalue(res, row, 5)
+		    );
+	};
+
+	/* cleanup */
+	PQclear(res);
+}
+
+/*
+ * Dump analyze progress.
  */
 void
 print_pgstatprogressanalyze()
@@ -2609,6 +2676,10 @@ print_header(void)
 			(void)printf("--------------------- object --------------------- ---------- phase ---------- ---------------- stats ---------------\n");
 			(void)printf(" database         relation              size                                    %%sample blocks  %%ext stats  %%child tables\n");
 			break;
+		case PROGRESS_BASEBACKUP:
+            (void)printf("--- pid --- ---------- phase ---------- ---------------------- stats --------------------\n");
+            (void)printf("                                         Sent size - Total size - %%Sent - %%Tablespaces\n");
+			break;
 		case PROGRESS_CLUSTER:
 			(void)printf("--------------------------- object -------------------------- -------------------- phase -------------------- ------------------- stats -------------------\n");
 			(void)printf(" database         table                 index                                                                  tuples scanned  tuples written  %%blocks  index rebuilt\n");
@@ -2682,6 +2753,9 @@ print_line(void)
 			break;
 		case PROGRESS_ANALYZE:
 			print_pgstatprogressanalyze();
+			break;
+		case PROGRESS_BASEBACKUP:
+			print_pgstatprogressbasebackup();
 			break;
 		case PROGRESS_CLUSTER:
 			print_pgstatprogresscluster();
@@ -2827,6 +2901,7 @@ allocate_struct(void)
 		case TEMPFILE:
 		case WAITEVENT:
 		case PROGRESS_ANALYZE:
+		case PROGRESS_BASEBACKUP:
 		case PROGRESS_CLUSTER:
 		case PROGRESS_CREATEINDEX:
 		case PROGRESS_VACUUM:
@@ -2973,7 +3048,7 @@ main(int argc, char **argv)
 		errx(1, "You need at least v12 for this statistic.");
 	}
 
-	if (opts->stat == PROGRESS_ANALYZE && !backend_minimum_version(13, 0))
+	if ((opts->stat == PROGRESS_ANALYZE || opts->stat == PROGRESS_BASEBACKUP) && !backend_minimum_version(13, 0))
 	{
 		errx(1, "You need at least v13 for this statistic.");
 	}
