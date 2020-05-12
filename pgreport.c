@@ -72,9 +72,9 @@ struct options
 /*
  * Global variables
  */
-PGconn	   		       *conn;
-struct options	       *opts;
-extern char            *optarg;
+PGconn	   			   *conn;
+struct options		   *opts;
+extern char			*optarg;
 
 
 /*
@@ -92,6 +92,9 @@ void		install_extension(char *extension);
 void		fetch_version(void);
 void		fetch_postmaster_starttime(void);
 void		fetch_table(char *label, char *query);
+void		fetch_file(char *filename);
+void		fetch_kernelconfig(char *cfg);
+void		exec_command(char *cmd);
 static void quit_properly(SIGNAL_ARGS);
 
 
@@ -105,14 +108,14 @@ help(const char *progname)
 		   "Usage:\n"
 		   "  %s [OPTIONS]\n"
 		   "\nGeneral options:\n"
-		   "  -v            verbose\n"
-		   "  -?|--help     show this help, then exit\n"
+		   "  -v			verbose\n"
+		   "  -?|--help	 show this help, then exit\n"
 		   "  -V|--version  output version information, then exit\n"
 		   "\nConnection options:\n"
 		   "  -h HOSTNAME   database server host or socket directory\n"
-		   "  -p PORT       database server port number\n"
-		   "  -U USER       connect as specified database user\n"
-		   "  -d DBNAME     database to connect to\n\n"
+		   "  -p PORT	   database server port number\n"
+		   "  -U USER	   connect as specified database user\n"
+		   "  -d DBNAME	 database to connect to\n\n"
 		   "Report bugs to <guillaume@lelarge.info>.\n",
 		   progname, progname);
 }
@@ -209,7 +212,7 @@ get_opts(int argc, char **argv)
 void *
 pg_malloc(size_t size)
 {
-	void       *tmp;
+	void	   *tmp;
 
 	/* Avoid unportable behavior of malloc(0) */
 	if (size == 0)
@@ -230,7 +233,7 @@ pg_malloc(size_t size)
 char *
 pg_strdup(const char *in)
 {
-	char       *tmp;
+	char	   *tmp;
 
 	if (!in)
 	{
@@ -258,8 +261,8 @@ sql_conn()
 	char	   *password = NULL;
 	bool		new_pass;
 #if PG_VERSION_NUM >= 90300
-    const char **keywords;
-    const char **values;
+	const char **keywords;
+	const char **values;
 #else
 	int			size;
 	char		*dns;
@@ -280,25 +283,25 @@ sql_conn()
 		 * this itself.
 		 */
 #define PARAMS_ARRAY_SIZE   8
-        keywords = pg_malloc(PARAMS_ARRAY_SIZE * sizeof(*keywords));
-        values = pg_malloc(PARAMS_ARRAY_SIZE * sizeof(*values));
+		keywords = pg_malloc(PARAMS_ARRAY_SIZE * sizeof(*keywords));
+		values = pg_malloc(PARAMS_ARRAY_SIZE * sizeof(*values));
 
-        keywords[0] = "host";
-        values[0] = opts->hostname,
-        keywords[1] = "port";
-        values[1] = opts->port;
-        keywords[2] = "user";
-        values[2] = opts->username;
-        keywords[3] = "password";
-        values[3] = password;
-        keywords[4] = "dbname";
-        values[4] = opts->dbname;
-        keywords[5] = "fallback_application_name";
-        values[5] = "pgwaitevent";
-        keywords[7] = NULL;
-        values[7] = NULL;
+		keywords[0] = "host";
+		values[0] = opts->hostname,
+		keywords[1] = "port";
+		values[1] = opts->port;
+		keywords[2] = "user";
+		values[2] = opts->username;
+		keywords[3] = "password";
+		values[3] = password;
+		keywords[4] = "dbname";
+		values[4] = opts->dbname;
+		keywords[5] = "fallback_application_name";
+		values[5] = "pgwaitevent";
+		keywords[7] = NULL;
+		values[7] = NULL;
 
-        my_conn = PQconnectdbParams(keywords, values, true);
+		my_conn = PQconnectdbParams(keywords, values, true);
 
 		pg_free(keywords);
 		pg_free(values);
@@ -342,7 +345,7 @@ sql_conn()
 		pg_free(dns);
 #endif
 
-        new_pass = false;
+		new_pass = false;
 
 		if (!my_conn)
 		{
@@ -387,7 +390,6 @@ sql_conn()
 bool
 backend_minimum_version(int major, int minor)
 {
-	printf("backend_minimum_version ==> major %d/%d, minor %d/%d\n", opts->major, major, opts->minor, minor);
 	return opts->major > major || (opts->major == major && opts->minor >= minor);
 }
 
@@ -399,7 +401,7 @@ void
 install_extension(char *extension)
 {
 	char		check_sql[PGREPORT_DEFAULT_STRING_SIZE],
-	            install_sql[PGREPORT_DEFAULT_STRING_SIZE];
+				install_sql[PGREPORT_DEFAULT_STRING_SIZE];
 	PGresult   *check_res, *install_res;
 
 	/* check if extension is already installed */
@@ -478,9 +480,9 @@ fetch_version()
 
 	/* print version */
 	if (opts->verbose)
-	    printf("Detected release: %d.%d\n", opts->major, opts->minor);
+		printf("Detected release: %d.%d\n", opts->major, opts->minor);
 
-    printf ("PostgreSQL version: %s\n", PQgetvalue(res, 0, 0));
+	printf ("PostgreSQL version: %s\n", PQgetvalue(res, 0, 0));
 
 	/* cleanup */
 	PQclear(res);
@@ -511,7 +513,7 @@ fetch_postmaster_starttime()
 		errx(1, "pgwaitevent: query was: %s", sql);
 	}
 
-    printf ("PostgreSQL start time: %s\n", PQgetvalue(res, 0, 0));
+	printf ("PostgreSQL start time: %s\n", PQgetvalue(res, 0, 0));
 
 	/* cleanup */
 	PQclear(res);
@@ -550,7 +552,7 @@ fetch_table(char *label, char *query)
 	myopt.topt.env_columns = 0;
 	//myopt.topt.columns = 3;
 	myopt.topt.unicode_border_linestyle = UNICODE_LINESTYLE_SINGLE;
-    myopt.topt.unicode_column_linestyle = UNICODE_LINESTYLE_SINGLE;
+	myopt.topt.unicode_column_linestyle = UNICODE_LINESTYLE_SINGLE;
 	myopt.topt.unicode_header_linestyle = UNICODE_LINESTYLE_SINGLE;
 
 	/* execute it */
@@ -570,6 +572,106 @@ fetch_table(char *label, char *query)
 
 	/* cleanup */
 	PQclear(res);
+}
+
+
+void
+fetch_kernelconfig(char *cfg)
+{
+	char *filename;
+
+	filename = pg_malloc(strlen("/proc/sys/vm/")+strlen(cfg));
+	sprintf(filename, "/proc/sys/vm/%s", cfg);
+	printf("%s : ", cfg);
+	fetch_file(filename);
+	printf("\n");
+	pg_free(filename);
+}
+
+
+void
+fetch_file(char *filename)
+{
+	FILE *fp;
+	char ch;
+
+	fp = fopen(filename, "r"); // read mode
+
+	if (fp == NULL)
+	{
+		perror("Error while opening the file.\n");
+		exit(EXIT_FAILURE);
+	}
+
+	while((ch = fgetc(fp)) != EOF)
+	{
+		printf("%c", ch);
+	}
+
+	fclose(fp);
+}
+
+
+void
+exec_command(char *cmd)
+{
+	int filedes[2];
+	pid_t pid;
+	char *buffer;
+	ssize_t count;
+
+	if (pipe(filedes) == -1)
+	{
+		perror("pipe");
+		exit(1);
+	}
+
+	pid = fork();
+	if (pid == -1)
+	{
+		perror("fork");
+		exit(1);
+	}
+	else if (pid == 0)
+	{
+		while ((dup2(filedes[1], STDOUT_FILENO) == -1) && (errno == EINTR)) {}
+		close(filedes[1]);
+		close(filedes[0]);
+		execl(cmd, cmd, (char*)0);
+		perror("execl");
+		_exit(1);
+	}
+	close(filedes[1]);
+
+	buffer = (char *) pg_malloc(1);
+
+	while (1)
+	{
+		count = read(filedes[0], buffer, sizeof(buffer));
+		if (count == -1)
+		{
+			if (errno == EINTR)
+			{
+				continue;
+			}
+			else
+			{
+				perror("read");
+				exit(1);
+			}
+		}
+		else if (count == 0)
+		{
+			break;
+		}
+		else
+		{
+			printf("%s", buffer);
+		}
+	}
+	close(filedes[0]);
+
+	pg_free(buffer);
 }
 
 
@@ -605,89 +707,117 @@ main(int argc, char **argv)
 	/* Connect to the database */
 	conn = sql_conn();
 
-    /* Install some extensions if they are not already there */
+	/* Install some extensions if they are not already there */
 	install_extension("pg_buffercache");
+
+	printf("# Hardware\n\n");
+	printf("## CPU\n");
+	exec_command("/usr/bin/lscpu");
+	printf("\n## Memory\n");
+	fetch_file("/proc/meminfo");
+	printf("\n## Disks\n");
+	exec_command("/usr/bin/lsblk");
+	printf("\n");
+
+	/* get some kernel config */
+	printf("# Kernel config\n");
+	fetch_kernelconfig("dirty_background_bytes");
+	fetch_kernelconfig("dirty_background_ratio");
+	fetch_kernelconfig("dirty_bytes");
+	fetch_kernelconfig("dirty_ratio");
+	fetch_kernelconfig("nr_hugepages");
+	fetch_kernelconfig("nr_overcommit_hugepages");
+	fetch_kernelconfig("overcommit_ratio");
+	fetch_kernelconfig("overcommit_kbytes");
+	fetch_kernelconfig("overcommit_memory");
+	fetch_kernelconfig("swappiness");
+	fetch_kernelconfig("zone_reclaim_mode");
+	printf("\n## df\n");
+	exec_command("/usr/bin/df");
+	printf("\n## fstab\n");
+	fetch_file("/etc/fstab");
 
 	/* Fetch version */
 	printf("# PostgreSQL Version\n\n");
 	fetch_version();
-    printf("\n");
+	printf("\n");
 
 	/* Fetch postmaster start time */
 	printf("# PostgreSQL Start time\n\n");
 	fetch_postmaster_starttime();
-    printf("\n");
+	printf("\n");
 
 	/* Fetch settings by various ways */
 	printf("# PostgreSQL Configuration\n\n");
-    fetch_table(SETTINGS_BY_SOURCEFILE_TITLE, SETTINGS_BY_SOURCEFILE_SQL);
+	fetch_table(SETTINGS_BY_SOURCEFILE_TITLE, SETTINGS_BY_SOURCEFILE_SQL);
 	fetch_table(SETTINGS_NOTCONFIGFILE_NOTDEFAULTVALUE_TITLE,
-	            SETTINGS_NOTCONFIGFILE_NOTDEFAULTVALUE_SQL);
-    fetch_table(PGFILESETTINGS_TITLE, PGFILESETTINGS_SQL);
-    if (backend_minimum_version(10,0))
+				SETTINGS_NOTCONFIGFILE_NOTDEFAULTVALUE_SQL);
+	fetch_table(PGFILESETTINGS_TITLE, PGFILESETTINGS_SQL);
+	if (backend_minimum_version(10,0))
 	{
-        fetch_table(PGHBAFILERULES_TITLE, PGHBAFILERULES_SQL);
+		fetch_table(PGHBAFILERULES_TITLE, PGHBAFILERULES_SQL);
 	}
-    fetch_table(PGSETTINGS_TITLE, PGSETTINGS_SQL);
+	fetch_table(PGSETTINGS_TITLE, PGSETTINGS_SQL);
 
 	/* Fetch global objects */
 	printf("# Global objects\n\n");
-    fetch_table(DATABASES_TITLE, DATABASES_SQL);
-    fetch_table(DATABASES_IN_CACHE_TITLE, DATABASES_IN_CACHE_SQL);
-    fetch_table(TABLESPACES_TITLE, TABLESPACES_SQL);
-    fetch_table(ROLES_TITLE, ROLES_SQL);
-    fetch_table(USER_PASSWORDS_TITLE, USER_PASSWORDS_SQL);
-    fetch_table(DATABASEUSER_CONFIG_TITLE, DATABASEUSER_CONFIG_SQL);
+	fetch_table(DATABASES_TITLE, DATABASES_SQL);
+	fetch_table(DATABASES_IN_CACHE_TITLE, DATABASES_IN_CACHE_SQL);
+	fetch_table(TABLESPACES_TITLE, TABLESPACES_SQL);
+	fetch_table(ROLES_TITLE, ROLES_SQL);
+	fetch_table(USER_PASSWORDS_TITLE, USER_PASSWORDS_SQL);
+	fetch_table(DATABASEUSER_CONFIG_TITLE, DATABASEUSER_CONFIG_SQL);
 
 	/* Fetch local objects of the current database */
 	printf("# Local objects in database %s\n\n", opts->dbname);
-    fetch_table(SCHEMAS_TITLE, SCHEMAS_SQL);
-    fetch_table(NBRELS_IN_SCHEMA_TITLE, NBRELS_IN_SCHEMA_SQL);
-    if (backend_minimum_version(11,0))
-    {
-	    fetch_table(NBFUNCSPROCS_IN_SCHEMA_TITLE,
-    		        NBFUNCSPROCS_IN_SCHEMA_SQL);
-    }
-    else
-    {
-    	fetch_table(NBFUNCS_IN_SCHEMA_TITLE, NBFUNCS_IN_SCHEMA_SQL);
-    }
-    fetch_table(HEAPTOAST_SIZE_TITLE, HEAPTOAST_SIZE_SQL);
-    fetch_table(EXTENSIONS_TITLE, EXTENSIONS_SQL);
-    fetch_table(KINDS_SIZE_TITLE, KINDS_SIZE_SQL);
-    fetch_table(DEPENDENCIES_TITLE, DEPENDENCIES_SQL);
-    fetch_table(KINDS_IN_CACHE_TITLE, KINDS_IN_CACHE_SQL);
-    fetch_table(AM_SIZE_TITLE, AM_SIZE_SQL);
-    fetch_table(INDEXTYPE_TITLE, INDEXTYPE_SQL);
-    fetch_table(REDUNDANTINDEXES_TITLE, REDUNDANTINDEXES_SQL);
-    fetch_table(NBFUNCS_TITLE, NBFUNCS_SQL);
-    if (backend_minimum_version(11,0))
-    {
-        fetch_table(FUNCSPROCS_PER_SCHEMA_AND_KIND_TITLE,
-    	            FUNCSPROCS_PER_SCHEMA_AND_KIND_SQL);
+	fetch_table(SCHEMAS_TITLE, SCHEMAS_SQL);
+	fetch_table(NBRELS_IN_SCHEMA_TITLE, NBRELS_IN_SCHEMA_SQL);
+	if (backend_minimum_version(11,0))
+	{
+		fetch_table(NBFUNCSPROCS_IN_SCHEMA_TITLE,
+					NBFUNCSPROCS_IN_SCHEMA_SQL);
 	}
 	else
 	{
-        fetch_table(FUNCS_PER_SCHEMA_TITLE, FUNCS_PER_SCHEMA_SQL);
+		fetch_table(NBFUNCS_IN_SCHEMA_TITLE, NBFUNCS_IN_SCHEMA_SQL);
 	}
-    fetch_table(LOBJ_TITLE, LOBJ_SQL);
-    fetch_table(LOBJ_STATS_TITLE, LOBJ_STATS_SQL);
-    fetch_table(RELOPTIONS_TITLE, RELOPTIONS_SQL);
-    fetch_table(TOBEFROZEN_TABLES_TITLE, TOBEFROZEN_TABLES_SQL);
-    fetch_table(REPSLOTS_TITLE, REPSLOTS_SQL);
-    if (backend_minimum_version(10,0))
+	fetch_table(HEAPTOAST_SIZE_TITLE, HEAPTOAST_SIZE_SQL);
+	fetch_table(EXTENSIONS_TITLE, EXTENSIONS_SQL);
+	fetch_table(KINDS_SIZE_TITLE, KINDS_SIZE_SQL);
+	fetch_table(DEPENDENCIES_TITLE, DEPENDENCIES_SQL);
+	fetch_table(KINDS_IN_CACHE_TITLE, KINDS_IN_CACHE_SQL);
+	fetch_table(AM_SIZE_TITLE, AM_SIZE_SQL);
+	fetch_table(INDEXTYPE_TITLE, INDEXTYPE_SQL);
+	fetch_table(REDUNDANTINDEXES_TITLE, REDUNDANTINDEXES_SQL);
+	fetch_table(NBFUNCS_TITLE, NBFUNCS_SQL);
+	if (backend_minimum_version(11,0))
 	{
-        fetch_table(PUBLICATIONS_TITLE, PUBLICATIONS_SQL);
-        fetch_table(SUBSCRIPTIONS_TITLE, SUBSCRIPTIONS_SQL);
+		fetch_table(FUNCSPROCS_PER_SCHEMA_AND_KIND_TITLE,
+					FUNCSPROCS_PER_SCHEMA_AND_KIND_SQL);
 	}
-    /*
-    fetch_table(TOP10QUERYIDS_TITLE, TOP10QUERYIDS_SQL);
-    fetch_table(TOP10QUERIES_TITLE, TOP10QUERIES_SQL);
-    */
+	else
+	{
+		fetch_table(FUNCS_PER_SCHEMA_TITLE, FUNCS_PER_SCHEMA_SQL);
+	}
+	fetch_table(LOBJ_TITLE, LOBJ_SQL);
+	fetch_table(LOBJ_STATS_TITLE, LOBJ_STATS_SQL);
+	fetch_table(RELOPTIONS_TITLE, RELOPTIONS_SQL);
+	fetch_table(TOBEFROZEN_TABLES_TITLE, TOBEFROZEN_TABLES_SQL);
+	fetch_table(REPSLOTS_TITLE, REPSLOTS_SQL);
+	if (backend_minimum_version(10,0))
+	{
+		fetch_table(PUBLICATIONS_TITLE, PUBLICATIONS_SQL);
+		fetch_table(SUBSCRIPTIONS_TITLE, SUBSCRIPTIONS_SQL);
+	}
+	/*
+	fetch_table(TOP10QUERYIDS_TITLE, TOP10QUERYIDS_SQL);
+	fetch_table(TOP10QUERIES_TITLE, TOP10QUERIES_SQL);
+	*/
 
 	/* Drop the function */
 	PQfinish(conn);
 
 	pg_free(opts);
+
 	return 0;
 }
