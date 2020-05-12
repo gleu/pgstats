@@ -5,6 +5,9 @@ This repository contains the source of a collection of tools.
 
 pgstat is a vmstat-like tool for PostgreSQL.
 
+pgreport is a reporting tool for PostgreSQL. It tries to get a lot of
+informations from the metadata and statistics of PostgreSQL.
+
 pgwaitevent gathers every wait event for a specific PID, grouping them by
 queries.
 

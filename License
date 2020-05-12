@@ -1,5 +1,5 @@
-This software, pgcsvstat, pgstat, and pgdisplay, is released under the terms
-of the PostgreSQL License.
+These softwares, pgcsvstat, pgdisplay, pgreport, and pgstat, are released
+under the terms of the PostgreSQL License.
 
 Copyright (c) 2011-2020, Guillaume Lelarge
 
