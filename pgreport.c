@@ -299,6 +299,9 @@ sql_conn()
         values[7] = NULL;
 
         my_conn = PQconnectdbParams(keywords, values, true);
+
+		pg_free(keywords);
+		pg_free(values);
 #else
 		/* 34 is the length of the fallback application name setting */
 		size = 34;
@@ -335,6 +338,8 @@ sql_conn()
 			printf("Connection string: %s\n", dns);
 
 		my_conn = PQconnectdb(dns);
+
+		pg_free(dns);
 #endif
 
         new_pass = false;
@@ -682,5 +687,7 @@ main(int argc, char **argv)
 
 	/* Drop the function */
 	PQfinish(conn);
+
+	pg_free(opts);
 	return 0;
 }
