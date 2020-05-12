@@ -644,10 +644,38 @@ void
 handle_current_query()
 {
 	char		sql[PGWAITEVENT_DEFAULT_STRING_SIZE];
+	PGresult	*workers_res;
 	PGresult	*trace_res;
 	PGresult	*duration_res;
 	int			nrows;
 	int			row;
+	int			nworkers = 0;
+
+	if (opts->includeleaderworkers)
+	{
+		/* build the workers query if the user asked to include leader and workers */
+		snprintf(sql, sizeof(sql), "SELECT count(*) FROM pg_stat_activity "
+		                           "WHERE pid=%d OR leader_pid=%d",
+			opts->pid, opts->pid);
+
+		/* execute it */
+		workers_res = PQexec(conn, sql);
+
+		/* check and deal with errors */
+		if (!workers_res || PQresultStatus(workers_res) > 2)
+		{
+			warnx("pgwaitevent: query failed: %s", PQerrorMessage(conn));
+			PQclear(workers_res);
+			PQfinish(conn);
+			errx(1, "pgwaitevent: query was: %s", sql);
+		}
+
+		/* get the number of leader and workers */
+		nworkers = atoi(PQgetvalue(workers_res, 0, 0));
+
+		/* clean up */
+		PQclear(workers_res);
+	}
 
 	/* build the trace query */
 	snprintf(sql, sizeof(sql), "SELECT * FROM trace_wait_events_for_pid(%d, %s, %f);",
@@ -684,6 +712,12 @@ handle_current_query()
 	/* show durations */
 	(void)printf("Query duration: %s\n", PQgetvalue(duration_res, 0, 0));
 	(void)printf("Trace duration: %s\n", PQgetvalue(duration_res, 0, 1));
+
+	/* show number of workers */
+	if (opts->includeleaderworkers)
+	{
+		(void)printf("Number of processes: %d\n", nworkers);
+	}
 
 	/* get the number of rows */
 	nrows = PQntuples(trace_res);
