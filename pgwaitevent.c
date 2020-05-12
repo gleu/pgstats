@@ -107,7 +107,7 @@ help(const char *progname)
 		   "Usage:\n"
 		   "  %s [OPTIONS] PID\n"
 		   "\nGeneral options:\n"
-		   "  -g                     include leader and workers (parallel queries)\n"
+		   "  -g                     include leader and workers (parallel queries) [v13+]\n"
 		   "  -i                     interval (default is 1s)\n"
 		   "  -v                     verbose\n"
 		   "  -?|--help              show this help, then exit\n"
@@ -805,6 +805,15 @@ main(int argc, char **argv)
 
 	/* Connect to the database */
 	conn = sql_conn();
+
+	/* Fetch version */
+	fetch_version();
+
+	/* Check options */
+	if (opts->includeleaderworkers && !backend_minimum_version(13, 0))
+	{
+		errx(1, "You need at least v13 to include workers' wait events.");
+	}
 
 	/* Create the trace_wait_events_for_pid function */
 	build_env();
