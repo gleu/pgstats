@@ -3030,26 +3030,31 @@ main(int argc, char **argv)
 	/* Check if the release number matches the statistics */
 	if ((opts->stat == CONNECTION || opts->stat == XLOG) && !backend_minimum_version(9, 2))
 	{
+		PQfinish(conn);
 		errx(1, "You need at least v9.2 for this statistic.");
 	}
 
 	if (opts->stat == ARCHIVER && !backend_minimum_version(9, 4))
 	{
+		PQfinish(conn);
 		errx(1, "You need at least v9.4 for this statistic.");
 	}
 
 	if ((opts->stat == PROGRESS_VACUUM || opts->stat == WAITEVENT) && !backend_minimum_version(9, 6))
 	{
+		PQfinish(conn);
 		errx(1, "You need at least v9.6 for this statistic.");
 	}
 
 	if ((opts->stat == PROGRESS_CREATEINDEX || opts->stat == PROGRESS_CLUSTER) && !backend_minimum_version(12, 0))
 	{
+		PQfinish(conn);
 		errx(1, "You need at least v12 for this statistic.");
 	}
 
 	if ((opts->stat == PROGRESS_ANALYZE || opts->stat == PROGRESS_BASEBACKUP) && !backend_minimum_version(13, 0))
 	{
+		PQfinish(conn);
 		errx(1, "You need at least v13 for this statistic.");
 	}
 
@@ -3058,6 +3063,7 @@ main(int argc, char **argv)
 	{
 		if (strcmp(fetch_setting("track_functions"), "none") == 0)
 		{
+			PQfinish(conn);
 			errx(1, "track_functions is set to \"none\".");
 		}
 	}
@@ -3067,6 +3073,7 @@ main(int argc, char **argv)
 		fetch_pgstatstatements_namespace();
 		if (!opts->namespace)
 		{
+			PQfinish(conn);
 			errx(1, "Cannot find the pg_stat_statements extension.");
 		}
 	}
