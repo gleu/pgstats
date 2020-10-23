@@ -50,6 +50,7 @@ typedef enum
 	INDEX,
 	FUNCTION,
 	STATEMENT,
+	SLRU,
 	XLOG,
 	TEMPFILE,
 	WAITEVENT,
@@ -241,6 +242,18 @@ struct pgstatstatement
 	float blk_write_time;
 };
 
+/* pg_stat_slru struct */
+struct pgstatslru
+{
+    long blks_zeroed;
+    long blks_hit;
+    long blks_read;
+    long blks_written;
+    long blks_exists;
+    long flushes;
+    long truncates;
+};
+
 /* xlogstats struct */
 struct xlogstats
 {
@@ -277,6 +290,7 @@ struct pgstattableio   *previous_pgstattableio;
 struct pgstatindex     *previous_pgstatindex;
 struct pgstatfunction  *previous_pgstatfunction;
 struct pgstatstatement *previous_pgstatstatement;
+struct pgstatslru      *previous_pgstatslru;
 struct xlogstats       *previous_xlogstats;
 struct pgbouncerstats  *previous_pgbouncerstats;
 int                     hdrcnt = 0;
@@ -302,6 +316,7 @@ void		print_pgstattableio(void);
 void        print_pgstatindex(void);
 void        print_pgstatfunction(void);
 void        print_pgstatstatement(void);
+void        print_pgstatslru(void);
 void        print_pgstatprogressanalyze(void);
 void        print_pgstatprogressbasebackup(void);
 void        print_pgstatprogresscluster(void);
@@ -336,7 +351,8 @@ help(const char *progname)
 		   "\nGeneral options:\n"
 		   "  -f FILTER              include only this object\n"
 		   "                         (only works for database, table, tableio,\n"
-		   "                          index, function, and statement statistics)\n"
+		   "                          index, function, statement statistics,\n"
+		   "                          and slru)\n"
 		   "  -H                     display human-readable values\n"
 		   "  -n                     do not redisplay header\n"
 		   "  -s STAT                stats to collect\n"
@@ -359,6 +375,7 @@ help(const char *progname)
 		   "  * index                for pg_stat_all_indexes\n"
 		   "  * function             for pg_stat_user_function\n"
 		   "  * statement            for pg_stat_statements (needs the extension)\n"
+		   "  * slru                 for pg_stat_slru (only for 13+)\n"
 		   "  * xlog                 for xlog writes (only for 9.2+)\n"
 		   "  * tempfile             for temporary file usage\n"
 		   "  * waitevent            for wait events usage\n"
@@ -484,6 +501,10 @@ get_opts(int argc, char **argv)
 				else if (!strcmp(optarg, "statement"))
 				{
 					opts->stat = STATEMENT;
+				}
+				else if (!strcmp(optarg, "slru"))
+				{
+					opts->stat = SLRU;
 				}
 				else if (!strcmp(optarg, "xlog"))
 				{
@@ -1826,6 +1847,111 @@ print_pgstatstatement()
 }
 
 /*
+ * Dump all SLRU stats.
+ */
+void
+print_pgstatslru()
+{
+	char		sql[PGSTAT_DEFAULT_STRING_SIZE];
+	PGresult   *res;
+    const char *paramValues[1];
+	int			nrows;
+	int			row, column;
+
+    long blks_zeroed = 0;
+    long blks_hit = 0;
+    long blks_read = 0;
+    long blks_written = 0;
+    long blks_exists = 0;
+    long flushes = 0;
+    long truncates = 0;
+
+	/*
+	 * With a filter, we assume we'll get only one row.
+	 * Without, we sum all the fields to get one row.
+	 */
+	if (opts->filter == NULL)
+	{
+		snprintf(sql, sizeof(sql),
+				 "SELECT sum(blks_zeroed), sum(blks_hit), sum(blks_read), sum(blks_written), "
+				 "sum(blks_exists), sum(flushes), sum(truncates) "
+	             "FROM pg_stat_slru ");
+
+		res = PQexec(conn, sql);
+	}
+	else
+	{
+		snprintf(sql, sizeof(sql),
+				 "SELECT sum(blks_zeroed), sum(blks_hit), sum(blks_read), sum(blks_written), "
+				 "sum(blks_exists), sum(flushes), sum(truncates) "
+	             "FROM pg_stat_slru "
+				 "WHERE name = $1");
+
+		paramValues[0] = pg_strdup(opts->filter);
+
+	    res = PQexecParams(conn,
+	                       sql,
+	                       1,       /* one param */
+	                       NULL,    /* let the backend deduce param type */
+	                       paramValues,
+	                       NULL,    /* don't need param lengths since text */
+	                       NULL,    /* default to all text params */
+	                       0);      /* ask for text results */
+    }
+
+	/* check and deal with errors */
+	if (!res || PQresultStatus(res) > 2)
+	{
+		warnx("pgstats: query failed: %s", PQerrorMessage(conn));
+		PQclear(res);
+		PQfinish(conn);
+		errx(1, "pgstats: query was: %s", sql);
+	}
+
+	/* get the number of fields */
+	nrows = PQntuples(res);
+
+	/* for each row, dump the information */
+	/* this is stupid, a simple if would do the trick, but it will help for other cases */
+	for (row = 0; row < nrows; row++)
+	{
+		column = 0;
+
+		/* getting new values */
+        blks_zeroed = atol(PQgetvalue(res, row, column++));
+        blks_hit = atol(PQgetvalue(res, row, column++));
+        blks_read = atol(PQgetvalue(res, row, column++));
+        blks_written = atol(PQgetvalue(res, row, column++));
+        blks_exists = atol(PQgetvalue(res, row, column++));
+        flushes = atol(PQgetvalue(res, row, column++));
+        truncates = atol(PQgetvalue(res, row, column++));
+
+		/* printing the diff... note that the first line will be the current value, rather than the diff */
+		(void)printf(" %6ld   %6ld  %6ld  %6ld   %6ld  %6ld     %6ld\n",
+		    blks_zeroed - previous_pgstatslru->blks_zeroed,
+		    blks_hit - previous_pgstatslru->blks_hit,
+		    blks_read - previous_pgstatslru->blks_read,
+		    blks_written - previous_pgstatslru->blks_written,
+		    blks_exists - previous_pgstatslru->blks_exists,
+		    flushes - previous_pgstatslru->flushes,
+		    truncates - previous_pgstatslru->truncates
+		    );
+
+		/* setting the new old value */
+		previous_pgstatslru->blks_zeroed = blks_zeroed;
+		previous_pgstatslru->blks_hit = blks_hit;
+		previous_pgstatslru->blks_read = blks_read;
+		previous_pgstatslru->blks_written = blks_written;
+		previous_pgstatslru->blks_exists = blks_exists;
+		previous_pgstatslru->flushes = flushes;
+		previous_pgstatslru->truncates = truncates;
+	}
+
+	/* cleanup */
+	PQclear(res);
+}
+
+/*
  * Dump base backup progress.
  */
 void
@@ -2675,6 +2801,9 @@ print_header(void)
 			(void)printf("--------- misc ---------- ----------- shared ----------- ----------- local ----------- ----- temp ----- -------- time --------\n");
 			(void)printf("  calls      time   rows      hit   read  dirty written      hit   read  dirty written    read written        read   written\n");
 			break;
+		case SLRU:
+			(void)printf("  zeroed  hit     read    written  exists  flushes  truncates\n");
+			break;
 		case XLOG:
 			(void)printf("-------- filename -------- -- location -- ---- bytes ----\n");
 			break;
@@ -2759,6 +2888,9 @@ print_line(void)
 			break;
 		case STATEMENT:
 			print_pgstatstatement();
+			break;
+		case SLRU:
+			print_pgstatslru();
 			break;
 		case XLOG:
 			print_xlogstats();
@@ -2906,6 +3038,16 @@ allocate_struct(void)
 			previous_pgstatstatement->temp_blks_written = 0;
 			previous_pgstatstatement->blk_read_time = 0;
 			previous_pgstatstatement->blk_write_time = 0;
+			break;
+		case SLRU:
+			previous_pgstatslru = (struct pgstatslru *) pg_malloc(sizeof(struct pgstatslru));
+		    previous_pgstatslru->blks_zeroed = 0;
+		    previous_pgstatslru->blks_hit = 0;
+		    previous_pgstatslru->blks_read = 0;
+		    previous_pgstatslru->blks_written = 0;
+		    previous_pgstatslru->blks_exists = 0;
+		    previous_pgstatslru->flushes = 0;
+		    previous_pgstatslru->truncates = 0;
 			break;
 		case XLOG:
 			previous_xlogstats = (struct xlogstats *) pg_malloc(sizeof(struct xlogstats));
@@ -3066,7 +3208,8 @@ main(int argc, char **argv)
 		errx(1, "You need at least v12 for this statistic.");
 	}
 
-	if ((opts->stat == PROGRESS_ANALYZE || opts->stat == PROGRESS_BASEBACKUP) && !backend_minimum_version(13, 0))
+	if ((opts->stat == PROGRESS_ANALYZE || opts->stat == PROGRESS_BASEBACKUP|| opts->stat == SLRU)
+		&& !backend_minimum_version(13, 0))
 	{
 		PQfinish(conn);
 		errx(1, "You need at least v13 for this statistic.");
