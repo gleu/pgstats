@@ -60,22 +60,15 @@ struct options
 	/* version number */
 	int		major;
 	int		minor;
-
-	/* frequency */
-	float	interval;
-
-	/* query and trace timestamps */
-	char	*query_start;
-	char	*trace_start;
 };
 
 
 /*
  * Global variables
  */
-PGconn	   			   *conn;
-struct options		   *opts;
-extern char			*optarg;
+PGconn          *conn;
+struct options  *opts;
+extern char     *optarg;
 
 
 /*
@@ -152,7 +145,7 @@ get_opts(int argc, char **argv)
 		}
 		if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0)
 		{
-			puts("pgwaitevent " PGREPORT_VERSION " (compiled with PostgreSQL " PG_VERSION ")");
+			puts("pgreport " PGREPORT_VERSION " (compiled with PostgreSQL " PG_VERSION ")");
 			exit(0);
 		}
 	}
@@ -306,7 +299,7 @@ sql_conn()
 		keywords[4] = "dbname";
 		values[4] = opts->dbname;
 		keywords[5] = "fallback_application_name";
-		values[5] = "pgwaitevent";
+		values[5] = "pgreport";
 		keywords[7] = NULL;
 		values[7] = NULL;
 
@@ -332,7 +325,7 @@ sql_conn()
 		 * keep this string as the connection string, and add other parameters
 		 * if they are supplied.
 		 */
-		sprintf(dns, "%s", "fallback_application_name='pgwaitevent'");
+		sprintf(dns, "%s", "fallback_application_name='pgreport'");
 
 		if (strchr(opts->dbname, '=') != NULL)
 			sprintf(dns, "%s%s", dns, opts->dbname);
@@ -413,7 +406,7 @@ install_extension(char *extension)
 				install_sql[PGREPORT_DEFAULT_STRING_SIZE];
 	PGresult   *check_res, *install_res;
 
-	if (strlen(opts->script) > 0)
+	if (opts->script)
 	{
 		printf("CREATE EXTENSION IF NOT EXISTS %s;\n", extension);
 	}
@@ -433,10 +426,10 @@ install_extension(char *extension)
 		/* check and deal with errors */
 		if (!check_res || PQresultStatus(check_res) > 2)
 		{
-			warnx("pgwaitevent: query failed: %s", PQerrorMessage(conn));
+			warnx("pgreport: query failed: %s", PQerrorMessage(conn));
 			PQclear(check_res);
 			PQfinish(conn);
-			errx(1, "pgwaitevent: query was: %s", check_sql);
+			errx(1, "pgreport: query was: %s", check_sql);
 		}
 
 		if (PQntuples(check_res) == 0)
@@ -452,10 +445,10 @@ install_extension(char *extension)
 			/* install and deal with errors */
 			if (!install_res || PQresultStatus(install_res) > 2)
 			{
-				warnx("pgwaitevent: query failed: %s", PQerrorMessage(conn));
+				warnx("pgreport: query failed: %s", PQerrorMessage(conn));
 				PQclear(install_res);
 				PQfinish(conn);
-				errx(1, "pgwaitevent: query was: %s", install_sql);
+				errx(1, "pgreport: query was: %s", install_sql);
 			}
 			/* cleanup */
 			PQclear(install_res);
@@ -476,7 +469,7 @@ fetch_version()
 	char		sql[PGREPORT_DEFAULT_STRING_SIZE];
 	PGresult   *res;
 
-	if (strlen(opts->script) > 0)
+	if (opts->script)
 	{
 		printf("\\echo PostgreSQL version\n");
 		printf("SELECT version();\n");
@@ -492,10 +485,10 @@ fetch_version()
 		/* check and deal with errors */
 		if (!res || PQresultStatus(res) > 2)
 		{
-			warnx("pgwaitevent: query failed: %s", PQerrorMessage(conn));
+			warnx("pgreport: query failed: %s", PQerrorMessage(conn));
 			PQclear(res);
 			PQfinish(conn);
-			errx(1, "pgwaitevent: query was: %s", sql);
+			errx(1, "pgreport: query was: %s", sql);
 		}
 
 		/* get the only row, and parse it to get major and minor numbers */
@@ -522,7 +515,7 @@ fetch_postmaster_starttime()
 	char		sql[PGREPORT_DEFAULT_STRING_SIZE];
 	PGresult   *res;
 
-	if (strlen(opts->script) > 0)
+	if (opts->script)
 	{
 		printf("\\echo PostgreSQL start time\n");
 		printf("SELECT pg_postmaster_start_time();\n");
@@ -538,10 +531,10 @@ fetch_postmaster_starttime()
 		/* check and deal with errors */
 		if (!res || PQresultStatus(res) > 2)
 		{
-			warnx("pgwaitevent: query failed: %s", PQerrorMessage(conn));
+			warnx("pgreport: query failed: %s", PQerrorMessage(conn));
 			PQclear(res);
 			PQfinish(conn);
-			errx(1, "pgwaitevent: query was: %s", sql);
+			errx(1, "pgreport: query was: %s", sql);
 		}
 
 		printf ("PostgreSQL start time: %s\n", PQgetvalue(res, 0, 0));
@@ -561,7 +554,7 @@ fetch_table(char *label, char *query)
 	PGresult	*res;
 	printQueryOpt myopt;
 
-	if (strlen(opts->script) > 0)
+	if (opts->script)
 	{
 		printf("\\echo %s\n",label);
 		printf("%s;\n",query);
@@ -600,10 +593,10 @@ fetch_table(char *label, char *query)
 		/* check and deal with errors */
 		if (!res || PQresultStatus(res) > 2)
 		{
-			warnx("pgwaitevent: query failed: %s", PQerrorMessage(conn));
+			warnx("pgreport: query failed: %s", PQerrorMessage(conn));
 			PQclear(res);
 			PQfinish(conn);
-			errx(1, "pgwaitevent: query was: %s", query);
+			errx(1, "pgreport: query was: %s", query);
 		}
 
 		/* print results */
@@ -744,7 +737,7 @@ main(int argc, char **argv)
 	/* Parse the options */
 	get_opts(argc, argv);
 
-	if (strlen(opts->script) == 0)
+	if (!opts->script)
 	{
 		/* Connect to the database */
 		conn = sql_conn();
@@ -781,23 +774,24 @@ main(int argc, char **argv)
 		printf("\\echo =================================================================================\n");
 		printf("\\echo == pgreport SQL script for a %s release =========================================\n", opts->script);
 		printf("\\echo =================================================================================\n");
+		printf("SET application_name to 'pgreport';\n");
 	}
 
 	/* Install some extensions if they are not already there */
 	install_extension("pg_buffercache");
 
 	/* Fetch version */
-	printf("%s# PostgreSQL Version\n\n", strlen(opts->script) == 0 ? "" : "\\echo ");
+	printf("%s# PostgreSQL Version\n\n", opts->script ? "\\echo " : "");
 	fetch_version();
 	printf("\n");
 
 	/* Fetch postmaster start time */
-	printf("%s# PostgreSQL Start time\n\n", strlen(opts->script) == 0 ? "" : "\\echo ");
+	printf("%s# PostgreSQL Start time\n\n", opts->script ? "\\echo " : "");
 	fetch_postmaster_starttime();
 	printf("\n");
 
 	/* Fetch settings by various ways */
-	printf("%s# PostgreSQL Configuration\n\n", strlen(opts->script) == 0 ? "" : "\\echo ");
+	printf("%s# PostgreSQL Configuration\n\n", opts->script ? "\\echo " : "");
 	fetch_table(SETTINGS_BY_SOURCEFILE_TITLE, SETTINGS_BY_SOURCEFILE_SQL);
 	fetch_table(SETTINGS_NOTCONFIGFILE_NOTDEFAULTVALUE_TITLE,
 				SETTINGS_NOTCONFIGFILE_NOTDEFAULTVALUE_SQL);
@@ -809,7 +803,7 @@ main(int argc, char **argv)
 	fetch_table(PGSETTINGS_TITLE, PGSETTINGS_SQL);
 
 	/* Fetch global objects */
-	printf("%s# Global objects\n\n", strlen(opts->script) == 0 ? "" : "\\echo ");
+	printf("%s# Global objects\n\n", opts->script ? "\\echo " : "");
 	fetch_table(DATABASES_TITLE, DATABASES_SQL);
 	fetch_table(DATABASES_IN_CACHE_TITLE, DATABASES_IN_CACHE_SQL);
 	fetch_table(TABLESPACES_TITLE, TABLESPACES_SQL);
@@ -818,7 +812,7 @@ main(int argc, char **argv)
 	fetch_table(DATABASEUSER_CONFIG_TITLE, DATABASEUSER_CONFIG_SQL);
 
 	/* Fetch local objects of the current database */
-	printf("%s# Local objects in database %s\n\n", strlen(opts->script) == 0 ? "" : "\\echo ", opts->dbname);
+	printf("%s# Local objects in database %s\n\n", opts->script ? "\\echo " : "", opts->dbname);
 	fetch_table(SCHEMAS_TITLE, SCHEMAS_SQL);
 	fetch_table(NBRELS_IN_SCHEMA_TITLE, NBRELS_IN_SCHEMA_SQL);
 	if (backend_minimum_version(11,0))
@@ -863,7 +857,7 @@ main(int argc, char **argv)
 	fetch_table(TOP10QUERIES_TITLE, TOP10QUERIES_SQL);
 	*/
 
-	if (strlen(opts->script) == 0)
+	if (opts->script)
 	{
 		/* Drop the function */
 		PQfinish(conn);
