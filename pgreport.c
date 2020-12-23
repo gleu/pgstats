@@ -48,6 +48,7 @@
 struct options
 {
 	/* misc */
+	char	*script;
 	bool	verbose;
 
 	/* connection parameters */
@@ -108,14 +109,15 @@ help(const char *progname)
 		   "Usage:\n"
 		   "  %s [OPTIONS]\n"
 		   "\nGeneral options:\n"
-		   "  -v			verbose\n"
-		   "  -?|--help	 show this help, then exit\n"
+		   "  -s VERSION    generate SQL script for $VERSION release\n"
+		   "  -v            verbose\n"
+		   "  -?|--help     show this help, then exit\n"
 		   "  -V|--version  output version information, then exit\n"
 		   "\nConnection options:\n"
 		   "  -h HOSTNAME   database server host or socket directory\n"
-		   "  -p PORT	   database server port number\n"
-		   "  -U USER	   connect as specified database user\n"
-		   "  -d DBNAME	 database to connect to\n\n"
+		   "  -p PORT       database server port number\n"
+		   "  -U USER       connect as specified database user\n"
+		   "  -d DBNAME     database to connect to\n\n"
 		   "Report bugs to <guillaume@lelarge.info>.\n",
 		   progname, progname);
 }
@@ -133,6 +135,7 @@ get_opts(int argc, char **argv)
 	progname = get_progname(argv[0]);
 
 	/* set the defaults */
+	opts->script = NULL;
 	opts->verbose = false;
 	opts->dbname = NULL;
 	opts->hostname = NULL;
@@ -155,7 +158,7 @@ get_opts(int argc, char **argv)
 	}
 
 	/* get options */
-	while ((c = getopt(argc, argv, "h:p:U:d:v")) != -1)
+	while ((c = getopt(argc, argv, "h:p:U:d:vs:")) != -1)
 	{
 		switch (c)
 		{
@@ -172,6 +175,12 @@ get_opts(int argc, char **argv)
 				/* port to connect to on remote host */
 			case 'p':
 				opts->port = pg_strdup(optarg);
+				break;
+
+				/* get script */
+			case 's':
+				opts->script = pg_strdup(optarg);
+	            sscanf(opts->script, "%d.%d", &(opts->major), &(opts->minor));
 				break;
 
 				/* username */
@@ -404,50 +413,57 @@ install_extension(char *extension)
 				install_sql[PGREPORT_DEFAULT_STRING_SIZE];
 	PGresult   *check_res, *install_res;
 
-	/* check if extension is already installed */
-	snprintf(check_sql, sizeof(check_sql),
-		"SELECT 1 "
-		"FROM pg_available_extensions "
-		"WHERE name='%s' "
-		"  AND installed_version IS NOT NULL",
-		extension);
-
-	/* make the call */
-	check_res = PQexec(conn, check_sql);
-
-	/* check and deal with errors */
-	if (!check_res || PQresultStatus(check_res) > 2)
+	if (strlen(opts->script) > 0)
 	{
-		warnx("pgwaitevent: query failed: %s", PQerrorMessage(conn));
-		PQclear(check_res);
-		PQfinish(conn);
-		errx(1, "pgwaitevent: query was: %s", check_sql);
+		printf("CREATE EXTENSION IF NOT EXISTS %s;\n", extension);
 	}
-
-	if (PQntuples(check_res) == 0)
+	else
 	{
 		/* check if extension is already installed */
-		snprintf(install_sql, sizeof(install_sql),
-		  	"create extension %s",
-		   	extension);
+		snprintf(check_sql, sizeof(check_sql),
+			"SELECT 1 "
+			"FROM pg_available_extensions "
+			"WHERE name='%s' "
+			"  AND installed_version IS NOT NULL",
+			extension);
 
 		/* make the call */
-		install_res = PQexec(conn, install_sql);
+		check_res = PQexec(conn, check_sql);
 
-		/* install and deal with errors */
-		if (!install_res || PQresultStatus(install_res) > 2)
+		/* check and deal with errors */
+		if (!check_res || PQresultStatus(check_res) > 2)
 		{
 			warnx("pgwaitevent: query failed: %s", PQerrorMessage(conn));
-			PQclear(install_res);
+			PQclear(check_res);
 			PQfinish(conn);
-			errx(1, "pgwaitevent: query was: %s", install_sql);
+			errx(1, "pgwaitevent: query was: %s", check_sql);
 		}
-		/* cleanup */
-		PQclear(install_res);
-	}
 
-	/* cleanup */
-	PQclear(check_res);
+		if (PQntuples(check_res) == 0)
+		{
+			/* check if extension is already installed */
+			snprintf(install_sql, sizeof(install_sql),
+			  	"create extension %s",
+			   	extension);
+
+			/* make the call */
+			install_res = PQexec(conn, install_sql);
+
+			/* install and deal with errors */
+			if (!install_res || PQresultStatus(install_res) > 2)
+			{
+				warnx("pgwaitevent: query failed: %s", PQerrorMessage(conn));
+				PQclear(install_res);
+				PQfinish(conn);
+				errx(1, "pgwaitevent: query was: %s", install_sql);
+			}
+			/* cleanup */
+			PQclear(install_res);
+		}
+
+		/* cleanup */
+		PQclear(check_res);
+	}
 }
 
 
@@ -460,32 +476,40 @@ fetch_version()
 	char		sql[PGREPORT_DEFAULT_STRING_SIZE];
 	PGresult   *res;
 
-	/* get the cluster version */
-	snprintf(sql, sizeof(sql), "SELECT version()");
-
-	/* make the call */
-	res = PQexec(conn, sql);
-
-	/* check and deal with errors */
-	if (!res || PQresultStatus(res) > 2)
+	if (strlen(opts->script) > 0)
 	{
-		warnx("pgwaitevent: query failed: %s", PQerrorMessage(conn));
-		PQclear(res);
-		PQfinish(conn);
-		errx(1, "pgwaitevent: query was: %s", sql);
+		printf("\\echo PostgreSQL version\n");
+		printf("SELECT version();\n");
 	}
+	else
+	{
+		/* get the cluster version */
+		snprintf(sql, sizeof(sql), "SELECT version()");
 
-	/* get the only row, and parse it to get major and minor numbers */
-	sscanf(PQgetvalue(res, 0, 0), "%*s %d.%d", &(opts->major), &(opts->minor));
+		/* make the call */
+		res = PQexec(conn, sql);
 
-	/* print version */
-	if (opts->verbose)
-		printf("Detected release: %d.%d\n", opts->major, opts->minor);
+		/* check and deal with errors */
+		if (!res || PQresultStatus(res) > 2)
+		{
+			warnx("pgwaitevent: query failed: %s", PQerrorMessage(conn));
+			PQclear(res);
+			PQfinish(conn);
+			errx(1, "pgwaitevent: query was: %s", sql);
+		}
 
-	printf ("PostgreSQL version: %s\n", PQgetvalue(res, 0, 0));
+		/* get the only row, and parse it to get major and minor numbers */
+		sscanf(PQgetvalue(res, 0, 0), "%*s %d.%d", &(opts->major), &(opts->minor));
 
-	/* cleanup */
-	PQclear(res);
+		/* print version */
+		if (opts->verbose)
+			printf("Detected release: %d.%d\n", opts->major, opts->minor);
+
+		printf ("PostgreSQL version: %s\n", PQgetvalue(res, 0, 0));
+
+		/* cleanup */
+		PQclear(res);
+	}
 }
 
 
@@ -498,25 +522,33 @@ fetch_postmaster_starttime()
 	char		sql[PGREPORT_DEFAULT_STRING_SIZE];
 	PGresult   *res;
 
-	/* get the cluster version */
-	snprintf(sql, sizeof(sql), "SELECT pg_postmaster_start_time()");
-
-	/* make the call */
-	res = PQexec(conn, sql);
-
-	/* check and deal with errors */
-	if (!res || PQresultStatus(res) > 2)
+	if (strlen(opts->script) > 0)
 	{
-		warnx("pgwaitevent: query failed: %s", PQerrorMessage(conn));
-		PQclear(res);
-		PQfinish(conn);
-		errx(1, "pgwaitevent: query was: %s", sql);
+		printf("\\echo PostgreSQL start time\n");
+		printf("SELECT pg_postmaster_start_time();\n");
 	}
+	else
+	{
+		/* get the cluster version */
+		snprintf(sql, sizeof(sql), "SELECT pg_postmaster_start_time()");
 
-	printf ("PostgreSQL start time: %s\n", PQgetvalue(res, 0, 0));
+		/* make the call */
+		res = PQexec(conn, sql);
 
-	/* cleanup */
-	PQclear(res);
+		/* check and deal with errors */
+		if (!res || PQresultStatus(res) > 2)
+		{
+			warnx("pgwaitevent: query failed: %s", PQerrorMessage(conn));
+			PQclear(res);
+			PQfinish(conn);
+			errx(1, "pgwaitevent: query was: %s", sql);
+		}
+
+		printf ("PostgreSQL start time: %s\n", PQgetvalue(res, 0, 0));
+
+		/* cleanup */
+		PQclear(res);
+	}
 }
 
 
@@ -529,49 +561,57 @@ fetch_table(char *label, char *query)
 	PGresult	*res;
 	printQueryOpt myopt;
 
-	myopt.nullPrint = NULL;
-	myopt.title = pstrdup(label);
-	myopt.translate_header = false;
-	myopt.n_translate_columns = 0;
-	myopt.translate_columns = NULL;
-	myopt.footers = NULL;
-	myopt.topt.format = PRINT_ALIGNED;
-	myopt.topt.expanded = 0;
-	myopt.topt.border = 2;
-	myopt.topt.pager = 0;
-	myopt.topt.tuples_only = false;
-	myopt.topt.start_table = true;
-	myopt.topt.stop_table = true;
-	myopt.topt.default_footer = false;
-	myopt.topt.line_style = NULL;
-	//myopt.topt.fieldSep = NULL;
-	//myopt.topt.recordSep = NULL;
-	myopt.topt.numericLocale = false;
-	myopt.topt.tableAttr = NULL;
-	myopt.topt.encoding = PQenv2encoding();
-	myopt.topt.env_columns = 0;
-	//myopt.topt.columns = 3;
-	myopt.topt.unicode_border_linestyle = UNICODE_LINESTYLE_SINGLE;
-	myopt.topt.unicode_column_linestyle = UNICODE_LINESTYLE_SINGLE;
-	myopt.topt.unicode_header_linestyle = UNICODE_LINESTYLE_SINGLE;
-
-	/* execute it */
-	res = PQexec(conn, query);
-
-	/* check and deal with errors */
-	if (!res || PQresultStatus(res) > 2)
+	if (strlen(opts->script) > 0)
 	{
-		warnx("pgwaitevent: query failed: %s", PQerrorMessage(conn));
-		PQclear(res);
-		PQfinish(conn);
-		errx(1, "pgwaitevent: query was: %s", query);
+		printf("\\echo %s\n",label);
+		printf("%s;\n",query);
 	}
+	else
+	{
+		myopt.nullPrint = NULL;
+		myopt.title = pstrdup(label);
+		myopt.translate_header = false;
+		myopt.n_translate_columns = 0;
+		myopt.translate_columns = NULL;
+		myopt.footers = NULL;
+		myopt.topt.format = PRINT_ALIGNED;
+		myopt.topt.expanded = 0;
+		myopt.topt.border = 2;
+		myopt.topt.pager = 0;
+		myopt.topt.tuples_only = false;
+		myopt.topt.start_table = true;
+		myopt.topt.stop_table = true;
+		myopt.topt.default_footer = false;
+		myopt.topt.line_style = NULL;
+		//myopt.topt.fieldSep = NULL;
+		//myopt.topt.recordSep = NULL;
+		myopt.topt.numericLocale = false;
+		myopt.topt.tableAttr = NULL;
+		myopt.topt.encoding = PQenv2encoding();
+		myopt.topt.env_columns = 0;
+		//myopt.topt.columns = 3;
+		myopt.topt.unicode_border_linestyle = UNICODE_LINESTYLE_SINGLE;
+		myopt.topt.unicode_column_linestyle = UNICODE_LINESTYLE_SINGLE;
+		myopt.topt.unicode_header_linestyle = UNICODE_LINESTYLE_SINGLE;
 
-	/* print results */
-	printQuery(res, &myopt, stdout, false, NULL);
+		/* execute it */
+		res = PQexec(conn, query);
 
-	/* cleanup */
-	PQclear(res);
+		/* check and deal with errors */
+		if (!res || PQresultStatus(res) > 2)
+		{
+			warnx("pgwaitevent: query failed: %s", PQerrorMessage(conn));
+			PQclear(res);
+			PQfinish(conn);
+			errx(1, "pgwaitevent: query was: %s", query);
+		}
+
+		/* print results */
+		printQuery(res, &myopt, stdout, false, NULL);
+
+		/* cleanup */
+		PQclear(res);
+	}
 }
 
 
@@ -704,51 +744,60 @@ main(int argc, char **argv)
 	/* Parse the options */
 	get_opts(argc, argv);
 
-	/* Connect to the database */
-	conn = sql_conn();
+	if (strlen(opts->script) == 0)
+	{
+		/* Connect to the database */
+		conn = sql_conn();
+
+		printf("# Hardware\n\n");
+		printf("## CPU\n");
+		exec_command("/usr/bin/lscpu");
+		printf("\n## Memory\n");
+		fetch_file("/proc/meminfo");
+		printf("\n## Disks\n");
+		exec_command("/usr/bin/lsblk");
+		printf("\n");
+
+		/* get some kernel config */
+		printf("# Kernel config\n");
+		fetch_kernelconfig("dirty_background_bytes");
+		fetch_kernelconfig("dirty_background_ratio");
+		fetch_kernelconfig("dirty_bytes");
+		fetch_kernelconfig("dirty_ratio");
+		fetch_kernelconfig("nr_hugepages");
+		fetch_kernelconfig("nr_overcommit_hugepages");
+		fetch_kernelconfig("overcommit_ratio");
+		fetch_kernelconfig("overcommit_kbytes");
+		fetch_kernelconfig("overcommit_memory");
+		fetch_kernelconfig("swappiness");
+		fetch_kernelconfig("zone_reclaim_mode");
+		printf("\n## df\n");
+		exec_command("/usr/bin/df");
+		printf("\n## fstab\n");
+		fetch_file("/etc/fstab");
+	}
+	else
+	{
+		printf("\\echo =================================================================================\n");
+		printf("\\echo == pgreport SQL script for a %s release =========================================\n", opts->script);
+		printf("\\echo =================================================================================\n");
+	}
 
 	/* Install some extensions if they are not already there */
 	install_extension("pg_buffercache");
 
-	printf("# Hardware\n\n");
-	printf("## CPU\n");
-	exec_command("/usr/bin/lscpu");
-	printf("\n## Memory\n");
-	fetch_file("/proc/meminfo");
-	printf("\n## Disks\n");
-	exec_command("/usr/bin/lsblk");
-	printf("\n");
-
-	/* get some kernel config */
-	printf("# Kernel config\n");
-	fetch_kernelconfig("dirty_background_bytes");
-	fetch_kernelconfig("dirty_background_ratio");
-	fetch_kernelconfig("dirty_bytes");
-	fetch_kernelconfig("dirty_ratio");
-	fetch_kernelconfig("nr_hugepages");
-	fetch_kernelconfig("nr_overcommit_hugepages");
-	fetch_kernelconfig("overcommit_ratio");
-	fetch_kernelconfig("overcommit_kbytes");
-	fetch_kernelconfig("overcommit_memory");
-	fetch_kernelconfig("swappiness");
-	fetch_kernelconfig("zone_reclaim_mode");
-	printf("\n## df\n");
-	exec_command("/usr/bin/df");
-	printf("\n## fstab\n");
-	fetch_file("/etc/fstab");
-
 	/* Fetch version */
-	printf("# PostgreSQL Version\n\n");
+	printf("%s# PostgreSQL Version\n\n", strlen(opts->script) == 0 ? "" : "\\echo ");
 	fetch_version();
 	printf("\n");
 
 	/* Fetch postmaster start time */
-	printf("# PostgreSQL Start time\n\n");
+	printf("%s# PostgreSQL Start time\n\n", strlen(opts->script) == 0 ? "" : "\\echo ");
 	fetch_postmaster_starttime();
 	printf("\n");
 
 	/* Fetch settings by various ways */
-	printf("# PostgreSQL Configuration\n\n");
+	printf("%s# PostgreSQL Configuration\n\n", strlen(opts->script) == 0 ? "" : "\\echo ");
 	fetch_table(SETTINGS_BY_SOURCEFILE_TITLE, SETTINGS_BY_SOURCEFILE_SQL);
 	fetch_table(SETTINGS_NOTCONFIGFILE_NOTDEFAULTVALUE_TITLE,
 				SETTINGS_NOTCONFIGFILE_NOTDEFAULTVALUE_SQL);
@@ -760,7 +809,7 @@ main(int argc, char **argv)
 	fetch_table(PGSETTINGS_TITLE, PGSETTINGS_SQL);
 
 	/* Fetch global objects */
-	printf("# Global objects\n\n");
+	printf("%s# Global objects\n\n", strlen(opts->script) == 0 ? "" : "\\echo ");
 	fetch_table(DATABASES_TITLE, DATABASES_SQL);
 	fetch_table(DATABASES_IN_CACHE_TITLE, DATABASES_IN_CACHE_SQL);
 	fetch_table(TABLESPACES_TITLE, TABLESPACES_SQL);
@@ -769,7 +818,7 @@ main(int argc, char **argv)
 	fetch_table(DATABASEUSER_CONFIG_TITLE, DATABASEUSER_CONFIG_SQL);
 
 	/* Fetch local objects of the current database */
-	printf("# Local objects in database %s\n\n", opts->dbname);
+	printf("%s# Local objects in database %s\n\n", strlen(opts->script) == 0 ? "" : "\\echo ", opts->dbname);
 	fetch_table(SCHEMAS_TITLE, SCHEMAS_SQL);
 	fetch_table(NBRELS_IN_SCHEMA_TITLE, NBRELS_IN_SCHEMA_SQL);
 	if (backend_minimum_version(11,0))
@@ -814,8 +863,11 @@ main(int argc, char **argv)
 	fetch_table(TOP10QUERIES_TITLE, TOP10QUERIES_SQL);
 	*/
 
-	/* Drop the function */
-	PQfinish(conn);
+	if (strlen(opts->script) == 0)
+	{
+		/* Drop the function */
+		PQfinish(conn);
+	}
 
 	pg_free(opts);
 
