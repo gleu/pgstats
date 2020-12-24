@@ -53,6 +53,7 @@ typedef enum
 	SLRU,
 	XLOG,
 	TEMPFILE,
+	REPSLOTS,
 	WAITEVENT,
 	PROGRESS_ANALYZE,
 	PROGRESS_BASEBACKUP,
@@ -261,6 +262,14 @@ struct xlogstats
 	long locationdiff;
 };
 
+/* xlogstats struct */
+struct repslots
+{
+	char *currentlocation;
+	char *restartlsn;
+	long restartlsndiff;
+};
+
 /* pgBouncer stats struct */
 struct pgbouncerstats
 {
@@ -292,6 +301,7 @@ struct pgstatfunction  *previous_pgstatfunction;
 struct pgstatstatement *previous_pgstatstatement;
 struct pgstatslru      *previous_pgstatslru;
 struct xlogstats       *previous_xlogstats;
+struct repslots        *previous_repslots;
 struct pgbouncerstats  *previous_pgbouncerstats;
 int                     hdrcnt = 0;
 volatile sig_atomic_t   wresized;
@@ -323,6 +333,7 @@ void        print_pgstatprogresscluster(void);
 void        print_pgstatprogresscreateindex(void);
 void        print_pgstatprogressvacuum(void);
 void        print_xlogstats(void);
+void        print_repslotsstats(void);
 void        print_tempfilestats(void);
 void        print_pgstatwaitevent(void);
 void        print_pgbouncerpools(void);
@@ -352,7 +363,7 @@ help(const char *progname)
 		   "  -f FILTER              include only this object\n"
 		   "                         (only works for database, table, tableio,\n"
 		   "                          index, function, statement statistics,\n"
-		   "                          and slru)\n"
+		   "                          replication slots, and slru)\n"
 		   "  -H                     display human-readable values\n"
 		   "  -n                     do not redisplay header\n"
 		   "  -s STAT                stats to collect\n"
@@ -377,6 +388,7 @@ help(const char *progname)
 		   "  * statement            for pg_stat_statements (needs the extension)\n"
 		   "  * slru                 for pg_stat_slru (only for 13+)\n"
 		   "  * xlog                 for xlog writes (only for 9.2+)\n"
+		   "  * repslots             for replication slots\n"
 		   "  * tempfile             for temporary file usage\n"
 		   "  * waitevent            for wait events usage\n"
 		   "  * progress_analyze     for analyze progress monitoring (only for\n"
@@ -509,6 +521,10 @@ get_opts(int argc, char **argv)
 				else if (!strcmp(optarg, "xlog"))
 				{
 					opts->stat = XLOG;
+				}
+				else if (!strcmp(optarg, "repslots"))
+				{
+					opts->stat = REPSLOTS;
 				}
 				else if (!strcmp(optarg, "tempfile"))
 				{
@@ -2316,6 +2332,77 @@ print_xlogstats()
 }
 
 /*
+ * Dump all repslots informations
+ */
+void
+print_repslotsstats()
+{
+	char		sql[PGSTAT_DEFAULT_STRING_SIZE];
+	PGresult   *res;
+
+	char *xlogfilename;
+	char *currentlocation;
+	long locationdiff;
+	char *prettylocation;
+	char h_locationdiff[PGSTAT_DEFAULT_STRING_SIZE];
+
+	snprintf(sql, sizeof(sql),
+		 "SELECT "
+		 "  pg_walfile_name(restart_lsn), "
+		 "  restart_lsn, "
+		 "  pg_wal_lsn_diff(restart_lsn, '0/0'), "
+		 "  pg_size_pretty(pg_wal_lsn_diff(restart_lsn, '%s')) "
+		 "FROM pg_replication_slots "
+		 "WHERE slot_name = '%s'",
+		 previous_repslots->restartlsn,
+		 opts->filter);
+
+	res = PQexec(conn, sql);
+
+	if (!res || PQntuples(res) == 0)
+	{
+		warnx("pgstats: No results, meaning no replicaton slot");
+		PQclear(res);
+		PQfinish(conn);
+		errx(1, "pgstats: exiting");
+	}
+
+	/* check and deal with errors */
+	if (!res || PQresultStatus(res) > 2)
+	{
+		warnx("pgstats: query failed: %s", PQerrorMessage(conn));
+		PQclear(res);
+		PQfinish(conn);
+		errx(1, "pgstats: query was: %s", sql);
+	}
+
+	xlogfilename = pg_strdup(PQgetvalue(res, 0, 0));
+	currentlocation = pg_strdup(PQgetvalue(res, 0, 1));
+	locationdiff = atol(PQgetvalue(res, 0, 2));
+	prettylocation = pg_strdup(PQgetvalue(res, 0, 3));
+
+	/* get the human-readable diff if asked */
+	if (opts->human_readable)
+	{
+		snprintf(h_locationdiff, sizeof(h_locationdiff), "%s", prettylocation);
+	}
+	else
+	{
+		snprintf(h_locationdiff, sizeof(h_locationdiff), "%12ld", locationdiff - previous_repslots->restartlsndiff);
+	}
+
+	/* printing the actual values for once */
+	(void)printf(" %s   %s      %s\n", xlogfilename, currentlocation, h_locationdiff);
+
+	/* setting the new old value */
+	previous_repslots->restartlsn = pg_strdup(currentlocation);
+	previous_repslots->restartlsndiff = locationdiff;
+
+	/* cleanup */
+	PQclear(res);
+}
+
+/*
  * Dump all temporary files stats.
  */
 void
@@ -2805,6 +2892,7 @@ print_header(void)
 			(void)printf("  zeroed  hit     read    written  exists  flushes  truncates\n");
 			break;
 		case XLOG:
+		case REPSLOTS:
 			(void)printf("-------- filename -------- -- location -- ---- bytes ----\n");
 			break;
 		case TEMPFILE:
@@ -2894,6 +2982,9 @@ print_line(void)
 			break;
 		case XLOG:
 			print_xlogstats();
+			break;
+		case REPSLOTS:
+			print_repslotsstats();
 			break;
 		case PROGRESS_ANALYZE:
 			print_pgstatprogressanalyze();
@@ -3053,6 +3144,11 @@ allocate_struct(void)
 			previous_xlogstats = (struct xlogstats *) pg_malloc(sizeof(struct xlogstats));
 			previous_xlogstats->location = pg_strdup("0/0");
 			previous_xlogstats->locationdiff = 0;
+			break;
+		case REPSLOTS:
+			previous_repslots = (struct repslots *) pg_malloc(sizeof(struct repslots));
+			previous_repslots->restartlsn = pg_strdup("0/0");
+			previous_repslots->restartlsndiff = 0;
 			break;
 		case TEMPFILE:
 		case WAITEVENT:
@@ -3234,6 +3330,14 @@ main(int argc, char **argv)
 			errx(1, "Cannot find the pg_stat_statements extension.");
 		}
 	}
+
+	/* Filter required for replication slots */
+	if (opts->stat == REPSLOTS && !opts->filter)
+	{
+		PQfinish(conn);
+		errx(1, "You need to specify a replication slot with -f for this statistic.");
+	}
+
 
 	/* Allocate and initialize statistics struct */
 	allocate_struct();
