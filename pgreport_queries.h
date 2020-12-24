@@ -103,3 +103,11 @@
 
 #define MINAGE_TITLE "Min age"
 #define MINAGE_SQL "SELECT label, age FROM ( select 'Process #'||pid AS label, age(backend_xid) AS age from pg_stat_activity UNION select 'Process #'||pid, age(backend_xmin) from pg_stat_activity UNION select 'Prepared transaction '||gid, age(transaction) from pg_prepared_xacts UNION select 'Replication slot '||slot_name, age(xmin) from pg_replication_slots UNION select 'Replication slot '||slot_name, age(catalog_xmin) from pg_replication_slots) tmp WHERE age IS NOT NULL ORDER BY age DESC;"
+
+#define NEEDVACUUM_TITLE "Tables needing autoVACUUMs"
+#define NEEDVACUUM_SQL "SELECT st.schemaname || '.' || st.relname tablename, st.n_dead_tup dead_tup, get_value('autovacuum_vacuum_threshold', c.reloptions, c.relkind) + get_value('autovacuum_vacuum_scale_factor', c.reloptions, c.relkind) * c.reltuples max_dead_tup, st.last_autovacuum FROM pg_stat_all_tables st, pg_class c WHERE c.oid = st.relid AND c.relkind IN ('r','m','t') AND st.n_dead_tup>0"
+
+#define NEEDANALYZE_TITLE "Tables needing autoANALYZEs"
+#define NEEDANALYZE_SQL "SELECT st.schemaname || '.' || st.relname tablename, st.n_mod_since_analyze mod_tup, get_value('autovacuum_analyze_threshold', c.reloptions, c.relkind) + get_value('autovacuum_analyze_scale_factor', c.reloptions, c.relkind) * c.reltuples max_mod_tup, st.last_autoanalyze FROM pg_stat_all_tables st, pg_class c WHERE c.oid = st.relid AND c.relkind IN ('r','m') AND st.n_mod_since_analyze>0"
+
+#define GETVALUE_FUNCTION_SQL "CREATE FUNCTION get_value(param text, reloptions text[], relkind \"char\") RETURNS float AS $$ SELECT coalesce((SELECT option_value FROM   pg_options_to_table(reloptions) WHERE  option_name = CASE WHEN relkind = 't' THEN 'toast.' ELSE '' END || param), current_setting(param))::float; $$ LANGUAGE sql"

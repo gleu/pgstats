@@ -82,6 +82,7 @@ char	   *pg_strdup(const char *in);
 #endif
 PGconn	   *sql_conn(void);
 bool		backend_minimum_version(int major, int minor);
+void		execute(char *query);
 void		install_extension(char *extension);
 void		fetch_version(void);
 void		fetch_postmaster_starttime(void);
@@ -393,6 +394,38 @@ bool
 backend_minimum_version(int major, int minor)
 {
 	return opts->major > major || (opts->major == major && opts->minor >= minor);
+}
+
+
+/*
+ * Execute query
+ */
+void
+execute(char *query)
+{
+	PGresult   *results;
+
+	if (opts->script)
+	{
+		printf("%s;\n", query);
+	}
+	else
+	{
+		/* make the call */
+		results = PQexec(conn, query);
+
+		/* check and deal with errors */
+		if (!results)
+		{
+			warnx("pgreport: query failed: %s", PQerrorMessage(conn));
+			PQclear(results);
+			PQfinish(conn);
+			errx(1, "pgreport: query was: %s", query);
+		}
+
+		/* cleanup */
+		PQclear(results);
+	}
 }
 
 
@@ -779,6 +812,7 @@ main(int argc, char **argv)
 
 	/* Install some extensions if they are not already there */
 	install_extension("pg_buffercache");
+	execute(GETVALUE_FUNCTION_SQL);
 
 	/* Fetch version */
 	printf("%s# PostgreSQL Version\n\n", opts->script ? "\\echo " : "");
@@ -845,6 +879,8 @@ main(int argc, char **argv)
 	fetch_table(LOBJ_TITLE, LOBJ_SQL);
 	fetch_table(LOBJ_STATS_TITLE, LOBJ_STATS_SQL);
 	fetch_table(RELOPTIONS_TITLE, RELOPTIONS_SQL);
+	fetch_table(NEEDVACUUM_TITLE, NEEDVACUUM_SQL);
+	fetch_table(NEEDANALYZE_TITLE, NEEDANALYZE_SQL);
 	fetch_table(MINAGE_TITLE, MINAGE_SQL);
 	fetch_table(TOBEFROZEN_TABLES_TITLE, TOBEFROZEN_TABLES_SQL);
 	fetch_table(REPSLOTS_TITLE, REPSLOTS_SQL);
