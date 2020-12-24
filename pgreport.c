@@ -845,6 +845,7 @@ main(int argc, char **argv)
 	fetch_table(LOBJ_TITLE, LOBJ_SQL);
 	fetch_table(LOBJ_STATS_TITLE, LOBJ_STATS_SQL);
 	fetch_table(RELOPTIONS_TITLE, RELOPTIONS_SQL);
+	fetch_table(MINAGE_TITLE, MINAGE_SQL);
 	fetch_table(TOBEFROZEN_TABLES_TITLE, TOBEFROZEN_TABLES_SQL);
 	fetch_table(REPSLOTS_TITLE, REPSLOTS_SQL);
 	if (backend_minimum_version(10,0))

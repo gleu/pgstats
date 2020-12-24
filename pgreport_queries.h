@@ -100,3 +100,6 @@
 
 #define REDUNDANTINDEXES_TITLE "Redundant indexes"
 #define REDUNDANTINDEXES_SQL "SELECT pg_size_pretty(SUM(pg_relation_size(idx))::BIGINT) AS SIZE, string_agg(idx::text, ', ') AS indexes FROM ( SELECT indexrelid::regclass AS idx, (indrelid::text ||E'\n'|| indclass::text ||E'\n'|| indkey::text ||E'\n'||COALESCE(indexprs::text,'')||E'\n' || COALESCE(indpred::text,'')) AS KEY FROM pg_index) sub GROUP BY KEY HAVING COUNT(*)>1 ORDER BY SUM(pg_relation_size(idx)) DESC"
+
+#define MINAGE_TITLE "Min age"
+#define MINAGE_SQL "SELECT label, age FROM ( select 'Process #'||pid AS label, age(backend_xid) AS age from pg_stat_activity UNION select 'Process #'||pid, age(backend_xmin) from pg_stat_activity UNION select 'Prepared transaction '||gid, age(transaction) from pg_prepared_xacts UNION select 'Replication slot '||slot_name, age(xmin) from pg_replication_slots UNION select 'Replication slot '||slot_name, age(catalog_xmin) from pg_replication_slots) tmp WHERE age IS NOT NULL ORDER BY age DESC;"
