@@ -14,6 +14,7 @@ include $(PGXS)
 
 all: $(PROGRAMS)
 
+pgreport.o: pgreport_queries.h
 %: %.o $(WIN32RES)
 	   $(CC) $(CFLAGS) $^ $(libpq_pgport) $(LDFLAGS) -lpgfeutils -lm -o $@$(X)
 
