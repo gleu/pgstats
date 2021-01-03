@@ -4,7 +4,7 @@
  *
  * This software is released under the PostgreSQL Licence.
  *
- * Guillaume Lelarge, guillaume@lelarge.info, 2020.
+ * Guillaume Lelarge, guillaume@lelarge.info, 2020-2021.
  *
  * pgstats/pgreport.c
  */
