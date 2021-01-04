@@ -431,7 +431,7 @@ execute(char *query)
 
 
 /*
- * Fetch PostgreSQL major and minor numbers
+ * Install extension
  */
 void
 install_extension(char *extension)
@@ -798,6 +798,8 @@ quit_properly(SIGNAL_ARGS)
 int
 main(int argc, char **argv)
 {
+	char sql[10240];
+
 	/*
 	 * If the user stops the program,
 	 * quit nicely.
@@ -852,7 +854,12 @@ main(int argc, char **argv)
 
 	/* Install some extensions if they are not already there */
 	install_extension("pg_buffercache");
-	execute(GETVALUE_FUNCTION_SQL);
+	/* Install some functions/views */
+	execute(CREATE_GETVALUE_FUNCTION_SQL);
+	execute(CREATE_BLOATTABLE_VIEW_SQL);
+	strcat(sql, CREATE_BLOATINDEX_VIEW_SQL_1);
+	strcat(sql, CREATE_BLOATINDEX_VIEW_SQL_2);
+	execute(sql);
 
 	/* Fetch version */
 	printf("%s# PostgreSQL Version\n\n", opts->script ? "\\echo " : "");
@@ -928,6 +935,8 @@ main(int argc, char **argv)
 	fetch_table(NEEDANALYZE_TITLE, NEEDANALYZE_SQL);
 	fetch_table(MINAGE_TITLE, MINAGE_SQL);
 	fetch_table(TOBEFROZEN_TABLES_TITLE, TOBEFROZEN_TABLES_SQL);
+	fetch_table(TOP20BLOAT_TABLES_TITLE, TOP20BLOAT_TABLES_SQL);
+	fetch_table(TOP20BLOAT_INDEXES_TITLE, TOP20BLOAT_INDEXES_SQL);
 	fetch_table(REPSLOTS_TITLE, REPSLOTS_SQL);
 	if (backend_minimum_version(10,0))
 	{
@@ -938,6 +947,11 @@ main(int argc, char **argv)
 	fetch_table(TOP10QUERYIDS_TITLE, TOP10QUERYIDS_SQL);
 	fetch_table(TOP10QUERIES_TITLE, TOP10QUERIES_SQL);
 	*/
+
+	/* Uninstall some functions/views */
+	execute(DROP_GETVALUE_FUNCTION_SQL);
+	execute(DROP_BLOATTABLE_VIEW_SQL);
+	execute(DROP_BLOATINDEX_VIEW_SQL);
 
 	if (opts->script)
 	{
