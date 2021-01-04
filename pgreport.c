@@ -85,6 +85,7 @@ bool		backend_minimum_version(int major, int minor);
 void		execute(char *query);
 void		install_extension(char *extension);
 void		fetch_version(void);
+void		fetch_postmaster_reloadconftime(void);
 void		fetch_postmaster_starttime(void);
 void		fetch_table(char *label, char *query);
 void		fetch_file(char *filename);
@@ -540,7 +541,46 @@ fetch_version()
 
 
 /*
- * Fetch PostgreSQL major and minor numbers
+ * Fetch PostgreSQL reload configuration time
+ */
+void
+fetch_postmaster_reloadconftime()
+{
+	char		sql[PGREPORT_DEFAULT_STRING_SIZE];
+	PGresult   *res;
+
+	if (opts->script)
+	{
+		printf("\\echo PostgreSQL reload conf time\n");
+		printf("SELECT pg_conf_load_time();\n");
+	}
+	else
+	{
+		/* get the cluster version */
+		snprintf(sql, sizeof(sql), "SELECT pg_conf_load_time()");
+
+		/* make the call */
+		res = PQexec(conn, sql);
+
+		/* check and deal with errors */
+		if (!res || PQresultStatus(res) > 2)
+		{
+			warnx("pgreport: query failed: %s", PQerrorMessage(conn));
+			PQclear(res);
+			PQfinish(conn);
+			errx(1, "pgreport: query was: %s", sql);
+		}
+
+		printf ("PostgreSQL reload conf time: %s\n", PQgetvalue(res, 0, 0));
+
+		/* cleanup */
+		PQclear(res);
+	}
+}
+
+
+/*
+ * Fetch PostgreSQL start time
  */
 void
 fetch_postmaster_starttime()
@@ -822,6 +862,11 @@ main(int argc, char **argv)
 	/* Fetch postmaster start time */
 	printf("%s# PostgreSQL Start time\n\n", opts->script ? "\\echo " : "");
 	fetch_postmaster_starttime();
+	printf("\n");
+
+	/* Fetch reload conf time */
+	printf("%s# PostgreSQL Reload conf time\n\n", opts->script ? "\\echo " : "");
+	fetch_postmaster_reloadconftime();
 	printf("\n");
 
 	/* Fetch settings by various ways */
