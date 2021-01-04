@@ -1988,8 +1988,10 @@ print_pgstatprogressbasebackup()
 		 "       ELSE 'N/A' END,"
          "       CASE WHEN tablespaces_total>0"
 		 "       THEN trunc(tablespaces_streamed::numeric*100/tablespaces_total,2)::text"
-		 "       ELSE 'N/A' END "
+		 "       ELSE 'N/A' END,"
+         "       (now()-query_start)::time(0) "
 		 "FROM pg_stat_progress_basebackup "
+         "JOIN pg_stat_activity USING (pid) "
 		 "ORDER BY pid");
 
 	res = PQexec(conn, sql);
@@ -2010,13 +2012,14 @@ print_pgstatprogressbasebackup()
 	for (row = 0; row < nrows; row++)
 	{
 		/* printing the value... */
-		(void)printf(" %-10s  %-28s %-10s  %-10s %6s %6s\n",
+		(void)printf(" %-10s  %-28s %-10s  %-10s %6s %6s %s\n",
 			PQgetvalue(res, row, 0),
 			PQgetvalue(res, row, 1),
 			PQgetvalue(res, row, 2),
 			PQgetvalue(res, row, 3),
 		    PQgetvalue(res, row, 4),
-		    PQgetvalue(res, row, 5)
+		    PQgetvalue(res, row, 5),
+		    PQgetvalue(res, row, 6)
 		    );
 	};
 
@@ -2036,7 +2039,7 @@ print_pgstatprogressanalyze()
 	int			row;
 
 	snprintf(sql, sizeof(sql),
-		 "SELECT datname, relname,"
+		 "SELECT s.datname, relname,"
 		 "       pg_size_pretty(pg_table_size(relid)),"
 	 	 "		 phase,"
 		 "		 CASE WHEN sample_blks_total>0"
@@ -2047,8 +2050,10 @@ print_pgstatprogressanalyze()
          "            ELSE 'N/A' END,"
          "       CASE WHEN child_tables_total>0"
 		 "		      THEN trunc(child_tables_done::numeric*100/child_tables_total,2)::text"
-         "            ELSE 'N/A' END "
+         "            ELSE 'N/A' END,"
+         "       (now()-query_start)::time(0) "
 		 "FROM pg_stat_progress_analyze s "
+         "JOIN pg_stat_activity USING (pid) "
 		 "LEFT JOIN pg_class c ON c.oid=s.relid "
 		 "ORDER BY pid");
 
@@ -2071,14 +2076,15 @@ print_pgstatprogressanalyze()
 	for (row = 0; row < nrows; row++)
 	{
 		/* printing the value... */
-		(void)printf(" %-16s %-20s %10s   %-24s    %6s       %6s      %6s\n",
+		(void)printf(" %-16s %-20s %10s   %-24s    %6s       %6s      %6s %s\n",
 			PQgetvalue(res, row, 0),
 			PQgetvalue(res, row, 1),
 			PQgetvalue(res, row, 2),
 			PQgetvalue(res, row, 3),
 		    PQgetvalue(res, row, 4),
 		    PQgetvalue(res, row, 5),
-		    PQgetvalue(res, row, 6)
+		    PQgetvalue(res, row, 6),
+		    PQgetvalue(res, row, 7)
 		    );
 	};
 
@@ -2098,11 +2104,13 @@ print_pgstatprogresscluster()
 	int			row;
 
 	snprintf(sql, sizeof(sql),
-		 "SELECT datname, t.relname, i.relname,"
+		 "SELECT s.datname, t.relname, i.relname,"
 	 	 "		 phase, heap_tuples_scanned, heap_tuples_written,"
 		 "		 CASE WHEN heap_blks_total=0 THEN 'N/A' ELSE trunc(heap_blks_scanned::numeric*100/heap_blks_total,2)::text END,"
-		 "		 index_rebuild_count "
+		 "		 index_rebuild_count,"
+		 "       (now()-query_start)::time(0) "
 		 "FROM pg_stat_progress_cluster s "
+		 "JOIN pg_stat_activity USING (pid) "
 		 "LEFT JOIN pg_class t ON t.oid=s.relid "
 		 "LEFT JOIN pg_class i ON i.oid=s.cluster_index_relid "
 		 "ORDER BY pid");
@@ -2126,7 +2134,7 @@ print_pgstatprogresscluster()
 	for (row = 0; row < nrows; row++)
 	{
 		/* printing the value... */
-		(void)printf(" %-16s %-20s  %-20s   %-46s    %12ld   %12ld    %5s     %10ld\n",
+		(void)printf(" %-16s %-20s  %-20s   %-46s    %12ld   %12ld    %5s     %10ld %s\n",
 			PQgetvalue(res, row, 0),
 			PQgetvalue(res, row, 1),
 			PQgetvalue(res, row, 2),
@@ -2134,7 +2142,8 @@ print_pgstatprogresscluster()
 		    atol(PQgetvalue(res, row, 4)),
 		    atol(PQgetvalue(res, row, 5)),
 		    PQgetvalue(res, row, 6),
-		    atol(PQgetvalue(res, row, 7))
+		    atol(PQgetvalue(res, row, 7)),
+		    PQgetvalue(res, row, 8)
 		    );
 	};
 
@@ -2154,17 +2163,18 @@ print_pgstatprogresscreateindex()
 	int			row;
 
 	snprintf(sql, sizeof(sql),
-		 "SELECT datname, t.relname, i.relname,"
+		 "SELECT s.datname, t.relname, i.relname,"
 	 	 "		 phase,"
 		 "		 CASE WHEN lockers_total=0 THEN 'N/A' ELSE trunc(lockers_done::numeric*100/lockers_total,2)::text END,"
 		 "		 CASE WHEN blocks_total=0 THEN 'N/A' ELSE trunc(blocks_done::numeric*100/blocks_total,2)::text END,"
 		 "		 CASE WHEN tuples_total=0 THEN 'N/A' ELSE trunc(tuples_done::numeric*100/tuples_total,2)::text END,"
-		 "		 CASE WHEN partitions_total=0 THEN 'N/A' ELSE trunc(partitions_done::numeric*100/partitions_total,2)::text END "
+		 "		 CASE WHEN partitions_total=0 THEN 'N/A' ELSE trunc(partitions_done::numeric*100/partitions_total,2)::text END, "
+         "       (now()-query_start)::time(0) "
 		 "FROM pg_stat_progress_create_index s "
+         "JOIN pg_stat_activity USING (pid) "
 		 "LEFT JOIN pg_class t ON t.oid=s.relid "
 		 "LEFT JOIN pg_class i ON i.oid=s.index_relid "
 		 "ORDER BY pid");
-
 	res = PQexec(conn, sql);
 
 	/* check and deal with errors */
@@ -2184,7 +2194,7 @@ print_pgstatprogresscreateindex()
 	for (row = 0; row < nrows; row++)
 	{
 		/* printing the value... */
-		(void)printf(" %-16s %-20s  %-20s   %-46s    %5s    %5s   %5s        %5s\n",
+		(void)printf(" %-16s %-20s  %-20s   %-46s    %5s    %5s   %5s        %5s           %s\n",
 			PQgetvalue(res, row, 0),
 			PQgetvalue(res, row, 1),
 			PQgetvalue(res, row, 2),
@@ -2192,7 +2202,8 @@ print_pgstatprogresscreateindex()
 		    PQgetvalue(res, row, 4),
 		    PQgetvalue(res, row, 5),
 		    PQgetvalue(res, row, 6),
-		    PQgetvalue(res, row, 7)
+		    PQgetvalue(res, row, 7),
+		    PQgetvalue(res, row, 8)
 		    );
 	};
 
@@ -2212,14 +2223,16 @@ print_pgstatprogressvacuum()
 	int			row;
 
 	snprintf(sql, sizeof(sql),
-		 "SELECT datname, relname,"
+		 "SELECT s.datname, relname,"
 		 "       pg_size_pretty(pg_table_size(relid)),"
 	 	 "		 phase,"
 		 "		 trunc(heap_blks_scanned::numeric*100/heap_blks_total,2)::text,"
 		 "		 trunc(heap_blks_vacuumed::numeric*100/heap_blks_total,2)::text,"
 		 "		 index_vacuum_count,"
-		 "		 trunc(num_dead_tuples::numeric*100/max_dead_tuples,2)::text "
+		 "		 trunc(num_dead_tuples::numeric*100/max_dead_tuples,2)::text,"
+		 "       (now()-query_start)::time(0) "
 		 "FROM pg_stat_progress_vacuum s "
+		 "JOIN pg_stat_activity USING (pid) "
 		 "LEFT JOIN pg_class c ON c.oid=s.relid "
 		 "ORDER BY pid");
 
@@ -2242,7 +2255,7 @@ print_pgstatprogressvacuum()
 	for (row = 0; row < nrows; row++)
 	{
 		/* printing the value... */
-		(void)printf(" %-16s %-20s %10s   %-24s    %5s    %5s   %5ld        %5s\n",
+		(void)printf(" %-16s %-20s %10s   %-24s    %5s    %5s   %5ld        %5s %s\n",
 			PQgetvalue(res, row, 0),
 			PQgetvalue(res, row, 1),
 			PQgetvalue(res, row, 2),
@@ -2250,7 +2263,8 @@ print_pgstatprogressvacuum()
 		    PQgetvalue(res, row, 4),
 		    PQgetvalue(res, row, 5),
 		    atol(PQgetvalue(res, row, 6)),
-		    PQgetvalue(res, row, 7)
+		    PQgetvalue(res, row, 7),
+		    PQgetvalue(res, row, 8)
 		    );
 	};
 
@@ -2902,23 +2916,23 @@ print_header(void)
 			(void)printf("--- LWLock --- Lock --- BufferPin --- Activity --- Client --- Extension --- IPC --- Timeout --- IO --- Running --- All ---\n");
 			break;
 		case PROGRESS_ANALYZE:
-			(void)printf("--------------------- object --------------------- ---------- phase ---------- ---------------- stats ---------------\n");
+			(void)printf("--------------------- object --------------------- ---------- phase ---------- ---------------- stats --------------- -- time elapsed --\n");
 			(void)printf(" database         relation              size                                    %%sample blocks  %%ext stats  %%child tables\n");
 			break;
 		case PROGRESS_BASEBACKUP:
-            (void)printf("--- pid --- ---------- phase ---------- ---------------------- stats --------------------\n");
+            (void)printf("--- pid --- ---------- phase ---------- ---------------------- stats -------------------- -- time elapsed --\n");
             (void)printf("                                         Sent size - Total size - %%Sent - %%Tablespaces\n");
 			break;
 		case PROGRESS_CLUSTER:
-			(void)printf("--------------------------- object -------------------------- -------------------- phase -------------------- ------------------- stats -------------------\n");
+			(void)printf("--------------------------- object -------------------------- -------------------- phase -------------------- ------------------- stats ------------------- -- time elapsed --\n");
 			(void)printf(" database         table                 index                                                                  tuples scanned  tuples written  %%blocks  index rebuilt\n");
 			break;
 		case PROGRESS_CREATEINDEX:
-			(void)printf("--------------------------- object -------------------------- -------------------- phase -------------------- ------------------- stats -------------------\n");
+			(void)printf("--------------------------- object -------------------------- -------------------- phase -------------------- ------------------- stats ------------------- -- time elapsed --\n");
 			(void)printf(" database         table                 index                                                                  %%lockers  %%blocks  %%tuples  %%partitions\n");
 			break;
 		case PROGRESS_VACUUM:
-			(void)printf("--------------------- object --------------------- ---------- phase ---------- ---------------- stats ---------------\n");
+			(void)printf("--------------------- object --------------------- ---------- phase ---------- ---------------- stats --------------- -- time elapsed --\n");
 			(void)printf(" database         relation              size                                    %%scan  %%vacuum  #index  %%dead tuple\n");
 			break;
 		case PBPOOLS:
