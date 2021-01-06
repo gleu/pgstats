@@ -297,6 +297,44 @@ $ ./pgstat -s tempfile
 
 You see the file being stored.
 
+Since release 9.6, there are some very interesting progress views. Here is an
+example that shows the VACUUM progress on a table. We can see the progress
+while it goes through different phases.
+
+```
+$ ./pgstat -s progressvacuum
+--------------------- object --------------------- ---------- phase ---------- ---------------- stats ---------------
+ database         relation              size                                    %scan  %vacuum  #index  %dead tuple
+ bdd_alfresco     alf_node_properties      254 GB   scanning heap               39.95     0.00       0         0.21
+ bdd_alfresco     alf_node_properties      254 GB   scanning heap               39.98     0.00       0         0.21
+ bdd_alfresco     alf_node_properties      254 GB   scanning heap               40.01     0.00       0         0.21
+ bdd_alfresco     alf_prop_unique_ctx     1792 kB   vacuuming indexes           100.00     0.00       0         0.00
+ bdd_alfresco     alf_node_properties      254 GB   scanning heap               40.02     0.00       0         0.21
+ bdd_alfresco     alf_prop_unique_ctx     1792 kB   vacuuming indexes           100.00     0.00       0         0.00
+ bdd_alfresco     alf_node_properties      254 GB   scanning heap               40.07     0.00       0         0.21
+ bdd_alfresco     alf_node_properties      254 GB   scanning heap               40.10     0.00       0         0.21
+ bdd_alfresco     alf_node_properties      254 GB   scanning heap               40.13     0.00       0         0.21
+ bdd_alfresco     alf_node_properties      254 GB   scanning heap               40.15     0.00       0         0.21
+ bdd_alfresco     alf_node_properties      254 GB   scanning heap               40.17     0.00       0         0.21
+...
+ bdd_alfresco     alf_node_properties      254 GB   scanning heap               47.10     0.00       0         0.47
+ bdd_alfresco     alf_prop_unique_ctx     1792 kB   cleaning up indexes         100.00    100.00       0         0.00
+ bdd_alfresco     alf_node_properties      254 GB   scanning heap               47.13     0.00       0         0.47
+ bdd_alfresco     alf_prop_unique_ctx     1792 kB   cleaning up indexes         100.00    100.00       0         0.00
+ bdd_alfresco     alf_node_properties      254 GB   scanning heap               47.16     0.00       0         0.47
+ bdd_alfresco     alf_prop_unique_ctx     1792 kB   cleaning up indexes         100.00    100.00       0         0.00
+ bdd_alfresco     alf_node_properties      254 GB   scanning heap               47.18     0.00       0         0.48
+ bdd_alfresco     alf_node_properties      254 GB   scanning heap               47.21     0.00       0         0.48
+...
+ bdd_alfresco     alf_node_properties      255 GB   vacuuming indexes           100.00     0.00       0        30.18
+ bdd_alfresco     alf_node_properties      255 GB   vacuuming indexes           100.00     0.00       0        30.18
+ bdd_alfresco     alf_node_properties      255 GB   vacuuming indexes           100.00     0.00       0        30.18
+ bdd_alfresco     alf_node_properties      255 GB   vacuuming indexes           100.00     0.00       0        30.18
+...
+```
+
+Information shown depends on the progress views.
+
 More informations on pgwaitevent
 --------------------------------
 
