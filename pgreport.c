@@ -812,39 +812,7 @@ main(int argc, char **argv)
 	/* Parse the options */
 	get_opts(argc, argv);
 
-	if (!opts->script)
-	{
-		/* Connect to the database */
-		conn = sql_conn();
-
-		printf("# Hardware\n\n");
-		printf("## CPU\n");
-		exec_command("/usr/bin/lscpu");
-		printf("\n## Memory\n");
-		fetch_file("/proc/meminfo");
-		printf("\n## Disks\n");
-		exec_command("/usr/bin/lsblk");
-		printf("\n");
-
-		/* get some kernel config */
-		printf("# Kernel config\n");
-		fetch_kernelconfig("dirty_background_bytes");
-		fetch_kernelconfig("dirty_background_ratio");
-		fetch_kernelconfig("dirty_bytes");
-		fetch_kernelconfig("dirty_ratio");
-		fetch_kernelconfig("nr_hugepages");
-		fetch_kernelconfig("nr_overcommit_hugepages");
-		fetch_kernelconfig("overcommit_ratio");
-		fetch_kernelconfig("overcommit_kbytes");
-		fetch_kernelconfig("overcommit_memory");
-		fetch_kernelconfig("swappiness");
-		fetch_kernelconfig("zone_reclaim_mode");
-		printf("\n## df\n");
-		exec_command("/usr/bin/df");
-		printf("\n## fstab\n");
-		fetch_file("/etc/fstab");
-	}
-	else
+	if (opts->script)
 	{
 		printf("\\echo =================================================================================\n");
 		printf("\\echo == pgreport SQL script for a %s release =========================================\n", opts->script);
