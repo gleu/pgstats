@@ -836,10 +836,10 @@ print_pgstatarchiver()
 	/* check and deal with errors */
 	if (!res || PQresultStatus(res) > 2)
 	{
-		warnx("pgstats: query failed: %s", PQerrorMessage(conn));
+		warnx("pgstat: query failed: %s", PQerrorMessage(conn));
 		PQclear(res);
 		PQfinish(conn);
-		errx(1, "pgstats: query was: %s", sql);
+		errx(1, "pgstat: query was: %s", sql);
 	}
 
 	/* get the number of fields */
@@ -918,10 +918,10 @@ print_pgstatbgwriter()
 	/* check and deal with errors */
 	if (!res || PQresultStatus(res) > 2)
 	{
-		warnx("pgstats: query failed: %s", PQerrorMessage(conn));
+		warnx("pgstat: query failed: %s", PQerrorMessage(conn));
 		PQclear(res);
 		PQfinish(conn);
-		errx(1, "pgstats: query was: %s", sql);
+		errx(1, "pgstat: query was: %s", sql);
 	}
 
 	/* get the number of fields */
@@ -1047,10 +1047,10 @@ print_pgstatconnection()
 	/* check and deal with errors */
 	if (!res || PQresultStatus(res) > 2)
 	{
-		warnx("pgstats: query failed: %s", PQerrorMessage(conn));
+		warnx("pgstat: query failed: %s", PQerrorMessage(conn));
 		PQclear(res);
 		PQfinish(conn);
-		errx(1, "pgstats: query was: %s", sql);
+		errx(1, "pgstat: query was: %s", sql);
 	}
 
 	/* get the number of fields */
@@ -1157,10 +1157,10 @@ print_pgstatdatabase()
 	/* check and deal with errors */
 	if (!res || PQresultStatus(res) > 2)
 	{
-		warnx("pgstats: query failed: %s", PQerrorMessage(conn));
+		warnx("pgstat: query failed: %s", PQerrorMessage(conn));
 		PQclear(res);
 		PQfinish(conn);
-		errx(1, "pgstats: query was: %s", sql);
+		errx(1, "pgstat: query was: %s", sql);
 	}
 
 	/* get the number of fields */
@@ -1342,10 +1342,10 @@ print_pgstattable()
 	/* check and deal with errors */
 	if (!res || PQresultStatus(res) > 2)
 	{
-		warnx("pgstats: query failed: %s", PQerrorMessage(conn));
+		warnx("pgstat: query failed: %s", PQerrorMessage(conn));
 		PQclear(res);
 		PQfinish(conn);
-		errx(1, "pgstats: query was: %s", sql);
+		errx(1, "pgstat: query was: %s", sql);
 	}
 
 	/* get the number of fields */
@@ -1489,10 +1489,10 @@ print_pgstattableio()
 	/* check and deal with errors */
 	if (!res || PQresultStatus(res) > 2)
 	{
-		warnx("pgstats: query failed: %s", PQerrorMessage(conn));
+		warnx("pgstat: query failed: %s", PQerrorMessage(conn));
 		PQclear(res);
 		PQfinish(conn);
-		errx(1, "pgstats: query was: %s", sql);
+		errx(1, "pgstat: query was: %s", sql);
 	}
 
 	/* get the number of fields */
@@ -1594,10 +1594,10 @@ print_pgstatindex()
 	/* check and deal with errors */
 	if (!res || PQresultStatus(res) > 2)
 	{
-		warnx("pgstats: query failed: %s", PQerrorMessage(conn));
+		warnx("pgstat: query failed: %s", PQerrorMessage(conn));
 		PQclear(res);
 		PQfinish(conn);
-		errx(1, "pgstats: query was: %s", sql);
+		errx(1, "pgstat: query was: %s", sql);
 	}
 
 	/* get the number of fields */
@@ -1684,10 +1684,10 @@ print_pgstatfunction()
 	/* check and deal with errors */
 	if (!res || PQresultStatus(res) > 2)
 	{
-		warnx("pgstats: query failed: %s", PQerrorMessage(conn));
+		warnx("pgstat: query failed: %s", PQerrorMessage(conn));
 		PQclear(res);
 		PQfinish(conn);
-		errx(1, "pgstats: query was: %s", sql);
+		errx(1, "pgstat: query was: %s", sql);
 	}
 
 	/* get the number of fields */
@@ -1788,10 +1788,10 @@ print_pgstatstatement()
 	/* check and deal with errors */
 	if (!res || PQresultStatus(res) > 2)
 	{
-		warnx("pgstats: query failed: %s", PQerrorMessage(conn));
+		warnx("pgstat: query failed: %s", PQerrorMessage(conn));
 		PQclear(res);
 		PQfinish(conn);
-		errx(1, "pgstats: query was: %s", sql);
+		errx(1, "pgstat: query was: %s", sql);
 	}
 
 	/* get the number of fields */
@@ -1918,10 +1918,10 @@ print_pgstatslru()
 	/* check and deal with errors */
 	if (!res || PQresultStatus(res) > 2)
 	{
-		warnx("pgstats: query failed: %s", PQerrorMessage(conn));
+		warnx("pgstat: query failed: %s", PQerrorMessage(conn));
 		PQclear(res);
 		PQfinish(conn);
-		errx(1, "pgstats: query was: %s", sql);
+		errx(1, "pgstat: query was: %s", sql);
 	}
 
 	/* get the number of fields */
@@ -1999,10 +1999,10 @@ print_pgstatprogressbasebackup()
 	/* check and deal with errors */
 	if (!res || PQresultStatus(res) > 2)
 	{
-		warnx("pgstats: query failed: %s", PQerrorMessage(conn));
+		warnx("pgstat: query failed: %s", PQerrorMessage(conn));
 		PQclear(res);
 		PQfinish(conn);
-		errx(1, "pgstats: query was: %s", sql);
+		errx(1, "pgstat: query was: %s", sql);
 	}
 
 	/* get the number of fields */
@@ -2062,10 +2062,10 @@ print_pgstatprogressanalyze()
 	/* check and deal with errors */
 	if (!res || PQresultStatus(res) > 2)
 	{
-		warnx("pgstats: query failed: %s", PQerrorMessage(conn));
+		warnx("pgstat: query failed: %s", PQerrorMessage(conn));
 		PQclear(res);
 		PQfinish(conn);
-		errx(1, "pgstats: query was: %s", sql);
+		errx(1, "pgstat: query was: %s", sql);
 	}
 
 	/* get the number of fields */
@@ -2120,10 +2120,10 @@ print_pgstatprogresscluster()
 	/* check and deal with errors */
 	if (!res || PQresultStatus(res) > 2)
 	{
-		warnx("pgstats: query failed: %s", PQerrorMessage(conn));
+		warnx("pgstat: query failed: %s", PQerrorMessage(conn));
 		PQclear(res);
 		PQfinish(conn);
-		errx(1, "pgstats: query was: %s", sql);
+		errx(1, "pgstat: query was: %s", sql);
 	}
 
 	/* get the number of fields */
@@ -2180,10 +2180,10 @@ print_pgstatprogresscreateindex()
 	/* check and deal with errors */
 	if (!res || PQresultStatus(res) > 2)
 	{
-		warnx("pgstats: query failed: %s", PQerrorMessage(conn));
+		warnx("pgstat: query failed: %s", PQerrorMessage(conn));
 		PQclear(res);
 		PQfinish(conn);
-		errx(1, "pgstats: query was: %s", sql);
+		errx(1, "pgstat: query was: %s", sql);
 	}
 
 	/* get the number of fields */
@@ -2241,10 +2241,10 @@ print_pgstatprogressvacuum()
 	/* check and deal with errors */
 	if (!res || PQresultStatus(res) > 2)
 	{
-		warnx("pgstats: query failed: %s", PQerrorMessage(conn));
+		warnx("pgstat: query failed: %s", PQerrorMessage(conn));
 		PQclear(res);
 		PQfinish(conn);
-		errx(1, "pgstats: query was: %s", sql);
+		errx(1, "pgstat: query was: %s", sql);
 	}
 
 	/* get the number of fields */
@@ -2313,10 +2313,10 @@ print_xlogstats()
 	/* check and deal with errors */
 	if (!res || PQresultStatus(res) > 2)
 	{
-		warnx("pgstats: query failed: %s", PQerrorMessage(conn));
+		warnx("pgstat: query failed: %s", PQerrorMessage(conn));
 		PQclear(res);
 		PQfinish(conn);
-		errx(1, "pgstats: query was: %s", sql);
+		errx(1, "pgstat: query was: %s", sql);
 	}
 
 	xlogfilename = pg_strdup(PQgetvalue(res, 0, 0));
@@ -2375,19 +2375,19 @@ print_repslotsstats()
 
 	if (!res || PQntuples(res) == 0)
 	{
-		warnx("pgstats: No results, meaning no replicaton slot");
+		warnx("pgstat: No results, meaning no replicaton slot");
 		PQclear(res);
 		PQfinish(conn);
-		errx(1, "pgstats: exiting");
+		errx(1, "pgstat: exiting");
 	}
 
 	/* check and deal with errors */
 	if (!res || PQresultStatus(res) > 2)
 	{
-		warnx("pgstats: query failed: %s", PQerrorMessage(conn));
+		warnx("pgstat: query failed: %s", PQerrorMessage(conn));
 		PQclear(res);
 		PQfinish(conn);
-		errx(1, "pgstats: query was: %s", sql);
+		errx(1, "pgstat: query was: %s", sql);
 	}
 
 	xlogfilename = pg_strdup(PQgetvalue(res, 0, 0));
@@ -2496,10 +2496,10 @@ print_tempfilestats()
 	/* check and deal with errors */
 	if (!res || PQresultStatus(res) > 2)
 	{
-		warnx("pgstats: query failed: %s", PQerrorMessage(conn));
+		warnx("pgstat: query failed: %s", PQerrorMessage(conn));
 		PQclear(res);
 		PQfinish(conn);
-		errx(1, "pgstats: query was: %s", sql);
+		errx(1, "pgstat: query was: %s", sql);
 	}
 
 	/* get the number of fields */
@@ -2553,10 +2553,10 @@ print_pgstatwaitevent()
 	/* check and deal with errors */
 	if (!res || PQresultStatus(res) > 2)
 	{
-		warnx("pgstats: query failed: %s", PQerrorMessage(conn));
+		warnx("pgstat: query failed: %s", PQerrorMessage(conn));
 		PQclear(res);
 		PQfinish(conn);
-		errx(1, "pgstats: query was: %s", sql);
+		errx(1, "pgstat: query was: %s", sql);
 	}
 
 	/* get the number of fields */
@@ -2614,10 +2614,10 @@ print_pgbouncerpools()
 	/* check and deal with errors */
 	if (!res || PQresultStatus(res) > 2)
 	{
-		warnx("pgstats: query failed: %s", PQerrorMessage(conn));
+		warnx("pgstat: query failed: %s", PQerrorMessage(conn));
 		PQclear(res);
 		PQfinish(conn);
-		errx(1, "pgstats: query was: %s", sql);
+		errx(1, "pgstat: query was: %s", sql);
 	}
 
 	/* get the number of fields */
@@ -2683,10 +2683,10 @@ print_pgbouncerstats()
 	/* check and deal with errors */
 	if (!res || PQresultStatus(res) > 2)
 	{
-		warnx("pgstats: query failed: %s", PQerrorMessage(conn));
+		warnx("pgstat: query failed: %s", PQerrorMessage(conn));
 		PQclear(res);
 		PQfinish(conn);
-		errx(1, "pgstats: query was: %s", sql);
+		errx(1, "pgstat: query was: %s", sql);
 	}
 
 	/* get the number of fields */
@@ -2743,10 +2743,10 @@ fetch_version()
 	/* check and deal with errors */
 	if (!res || PQresultStatus(res) > 2)
 	{
-		warnx("pgstats: query failed: %s", PQerrorMessage(conn));
+		warnx("pgstat: query failed: %s", PQerrorMessage(conn));
 		PQclear(res);
 		PQfinish(conn);
-		errx(1, "pgstats: query was: %s", sql);
+		errx(1, "pgstat: query was: %s", sql);
 	}
 
 	/* get the only row, and parse it to get major and minor numbers */
@@ -2779,10 +2779,10 @@ char
 	/* check and deal with errors */
 	if (!res || PQresultStatus(res) > 2)
 	{
-		warnx("pgstats: query failed: %s", PQerrorMessage(conn));
+		warnx("pgstat: query failed: %s", PQerrorMessage(conn));
 		PQclear(res);
 		PQfinish(conn);
-		errx(1, "pgstats: query was: %s", sql);
+		errx(1, "pgstat: query was: %s", sql);
 	}
 
 	/* get the only row as the setting value */
@@ -2827,10 +2827,10 @@ fetch_pgstatstatements_namespace()
 	/* check and deal with errors */
 	if (!res || PQresultStatus(res) > 2)
 	{
-		warnx("pgstats: query failed: %s", PQerrorMessage(conn));
+		warnx("pgstat: query failed: %s", PQerrorMessage(conn));
 		PQclear(res);
 		PQfinish(conn);
-		errx(1, "pgstats: query was: %s", sql);
+		errx(1, "pgstat: query was: %s", sql);
 	}
 
 	if (PQntuples(res) > 0)
