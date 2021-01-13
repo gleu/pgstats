@@ -205,7 +205,6 @@ get_opts(int argc, char **argv)
 }
 
 #ifndef FE_MEMUTILS_H
-
 /*
  * "Safe" wrapper around malloc().
  */
@@ -408,10 +407,10 @@ display_fsm(char *table)
 	/* check and deal with errors */
 	if (!res || PQresultStatus(res) > 2)
 	{
-		warnx("pgstats: query failed: %s", PQerrorMessage(conn));
+		warnx("pgdisplay: query failed: %s", PQerrorMessage(conn));
 		PQclear(res);
 		PQfinish(conn);
-		errx(1, "pgstats: query was: %s", sql);
+		errx(1, "pgdisplay: query was: %s", sql);
 	}
 
 	/* get the number of fields */
@@ -426,9 +425,9 @@ display_fsm(char *table)
 	freespace = 0;
 	n = 0;
 
-	printf("Nombre de blocs: %d\n", nrows);
-	printf("Taille de la table: %d\n", totalspace);
-	printf("... groupe de %d\n", groupby);
+	printf("Pages #:     %d\n", nrows);
+	printf("Table size:  %d\n", totalspace);
+	printf("... group of %d\n", groupby);
 	printf("\n\n");
 
 	/* for each row, dump the information */
@@ -439,7 +438,7 @@ display_fsm(char *table)
 
 		if (++n >= groupby)
 		{
-			//printf("Espace libre[%d] : %d (sur %d)\n", n, freespace, groupby*blocksize);
+			//printf("Free space [%d] : %d (on %d)\n", n, freespace, groupby*blocksize);
 			/* printing the diff...
 			 * note that the first line will be the current value, rather than the diff */
 			color = 180*freespace/(8192*groupby);
@@ -477,10 +476,10 @@ fetch_blocksize()
 	/* check and deal with errors */
 	if (!res || PQresultStatus(res) > 2)
 	{
-		warnx("pgstats: query failed: %s", PQerrorMessage(conn));
+		warnx("pgdisplay: query failed: %s", PQerrorMessage(conn));
 		PQclear(res);
 		PQfinish(conn);
-		errx(1, "pgstats: query was: %s", sql);
+		errx(1, "pgdisplay: query was: %s", sql);
 	}
 
 	/* get the only row, and parse it to get major and minor numbers */
@@ -512,10 +511,10 @@ fetch_version()
 	/* check and deal with errors */
 	if (!res || PQresultStatus(res) > 2)
 	{
-		warnx("pgstats: query failed: %s", PQerrorMessage(conn));
+		warnx("pgdisplay: query failed: %s", PQerrorMessage(conn));
 		PQclear(res);
 		PQfinish(conn);
-		errx(1, "pgstats: query was: %s", sql);
+		errx(1, "pgdisplay: query was: %s", sql);
 	}
 
 	/* get the only row, and parse it to get major and minor numbers */

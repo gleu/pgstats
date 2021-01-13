@@ -14,7 +14,8 @@ queries.
 pgcsvstat outputs PostgreSQL statistics views into CSV files. The idea is that
 you can load them on any spreadsheet to get the graphs you want.
 
-pgdisplay is whatever it is :)
+pgdisplay tries to display a table in an informative way. Still pretty much
+experimental.
 
 They all should be compatible with the latest PostgreSQL release (13 right
 now), and down to the oldest stable release (9.5 right now). They may also be
