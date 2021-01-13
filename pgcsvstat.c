@@ -437,7 +437,7 @@ sql_exec_dump_pgstatactivity()
         backend_minimum_version(9, 4) ? "backend_xid, " : "",
         backend_minimum_version(9, 4) ? "backend_xmin, " : "",
         backend_minimum_version(9, 2) ? "query, " : "current_query,",
-		backend_minimum_version(9, 2) ? "backend_type, " : "",
+		backend_minimum_version(10, 0) ? "backend_type, " : "",
 		backend_minimum_version(9, 2) ? "pid" : "procpid");   // the last one is for the ORDER BY
 	snprintf(filename, sizeof(filename),
 			 "%s/pg_stat_activity.csv", opts->directory);
