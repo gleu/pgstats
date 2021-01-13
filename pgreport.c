@@ -301,7 +301,7 @@ sql_conn()
         keywords[4] = "dbname";
         values[4] = opts->dbname;
         keywords[5] = "fallback_application_name";
-        values[5] = "pgcsvstat";
+        values[5] = "pgreport";
         keywords[7] = NULL;
         values[7] = NULL;
 
@@ -324,7 +324,7 @@ sql_conn()
 		 * keep this string as the connection string, and add other parameters
 		 * if they are supplied.
 		 */
-		sprintf(dns, "%s", "fallback_application_name='pgcsvstat' ");
+		sprintf(dns, "%s", "fallback_application_name='pgreport' ");
 
 		if (strchr(opts->dbname, '=') != NULL)
 			sprintf(dns, "%s%s", dns, opts->dbname);

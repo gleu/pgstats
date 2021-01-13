@@ -288,13 +288,13 @@ sql_conn()
     const char **keywords;
     const char **values;
 #else
-	int			size;
-	char		*dns;
+	int size;
+	char *dns;
 #endif
 	char		*message;
 
 	/*
-	 * Start the connection. Loop until we have a password if requested by
+	 * Start the connection.  Loop until we have a password if requested by
 	 * backend.
 	 */
 	do
@@ -344,7 +344,7 @@ sql_conn()
 		 * keep this string as the connection string, and add other parameters
 		 * if they are supplied.
 		 */
-		sprintf(dns, "%s", "fallback_application_name='pgwaitevent'");
+		sprintf(dns, "%s", "fallback_application_name='pgwaitevent' ");
 
 		if (strchr(opts->dbname, '=') != NULL)
 			sprintf(dns, "%s%s", dns, opts->dbname);
