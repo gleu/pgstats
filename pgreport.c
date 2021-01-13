@@ -265,16 +265,16 @@ sql_conn()
 	char	   *password = NULL;
 	bool		new_pass;
 #if PG_VERSION_NUM >= 90300
-	const char **keywords;
-	const char **values;
+    const char **keywords;
+    const char **values;
 #else
-	int			size;
-	char		*dns;
+	int size;
+	char *dns;
 #endif
 	char		*message;
 
 	/*
-	 * Start the connection. Loop until we have a password if requested by
+	 * Start the connection.  Loop until we have a password if requested by
 	 * backend.
 	 */
 	do
@@ -287,28 +287,25 @@ sql_conn()
 		 * this itself.
 		 */
 #define PARAMS_ARRAY_SIZE   8
-		keywords = pg_malloc(PARAMS_ARRAY_SIZE * sizeof(*keywords));
-		values = pg_malloc(PARAMS_ARRAY_SIZE * sizeof(*values));
+        keywords = pg_malloc(PARAMS_ARRAY_SIZE * sizeof(*keywords));
+        values = pg_malloc(PARAMS_ARRAY_SIZE * sizeof(*values));
 
-		keywords[0] = "host";
-		values[0] = opts->hostname,
-		keywords[1] = "port";
-		values[1] = opts->port;
-		keywords[2] = "user";
-		values[2] = opts->username;
-		keywords[3] = "password";
-		values[3] = password;
-		keywords[4] = "dbname";
-		values[4] = opts->dbname;
-		keywords[5] = "fallback_application_name";
-		values[5] = "pgreport";
-		keywords[7] = NULL;
-		values[7] = NULL;
+        keywords[0] = "host";
+        values[0] = opts->hostname,
+        keywords[1] = "port";
+        values[1] = opts->port;
+        keywords[2] = "user";
+        values[2] = opts->username;
+        keywords[3] = "password";
+        values[3] = password;
+        keywords[4] = "dbname";
+        values[4] = opts->dbname;
+        keywords[5] = "fallback_application_name";
+        values[5] = "pgcsvstat";
+        keywords[7] = NULL;
+        values[7] = NULL;
 
-		my_conn = PQconnectdbParams(keywords, values, true);
-
-		pg_free(keywords);
-		pg_free(values);
+        my_conn = PQconnectdbParams(keywords, values, true);
 #else
 		/* 34 is the length of the fallback application name setting */
 		size = 34;
@@ -327,7 +324,7 @@ sql_conn()
 		 * keep this string as the connection string, and add other parameters
 		 * if they are supplied.
 		 */
-		sprintf(dns, "%s", "fallback_application_name='pgreport'");
+		sprintf(dns, "%s", "fallback_application_name='pgcsvstat' ");
 
 		if (strchr(opts->dbname, '=') != NULL)
 			sprintf(dns, "%s%s", dns, opts->dbname);
@@ -345,11 +342,9 @@ sql_conn()
 			printf("Connection string: %s\n", dns);
 
 		my_conn = PQconnectdb(dns);
-
-		pg_free(dns);
 #endif
 
-		new_pass = false;
+        new_pass = false;
 
 		if (!my_conn)
 		{
@@ -818,6 +813,11 @@ main(int argc, char **argv)
 		printf("\\echo == pgreport SQL script for a %s release =========================================\n", opts->script);
 		printf("\\echo =================================================================================\n");
 		printf("SET application_name to 'pgreport';\n");
+	}
+	else
+	{
+		/* connect to the database */
+		conn = sql_conn();
 	}
 
 	/* Install some extensions if they are not already there */
