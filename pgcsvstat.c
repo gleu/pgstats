@@ -330,7 +330,7 @@ sql_conn()
  * Actual code to make call to the database and print the output data.
  */
 int
-sql_exec(const char *todo, const char* filename, bool quiet)
+sql_exec(const char *query, const char* filename, bool quiet)
 {
 	PGresult   *res;
 	FILE	   *fdcsv;
@@ -358,13 +358,13 @@ sql_exec(const char *todo, const char* filename, bool quiet)
 	size = st.st_size;
 
 	/* make the call */
-	res = PQexec(conn, todo);
+	res = PQexec(conn, query);
 
 	/* check and deal with errors */
 	if (!res || PQresultStatus(res) > 2)
 	{
 		fprintf(stderr, "pgcsvstat: query failed: %s\n", PQerrorMessage(conn));
-		fprintf(stderr, "pgcsvstat: query was: %s\n", todo);
+		fprintf(stderr, "pgcsvstat: query was: %s\n", query);
 
 		PQclear(res);
 		PQfinish(conn);
@@ -414,11 +414,11 @@ sql_exec(const char *todo, const char* filename, bool quiet)
 void
 sql_exec_dump_pgstatactivity()
 {
-	char		todo[1024];
+	char		query[1024];
 	char		filename[1024];
 
 	/* get the oid and database name from the system pg_database table */
-	snprintf(todo, sizeof(todo),
+	snprintf(query, sizeof(query),
 			 "SELECT date_trunc('seconds', now()), datid, datname, %s, %s"
              "usesysid, usename, %s%s%s%s%s"
 			 "date_trunc('seconds', query_start) AS query_start, "
@@ -442,7 +442,7 @@ sql_exec_dump_pgstatactivity()
 	snprintf(filename, sizeof(filename),
 			 "%s/pg_stat_activity.csv", opts->directory);
 
-	sql_exec(todo, filename, opts->quiet);
+	sql_exec(query, filename, opts->quiet);
 }
 
 /*
@@ -451,11 +451,11 @@ sql_exec_dump_pgstatactivity()
 void
 sql_exec_dump_pgstatbgwriter()
 {
-	char		todo[1024];
+	char		query[1024];
 	char		filename[1024];
 
 	/* get the oid and database name from the system pg_database table */
-	snprintf(todo, sizeof(todo),
+	snprintf(query, sizeof(query),
 			 "SELECT date_trunc('seconds', now()), checkpoints_timed, "
              "checkpoints_req, %sbuffers_checkpoint, buffers_clean, "
 			 "maxwritten_clean, buffers_backend, %sbuffers_alloc%s "
@@ -466,7 +466,7 @@ sql_exec_dump_pgstatbgwriter()
 	snprintf(filename, sizeof(filename),
 			 "%s/pg_stat_bgwriter.csv", opts->directory);
 
-	sql_exec(todo, filename, opts->quiet);
+	sql_exec(query, filename, opts->quiet);
 }
 
 /*
@@ -475,11 +475,11 @@ sql_exec_dump_pgstatbgwriter()
 void
 sql_exec_dump_pgstatarchiver()
 {
-	char		todo[1024];
+	char		query[1024];
 	char		filename[1024];
 
 	/* get the oid and database name from the system pg_database table */
-	snprintf(todo, sizeof(todo),
+	snprintf(query, sizeof(query),
 			 "SELECT date_trunc('seconds', now()), archived_count, "
              "last_archived_wal, date_trunc('seconds', last_archived_time) AS last_archived_time, "
 			 "failed_count, "
@@ -489,7 +489,7 @@ sql_exec_dump_pgstatarchiver()
 	snprintf(filename, sizeof(filename),
 			 "%s/pg_stat_archiver.csv", opts->directory);
 
-	sql_exec(todo, filename, opts->quiet);
+	sql_exec(query, filename, opts->quiet);
 }
 
 /*
@@ -498,11 +498,11 @@ sql_exec_dump_pgstatarchiver()
 void
 sql_exec_dump_pgstatdatabase()
 {
-	char		todo[1024];
+	char		query[1024];
 	char		filename[1024];
 
 	/* get the oid and database name from the system pg_database table */
-	snprintf(todo, sizeof(todo),
+	snprintf(query, sizeof(query),
 			 "SELECT date_trunc('seconds', now()), datid, datname, "
              "numbackends, xact_commit, xact_rollback, blks_read, blks_hit"
              "%s%s%s%s "
@@ -515,7 +515,7 @@ sql_exec_dump_pgstatdatabase()
 	snprintf(filename, sizeof(filename),
 			 "%s/pg_stat_database.csv", opts->directory);
 
-	sql_exec(todo, filename, opts->quiet);
+	sql_exec(query, filename, opts->quiet);
 }
 
 /*
@@ -524,18 +524,18 @@ sql_exec_dump_pgstatdatabase()
 void
 sql_exec_dump_pgstatdatabaseconflicts()
 {
-	char		todo[1024];
+	char		query[1024];
 	char		filename[1024];
 
 	/* get the oid and database name from the system pg_database table */
-	snprintf(todo, sizeof(todo),
+	snprintf(query, sizeof(query),
 			 "SELECT date_trunc('seconds', now()), * "
              "FROM pg_stat_database_conflicts "
              "ORDER BY datname");
 	snprintf(filename, sizeof(filename),
 			 "%s/pg_stat_database_conflicts.csv", opts->directory);
 
-	sql_exec(todo, filename, opts->quiet);
+	sql_exec(query, filename, opts->quiet);
 }
 
 /*
@@ -544,11 +544,11 @@ sql_exec_dump_pgstatdatabaseconflicts()
 void
 sql_exec_dump_pgstatreplication()
 {
-	char		todo[1024];
+	char		query[1024];
 	char		filename[1024];
 
 	/* get the oid and database name from the system pg_database table */
-	snprintf(todo, sizeof(todo),
+	snprintf(query, sizeof(query),
 			 "SELECT date_trunc('seconds', now()), %s, usesysid, usename, "
              "application_name, client_addr, client_hostname, client_port, "
              "date_trunc('seconds', backend_start) AS backend_start, %sstate, "
@@ -567,7 +567,7 @@ sql_exec_dump_pgstatreplication()
 	snprintf(filename, sizeof(filename),
 			 "%s/pg_stat_replication.csv", opts->directory);
 
-	sql_exec(todo, filename, opts->quiet);
+	sql_exec(query, filename, opts->quiet);
 }
 
 /*
@@ -576,11 +576,11 @@ sql_exec_dump_pgstatreplication()
 void
 sql_exec_dump_pgstatalltables()
 {
-	char		todo[1024];
+	char		query[1024];
 	char		filename[1024];
 
 	/* get the oid and database name from the system pg_database table */
-	snprintf(todo, sizeof(todo),
+	snprintf(query, sizeof(query),
 			 "SELECT date_trunc('seconds', now()), relid, schemaname, relname, "
              "seq_scan, seq_tup_read, idx_scan, idx_tup_fetch, n_tup_ins, "
              "n_tup_upd, n_tup_del"
@@ -600,7 +600,7 @@ sql_exec_dump_pgstatalltables()
 	snprintf(filename, sizeof(filename),
 			 "%s/pg_stat_all_tables.csv", opts->directory);
 
-	sql_exec(todo, filename, opts->quiet);
+	sql_exec(query, filename, opts->quiet);
 }
 
 /*
@@ -609,11 +609,11 @@ sql_exec_dump_pgstatalltables()
 void
 sql_exec_dump_pgstatallindexes()
 {
-	char		todo[1024];
+	char		query[1024];
 	char		filename[1024];
 
 	/* get the oid and database name from the system pg_database table */
-	snprintf(todo, sizeof(todo),
+	snprintf(query, sizeof(query),
 			 "SELECT date_trunc('seconds', now()), * "
 			 "FROM pg_stat_all_indexes "
 	     		 "WHERE schemaname <> 'information_schema' "
@@ -621,7 +621,7 @@ sql_exec_dump_pgstatallindexes()
 	snprintf(filename, sizeof(filename),
 			 "%s/pg_stat_all_indexes.csv", opts->directory);
 
-	sql_exec(todo, filename, opts->quiet);
+	sql_exec(query, filename, opts->quiet);
 }
 
 /*
@@ -630,11 +630,11 @@ sql_exec_dump_pgstatallindexes()
 void
 sql_exec_dump_pgstatioalltables()
 {
-	char		todo[1024];
+	char		query[1024];
 	char		filename[1024];
 
 	/* get the oid and database name from the system pg_database table */
-	snprintf(todo, sizeof(todo),
+	snprintf(query, sizeof(query),
 			 "SELECT date_trunc('seconds', now()), * "
 			 "FROM pg_statio_all_tables "
 	     		 "WHERE schemaname <> 'information_schema' "
@@ -642,7 +642,7 @@ sql_exec_dump_pgstatioalltables()
 	snprintf(filename, sizeof(filename),
 			 "%s/pg_statio_all_tables.csv", opts->directory);
 
-	sql_exec(todo, filename, opts->quiet);
+	sql_exec(query, filename, opts->quiet);
 }
 
 /*
@@ -651,11 +651,11 @@ sql_exec_dump_pgstatioalltables()
 void
 sql_exec_dump_pgstatioallindexes()
 {
-	char		todo[1024];
+	char		query[1024];
 	char		filename[1024];
 
 	/* get the oid and database name from the system pg_database table */
-	snprintf(todo, sizeof(todo),
+	snprintf(query, sizeof(query),
 			 "SELECT date_trunc('seconds', now()), * "
 			 "FROM pg_statio_all_indexes "
 	     		 "WHERE schemaname <> 'information_schema' "
@@ -663,7 +663,7 @@ sql_exec_dump_pgstatioallindexes()
 	snprintf(filename, sizeof(filename),
 			 "%s/pg_statio_all_indexes.csv", opts->directory);
 
-	sql_exec(todo, filename, opts->quiet);
+	sql_exec(query, filename, opts->quiet);
 }
 
 /*
@@ -672,11 +672,11 @@ sql_exec_dump_pgstatioallindexes()
 void
 sql_exec_dump_pgstatioallsequences()
 {
-	char		todo[1024];
+	char		query[1024];
 	char		filename[1024];
 
 	/* get the oid and database name from the system pg_database table */
-	snprintf(todo, sizeof(todo),
+	snprintf(query, sizeof(query),
 			 "SELECT date_trunc('seconds', now()), * "
 			 "FROM pg_statio_all_sequences "
 	     		 "WHERE schemaname <> 'information_schema' "
@@ -684,7 +684,7 @@ sql_exec_dump_pgstatioallsequences()
 	snprintf(filename, sizeof(filename),
 			 "%s/pg_statio_all_sequences.csv", opts->directory);
 
-	sql_exec(todo, filename, opts->quiet);
+	sql_exec(query, filename, opts->quiet);
 }
 
 /*
@@ -693,11 +693,11 @@ sql_exec_dump_pgstatioallsequences()
 void
 sql_exec_dump_pgstatuserfunctions()
 {
-	char		todo[1024];
+	char		query[1024];
 	char		filename[1024];
 
 	/* get the oid and database name from the system pg_database table */
-	snprintf(todo, sizeof(todo),
+	snprintf(query, sizeof(query),
 			 "SELECT date_trunc('seconds', now()), * "
 			 "FROM pg_stat_user_functions "
 	     		 "WHERE schemaname <> 'information_schema' "
@@ -705,7 +705,7 @@ sql_exec_dump_pgstatuserfunctions()
 	snprintf(filename, sizeof(filename),
 			 "%s/pg_stat_user_functions.csv", opts->directory);
 
-	sql_exec(todo, filename, opts->quiet);
+	sql_exec(query, filename, opts->quiet);
 }
 
 /*
@@ -714,11 +714,11 @@ sql_exec_dump_pgstatuserfunctions()
 void
 sql_exec_dump_pgclass_size()
 {
-	char		todo[1024];
+	char		query[1024];
 	char		filename[1024];
 
 	/* get the oid and database name from the system pg_database table */
-	snprintf(todo, sizeof(todo),
+	snprintf(query, sizeof(query),
 			 "SELECT date_trunc('seconds', now()), n.nspname, c.relname, c.relkind, c.reltuples, c.relpages%s "
 			 "FROM pg_class c, pg_namespace n "
 			 "WHERE n.oid=c.relnamespace AND n.nspname <> 'information_schema' "
@@ -727,7 +727,7 @@ sql_exec_dump_pgclass_size()
 	snprintf(filename, sizeof(filename),
 			 "%s/pg_class_size.csv", opts->directory);
 
-	sql_exec(todo, filename, opts->quiet);
+	sql_exec(query, filename, opts->quiet);
 }
 
 /*
@@ -736,11 +736,11 @@ sql_exec_dump_pgclass_size()
 void
 sql_exec_dump_pgstatstatements()
 {
-	char		todo[1024];
+	char		query[1024];
 	char		filename[1024];
 
 	/* get the oid and database name from the system pg_database table */
-	snprintf(todo, sizeof(todo),
+	snprintf(query, sizeof(query),
 			 "SELECT date_trunc('seconds', now()), r.rolname, d.datname, "
              "regexp_replace(query, E'\n', ' ', 'g') as query, calls, total_time, rows, "
              "shared_blks_hit, shared_blks_read, shared_blks_written, "
@@ -752,7 +752,7 @@ sql_exec_dump_pgstatstatements()
 	snprintf(filename, sizeof(filename),
 			 "%s/pg_stat_statements.csv", opts->directory);
 
-	sql_exec(todo, filename, opts->quiet);
+	sql_exec(query, filename, opts->quiet);
 }
 
 /*
@@ -761,11 +761,11 @@ sql_exec_dump_pgstatstatements()
 void
 sql_exec_dump_xlog_stat()
 {
-	char		todo[1024];
+	char		query[1024];
 	char		filename[1024];
 
 	/* get the oid and database name from the system pg_database table */
-	snprintf(todo, sizeof(todo),
+	snprintf(query, sizeof(query),
 		backend_minimum_version(10, 0)
 		?
 			 "SELECT date_trunc('seconds', now()), pg_walfile_name(pg_current_wal_lsn())=pg_ls_dir AS current, pg_ls_dir AS filename, "
@@ -782,7 +782,7 @@ sql_exec_dump_xlog_stat()
 	snprintf(filename, sizeof(filename),
 			 "%s/pg_xlog_stat.csv", opts->directory);
 
-	sql_exec(todo, filename, opts->quiet);
+	sql_exec(query, filename, opts->quiet);
 }
 
 
@@ -792,20 +792,20 @@ sql_exec_dump_xlog_stat()
 void
 fetch_version()
 {
-	char		todo[1024];
+	char		query[1024];
 	PGresult   *res;
 
 	/* get the oid and database name from the system pg_database table */
-	snprintf(todo, sizeof(todo), "SELECT version()");
+	snprintf(query, sizeof(query), "SELECT version()");
 
 	/* make the call */
-	res = PQexec(conn, todo);
+	res = PQexec(conn, query);
 
 	/* check and deal with errors */
 	if (!res || PQresultStatus(res) > 2)
 	{
 		fprintf(stderr, "pgcsvstat: query failed: %s\n", PQerrorMessage(conn));
-		fprintf(stderr, "pgcsvstat: query was: %s\n", todo);
+		fprintf(stderr, "pgcsvstat: query was: %s\n", query);
 
 		PQclear(res);
 		PQfinish(conn);
