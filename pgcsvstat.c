@@ -14,6 +14,7 @@
  * Headers
  */
 #include "postgres_fe.h"
+#include <err.h>
 #include <sys/stat.h>
 
 #include <unistd.h>
@@ -76,6 +77,7 @@ void		fetch_version(void);
 bool		check_superuser(void);
 bool		backend_minimum_version(int major, int minor);
 bool        backend_has_pgstatstatements(void);
+
 
 /* function to parse command line options and check for some usage errors. */
 void
@@ -151,6 +153,7 @@ get_opts(int argc, char **argv)
 	}
 }
 
+
 static void
 help(const char *progname)
 {
@@ -205,6 +208,14 @@ sql_conn()
 	PGconn	   *my_conn;
 	char	   *password = NULL;
 	bool		new_pass;
+#if PG_VERSION_NUM >= 90300
+    const char **keywords;
+    const char **values;
+#else
+	int size;
+	char *dns;
+#endif
+	char		*message;
 
 	/*
 	 * Start the connection.  Loop until we have a password if requested by
@@ -212,19 +223,76 @@ sql_conn()
 	 */
 	do
 	{
-		new_pass = false;
-		my_conn = PQsetdbLogin(opts->hostname,
-							opts->port,
-							NULL,		/* options */
-							NULL,		/* tty */
-							opts->dbname,
-							opts->username,
-							password);
+
+#if PG_VERSION_NUM >= 90300
+		/*
+		 * We don't need to check if the database name is actually a complete
+		 * connection string, PQconnectdbParams being smart enough to check
+		 * this itself.
+		 */
+#define PARAMS_ARRAY_SIZE   8
+        keywords = pg_malloc(PARAMS_ARRAY_SIZE * sizeof(*keywords));
+        values = pg_malloc(PARAMS_ARRAY_SIZE * sizeof(*values));
+
+        keywords[0] = "host";
+        values[0] = opts->hostname,
+        keywords[1] = "port";
+        values[1] = opts->port;
+        keywords[2] = "user";
+        values[2] = opts->username;
+        keywords[3] = "password";
+        values[3] = password;
+        keywords[4] = "dbname";
+        values[4] = opts->dbname;
+        keywords[5] = "fallback_application_name";
+        values[5] = "pgcsvstat";
+        keywords[7] = NULL;
+        values[7] = NULL;
+
+        my_conn = PQconnectdbParams(keywords, values, true);
+#else
+		/* 34 is the length of the fallback application name setting */
+		size = 34;
+		if (opts->hostname)
+			size += strlen(opts->hostname) + 6;
+		if (opts->port)
+			size += strlen(opts->port) + 6;
+		if (opts->username)
+			size += strlen(opts->username) + 6;
+		if (opts->dbname)
+			size += strlen(opts->dbname) + 8;
+		dns = pg_malloc(size);
+		/*
+		 * Checking the presence of a = sign is our way to check that the
+		 * database name is actually a connection string. In such a case, we
+		 * keep this string as the connection string, and add other parameters
+		 * if they are supplied.
+		 */
+		sprintf(dns, "%s", "fallback_application_name='pgcsvstat' ");
+
+		if (strchr(opts->dbname, '=') != NULL)
+			sprintf(dns, "%s%s", dns, opts->dbname);
+		else if (opts->dbname)
+			sprintf(dns, "%sdbname=%s ", dns, opts->dbname);
+
+		if (opts->hostname)
+			sprintf(dns, "%shost=%s ", dns, opts->hostname);
+		if (opts->port)
+			sprintf(dns, "%sport=%s ", dns, opts->port);
+		if (opts->username)
+			sprintf(dns, "%suser=%s ", dns, opts->username);
+
+		if (opts->verbose)
+			printf("Connection string: %s\n", dns);
+
+		my_conn = PQconnectdb(dns);
+#endif
+
+        new_pass = false;
+
 		if (!my_conn)
 		{
-			fprintf(stderr, "%s: could not connect to database %s\n",
-					"pgstats", opts->dbname);
-			exit(1);
+			errx(1, "could not connect to database %s\n", opts->dbname);
 		}
 
 #if PG_VERSION_NUM >= 80200
@@ -249,10 +317,9 @@ sql_conn()
 	/* check to see that the backend connection was successfully made */
 	if (PQstatus(my_conn) == CONNECTION_BAD)
 	{
-		fprintf(stderr, "%s: could not connect to database %s: %s",
-				"pgstats", opts->dbname, PQerrorMessage(my_conn));
+		message = PQerrorMessage(my_conn);
 		PQfinish(my_conn);
-		exit(1);
+		errx(1, "could not connect to database %s: %s", opts->dbname, message);
 	}
 
 	/* return the conn if good */
@@ -279,8 +346,8 @@ sql_exec(const char *todo, const char* filename, bool quiet)
 	fdcsv = fopen(filename, "a");
     if (!fdcsv)
     {
-        fprintf(stderr, "pgstats: fopen failed: %d\n", errno);
-        fprintf(stderr, "pgstats: filename was: %s\n", filename);
+        fprintf(stderr, "pgcsvstat: fopen failed: %d\n", errno);
+        fprintf(stderr, "pgcsvstat: filename was: %s\n", filename);
         
         PQfinish(conn);
         exit(-1);
@@ -296,8 +363,8 @@ sql_exec(const char *todo, const char* filename, bool quiet)
 	/* check and deal with errors */
 	if (!res || PQresultStatus(res) > 2)
 	{
-		fprintf(stderr, "pgstats: query failed: %s\n", PQerrorMessage(conn));
-		fprintf(stderr, "pgstats: query was: %s\n", todo);
+		fprintf(stderr, "pgcsvstat: query failed: %s\n", PQerrorMessage(conn));
+		fprintf(stderr, "pgcsvstat: query was: %s\n", todo);
 
 		PQclear(res);
 		PQfinish(conn);
@@ -352,24 +419,26 @@ sql_exec_dump_pgstatactivity()
 
 	/* get the oid and database name from the system pg_database table */
 	snprintf(todo, sizeof(todo),
-			 "SELECT date_trunc('seconds', now()), datid, datname, %s, "
+			 "SELECT date_trunc('seconds', now()), datid, datname, %s, %s"
              "usesysid, usename, %s%s%s%s%s"
 			 "date_trunc('seconds', query_start) AS query_start, "
-             "%s%s%s%s%s "
+             "%s%s%s%s%s%s state "
              "FROM pg_stat_activity "
 			 "ORDER BY %s",
 		backend_minimum_version(9, 2) ? "pid" : "procpid",
+		backend_minimum_version(13, 0) ? "leader_pid, " : "",
 		backend_minimum_version(9, 0) ? "application_name, " : "",
 		backend_minimum_version(8, 1) ? "client_addr, " : "",
 		backend_minimum_version(9, 1) ? "client_hostname, " : "",
 		backend_minimum_version(8, 1) ? "client_port, date_trunc('seconds', backend_start) AS backend_start, " : "",
         backend_minimum_version(8, 3) ? "date_trunc('seconds', xact_start) AS xact_start, " : "",
         backend_minimum_version(9, 2) ? "state_change, " : "",
-        backend_minimum_version(8, 2) ? "waiting, " : "",
+        backend_minimum_version(9, 6) ? "wait_event_type, wait_event, " : backend_minimum_version(8, 2) ? "waiting, " : "",
         backend_minimum_version(9, 4) ? "backend_xid, " : "",
         backend_minimum_version(9, 4) ? "backend_xmin, " : "",
-        backend_minimum_version(9, 2) ? "query" : "current_query",
-		backend_minimum_version(9, 2) ? "pid" : "procpid");
+        backend_minimum_version(9, 2) ? "query, " : "current_query,",
+		backend_minimum_version(9, 2) ? "backend_type, " : "",
+		backend_minimum_version(9, 2) ? "pid" : "procpid");   // the last one is for the ORDER BY
 	snprintf(filename, sizeof(filename),
 			 "%s/pg_stat_activity.csv", opts->directory);
 
@@ -436,12 +505,13 @@ sql_exec_dump_pgstatdatabase()
 	snprintf(todo, sizeof(todo),
 			 "SELECT date_trunc('seconds', now()), datid, datname, "
              "numbackends, xact_commit, xact_rollback, blks_read, blks_hit"
-             "%s%s%s "
+             "%s%s%s%s "
              "FROM pg_stat_database "
              "ORDER BY datname",
 		backend_minimum_version(8, 3) ? ", tup_returned, tup_fetched, tup_inserted, tup_updated, tup_deleted" : "",
 		backend_minimum_version(9, 1) ? ", conflicts, date_trunc('seconds', stats_reset) AS stats_reset" : "",
-		backend_minimum_version(9, 2) ? ", temp_files, temp_bytes, deadlocks, blk_read_time, blk_write_time" : "");
+		backend_minimum_version(9, 2) ? ", temp_files, temp_bytes, deadlocks, blk_read_time, blk_write_time" : "",
+		backend_minimum_version(12, 0) ? ", checksum_failures, checksum_last_failure" : "");
 	snprintf(filename, sizeof(filename),
 			 "%s/pg_stat_database.csv", opts->directory);
 
@@ -482,14 +552,18 @@ sql_exec_dump_pgstatreplication()
 			 "SELECT date_trunc('seconds', now()), %s, usesysid, usename, "
              "application_name, client_addr, client_hostname, client_port, "
              "date_trunc('seconds', backend_start) AS backend_start, %sstate, "
-             "pg_current_xlog_location() AS master_location, "
-             "sent_location, write_location, flush_location, replay_location, "
+             "%s AS master_location, %s%s"
              "sync_priority, "
-             "sync_state "
+             "sync_state%s "
              "FROM pg_stat_replication "
              "ORDER BY application_name",
 		backend_minimum_version(9, 2) ? "pid" : "procpid",
-		backend_minimum_version(9, 4) ? "backend_xmin, " : "");
+		backend_minimum_version(9, 4) ? "backend_xmin, " : "",
+		backend_minimum_version(10, 0) ? "pg_current_wal_lsn()" : "pg_current_xlog_location()",
+		backend_minimum_version(10, 0) ? "sent_lsn, write_lsn, flush_lsn, replay_lsn, " :
+		     "sent_location, write_location, flush_location, replay_location, ",
+		backend_minimum_version(10, 0) ? "write_lag, flush_lag, replay_lag, " : "",
+		backend_minimum_version(12, 0) ? ", reply_time" : "");
 	snprintf(filename, sizeof(filename),
 			 "%s/pg_stat_replication.csv", opts->directory);
 
@@ -514,11 +588,13 @@ sql_exec_dump_pgstatalltables()
 			 "%s"
 			 "%s"
 			 "%s"
+			 "%s"
              " FROM pg_stat_all_tables "
 	     "WHERE schemaname <> 'information_schema' "
 	     "ORDER BY schemaname, relname",
 		backend_minimum_version(8, 3) ? ", n_tup_hot_upd, n_live_tup, n_dead_tup" : "",
         backend_minimum_version(9, 4) ? ", n_mod_since_analyze" : "",
+        backend_minimum_version(13, 0) ? ", n_ins_since_vacuum" : "",
         backend_minimum_version(8, 2) ? ", date_trunc('seconds', last_vacuum) AS last_vacuum, date_trunc('seconds', last_autovacuum) AS last_autovacuum, date_trunc('seconds',last_analyze) AS last_analyze, date_trunc('seconds',last_autoanalyze) AS last_autoanalyze" : "",
         backend_minimum_version(9, 1) ? ", vacuum_count, autovacuum_count, analyze_count, autoanalyze_count" : "");
 	snprintf(filename, sizeof(filename),
@@ -690,6 +766,14 @@ sql_exec_dump_xlog_stat()
 
 	/* get the oid and database name from the system pg_database table */
 	snprintf(todo, sizeof(todo),
+		backend_minimum_version(10, 0)
+		?
+			 "SELECT date_trunc('seconds', now()), pg_walfile_name(pg_current_wal_lsn())=pg_ls_dir AS current, pg_ls_dir AS filename, "
+			 "(SELECT modification FROM pg_stat_file('pg_wal/'||pg_ls_dir)) AS modification_timestamp "
+			 "FROM pg_ls_dir('pg_wal') "
+			 "WHERE pg_ls_dir ~ E'^[0-9A-F]{24}' "
+			 "ORDER BY pg_ls_dir"
+		:
 			 "SELECT date_trunc('seconds', now()), pg_xlogfile_name(pg_current_xlog_location())=pg_ls_dir AS current, pg_ls_dir AS filename, "
 			 "(SELECT modification FROM pg_stat_file('pg_xlog/'||pg_ls_dir)) AS modification_timestamp "
 			 "FROM pg_ls_dir('pg_xlog') "
@@ -720,8 +804,8 @@ fetch_version()
 	/* check and deal with errors */
 	if (!res || PQresultStatus(res) > 2)
 	{
-		fprintf(stderr, "pgstats: query failed: %s\n", PQerrorMessage(conn));
-		fprintf(stderr, "pgstats: query was: %s\n", todo);
+		fprintf(stderr, "pgcsvstat: query failed: %s\n", PQerrorMessage(conn));
+		fprintf(stderr, "pgcsvstat: query was: %s\n", todo);
 
 		PQclear(res);
 		PQfinish(conn);
@@ -760,8 +844,8 @@ check_superuser()
 	/* check and deal with errors */
 	if (!res || PQresultStatus(res) > 2)
 	{
-		fprintf(stderr, "pgstats: query failed: %s\n", PQerrorMessage(conn));
-		fprintf(stderr, "pgstats: query was: %s\n", sql);
+		fprintf(stderr, "pgcsvstat: query failed: %s\n", PQerrorMessage(conn));
+		fprintf(stderr, "pgcsvstat: query was: %s\n", sql);
 
 		PQclear(res);
 		PQfinish(conn);
@@ -811,8 +895,8 @@ backend_has_pgstatstatements()
 	/* check and deal with errors */
 	if (!res || PQresultStatus(res) > 2)
 	{
-		fprintf(stderr, "pgstats: query failed: %s\n", PQerrorMessage(conn));
-		fprintf(stderr, "pgstats: query was: %s\n", sql);
+		fprintf(stderr, "pgcsvstat: query failed: %s\n", PQerrorMessage(conn));
+		fprintf(stderr, "pgcsvstat: query was: %s\n", sql);
 
 		PQclear(res);
 		PQfinish(conn);
@@ -859,7 +943,7 @@ main(int argc, char **argv)
     /* check superuser attribute */
     is_superuser = check_superuser();
 
-	/* grabe cluster stats info */
+	/* grab cluster stats info */
 	sql_exec_dump_pgstatactivity();
 	if (backend_minimum_version(8, 3))
 		sql_exec_dump_pgstatbgwriter();
@@ -871,8 +955,12 @@ main(int argc, char **argv)
     }
 	if (backend_minimum_version(9, 4))
 		sql_exec_dump_pgstatarchiver();
+    /* TODO pg_stat_subscription */
+    /* TODO pg_stat_walreceiver */
+    /* TODO pg_pubklication */
+    /* TODO pg_replication_slots */
 
-	/* grabe database stats info */
+	/* grab database stats info */
 	sql_exec_dump_pgstatalltables();
 	sql_exec_dump_pgstatallindexes();
 	sql_exec_dump_pgstatioalltables();
@@ -881,7 +969,10 @@ main(int argc, char **argv)
     if (backend_minimum_version(8, 4))
 		sql_exec_dump_pgstatuserfunctions();
 
-	/* grabe other informations */
+    /* grab progress stats info */
+    /* TODO */
+
+	/* grab other informations */
 	sql_exec_dump_pgclass_size();
     if (backend_has_pgstatstatements())
 	    sql_exec_dump_pgstatstatements();

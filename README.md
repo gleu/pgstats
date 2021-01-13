@@ -16,6 +16,10 @@ you can load them on any spreadsheet to get the graphs you want.
 
 pgdisplay is whatever it is :)
 
+They all should be compatible with the latest PostgreSQL release (13 right
+now), and down to the oldest stable release (9.5 right now). They may also be
+compatible with much older releases (8.x for most of them).
+
 Requirements
 ------------
 
@@ -457,7 +461,16 @@ include leader and workers. You need the -g command line option for this.
 Ideas
 -----
 
-* pg_stat_archiver: display the current wal and the last archived
-* pg_stat_archiver: display the duration since the last archived wal
-* pg_stat_*_tables: display the duration since the last *vacuum and *analyze
-* sum the number of archived wal files
+* pgstat
+  * pg_stat_archiver: display the current wal and the last archived
+  * pg_stat_archiver: display the duration since the last archived wal
+  * pg_stat_X_tables: display the duration since the last vacuum and analyze
+  * sum the number of archived wal files
+
+* pgcsvstat
+  * update pg_stat_statements export with the new columns
+  * add export of pg_stat_subscription
+  * add export of pg_stat_walreceiver
+  * add export of pg_publication
+  * add export of pg_replication_slots
+  * add export of progress views
