@@ -41,8 +41,8 @@
 #define EXTENSIONS_TITLE "Extensions"
 #define EXTENSIONS_SQL "SELECT e.extname AS \"Name\", e.extversion AS \"Version\", n.nspname AS \"Schema\", c.description AS \"Description\" FROM pg_catalog.pg_extension e LEFT JOIN pg_catalog.pg_namespace n ON n.oid = e.extnamespace LEFT JOIN pg_catalog.pg_description c ON c.objoid = e.oid AND c.classoid = 'pg_catalog.pg_extension'::pg_catalog.regclass ORDER BY 1"
 
-#define KINDS_SIZE_TITLE "Number and size per relations' kinds"
-#define KINDS_SIZE_SQL "select relkind, count(*), pg_size_pretty(sum(pg_table_size(oid))) from pg_class group by 1"
+#define KINDS_SIZE_TITLE "Number and size per relations kinds"
+#define KINDS_SIZE_SQL "SELECT nspname, relkind, count(*), pg_size_pretty(sum(pg_table_size(c.oid))) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace GROUP BY 1,2 ORDER BY 1,2"
 
 #define DEPENDENCIES_TITLE "Dependencies"
 #define DEPENDENCIES_SQL "with etypes as ( select classid::regclass, objid, deptype, e.extname from pg_depend join pg_extension e on refclassid = 'pg_extension'::regclass and refobjid = e.oid where classid = 'pg_type'::regclass ) select etypes.extname, etypes.objid::regtype as type, n.nspname as schema, c.relname as table, attname as column from pg_depend join etypes on etypes.classid = pg_depend.refclassid and etypes.objid = pg_depend.refobjid join pg_class c on c.oid = pg_depend.objid join pg_namespace n on n.oid = c.relnamespace join pg_attribute attr on attr.attrelid = pg_depend.objid and attr.attnum = pg_depend.objsubid where pg_depend.classid = 'pg_class'::regclass"
@@ -51,10 +51,10 @@
 #define KINDS_IN_CACHE_SQL "select relkind, pg_size_pretty(count(*)*8192) from pg_buffercache bc left join pg_class c on c.relfilenode=bc.relfilenode group by 1 order by count(*) desc"
 
 #define AM_SIZE_TITLE "Access Methods"
-#define AM_SIZE_SQL "select amname, count(*), pg_size_pretty(sum(pg_table_size(c.oid))) from pg_class c join pg_am a on a.oid=c.relam group by 1"
+#define AM_SIZE_SQL "select nspname, amname, count(*), pg_size_pretty(sum(pg_table_size(c.oid))) from pg_class c join pg_am a on a.oid=c.relam join pg_namespace n on n.oid=c.relnamespace group by 1, 2 order by 1,2"
 
 #define INDEXTYPE_TITLE "Index by types"
-#define INDEXTYPE_SQL "SELECT count(*) FILTER (WHERE not indisunique AND not indisprimary) as standard, count(*) FILTER (WHERE indisunique AND not indisprimary) as unique, count(*) FILTER (WHERE indisprimary) as primary, count(*) FILTER (WHERE indisexclusion) as exclusion, count(*) FILTER (WHERE indisclustered) as clustered, count(*) FILTER (WHERE indisvalid) as valid FROM pg_index i JOIN pg_class c ON c.oid=i.indexrelid"
+#define INDEXTYPE_SQL "SELECT nspname, count(*) FILTER (WHERE not indisunique AND not indisprimary) as standard, count(*) FILTER (WHERE indisunique AND not indisprimary) as unique, count(*) FILTER (WHERE indisprimary) as primary, count(*) FILTER (WHERE indisexclusion) as exclusion, count(*) FILTER (WHERE indisclustered) as clustered, count(*) FILTER (WHERE indisvalid) as valid FROM pg_index i JOIN pg_class c ON c.oid=i.indexrelid JOIN pg_namespace n ON n.oid=c.relnamespace GROUP BY 1;"
 
 #define NBFUNCS_TITLE "User routines"
 #define NBFUNCS_SQL "select count(*) from pg_proc where pronamespace=2200 or pronamespace>16383"
@@ -99,6 +99,9 @@
 
 #define TOP10QUERIES_SQL "select queryid, query from pg_stat_statements order by total_time desc limit 10"
 
+#define UNUSEDINDEXES_TITLE "Unused indexes"
+#define UNUSEDINDEXES_SQL "select schemaname, count(*) from pg_stat_user_indexes s join pg_index i using (indexrelid) where idx_scan=0 and (not indisunique AND not indisprimary) group by 1;"
+
 #define REDUNDANTINDEXES_TITLE "Redundant indexes"
 #define REDUNDANTINDEXES_SQL "SELECT pg_size_pretty(SUM(pg_relation_size(idx))::BIGINT) AS SIZE, string_agg(idx::text, ', ') AS indexes FROM ( SELECT indexrelid::regclass AS idx, (indrelid::text ||E'\n'|| indclass::text ||E'\n'|| indkey::text ||E'\n'||COALESCE(indexprs::text,'')||E'\n' || COALESCE(indpred::text,'')) AS KEY FROM pg_index) sub GROUP BY KEY HAVING COUNT(*)>1 ORDER BY SUM(pg_relation_size(idx)) DESC"
 
@@ -119,9 +122,9 @@
 #define CREATE_BLOATINDEX_VIEW_SQL_2 "FROM ( SELECT ci.relname AS idxname, ci.reltuples, ci.relpages, i.indrelid AS tbloid, i.indexrelid AS idxoid, coalesce(substring( array_to_string(ci.reloptions, ' ') from 'fillfactor=([0-9]+)')::smallint, 90) AS fillfactor, i.indnatts, pg_catalog.string_to_array(pg_catalog.textin( pg_catalog.int2vectorout(i.indkey)),' ')::int[] AS indkey FROM pg_catalog.pg_index i JOIN pg_catalog.pg_class ci ON ci.oid = i.indexrelid WHERE ci.relam=(SELECT oid FROM pg_am WHERE amname = 'btree') AND ci.relpages > 0) AS idx_data) AS ic JOIN pg_catalog.pg_class ct ON ct.oid = ic.tbloid LEFT JOIN pg_catalog.pg_attribute a1 ON ic.indkey[ic.attpos] <> 0 AND a1.attrelid = ic.tbloid AND a1.attnum = ic.indkey[ic.attpos] LEFT JOIN pg_catalog.pg_attribute a2 ON ic.indkey[ic.attpos] = 0 AND a2.attrelid = ic.idxoid AND a2.attnum = ic.attpos) i JOIN pg_catalog.pg_namespace n ON n.oid = i.relnamespace JOIN pg_catalog.pg_stats s ON s.schemaname = n.nspname AND s.tablename = i.attrelname AND s.attname = i.attname GROUP BY 1,2,3,4,5,6,7,8,9,10,11) AS rows_data_stats) AS rows_hdr_pdg_stats) AS relation_stats"
 
 #define TOP20BLOAT_TABLES_TITLE "Top 20 most fragmented tables (over 1MB)"
-#define TOP20BLOAT_TABLES_SQL "SELECT * FROM bloat_table WHERE bloat_size>1e6 ORDER BY bloat_size LIMIT 20"
+#define TOP20BLOAT_TABLES_SQL "SELECT * FROM bloat_table WHERE bloat_size>1e6 ORDER BY bloat_size DESC LIMIT 20"
 #define TOP20BLOAT_INDEXES_TITLE "Top 20 most fragmented indexes (over 1MB)"
-#define TOP20BLOAT_INDEXES_SQL "SELECT * FROM bloat_index WHERE bloat_size>1e6 ORDER BY bloat_size LIMIT 20"
+#define TOP20BLOAT_INDEXES_SQL "SELECT * FROM bloat_index WHERE bloat_size>1e6 ORDER BY bloat_size DESC LIMIT 20"
 
 #define DROP_GETVALUE_FUNCTION_SQL "DROP FUNCTION get_value(text, text[], \"char\")"
 

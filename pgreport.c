@@ -888,6 +888,7 @@ main(int argc, char **argv)
 	fetch_table(KINDS_IN_CACHE_TITLE, KINDS_IN_CACHE_SQL);
 	fetch_table(AM_SIZE_TITLE, AM_SIZE_SQL);
 	fetch_table(INDEXTYPE_TITLE, INDEXTYPE_SQL);
+	fetch_table(UNUSEDINDEXES_TITLE, UNUSEDINDEXES_SQL);
 	fetch_table(REDUNDANTINDEXES_TITLE, REDUNDANTINDEXES_SQL);
 	fetch_table(NBFUNCS_TITLE, NBFUNCS_SQL);
 	if (backend_minimum_version(11,0))
