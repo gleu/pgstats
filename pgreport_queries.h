@@ -14,7 +14,8 @@
 #define TABLESPACES_SQL "SELECT spcname AS \"Name\", pg_catalog.pg_get_userbyid(spcowner) AS \"Owner\", pg_catalog.pg_tablespace_location(oid) AS \"Location\", pg_size_pretty(pg_tablespace_size(oid)) AS \"Size\", pg_catalog.array_to_string(spcacl, E'\n') AS \"Access privileges\", spcoptions AS \"Options\", pg_catalog.shobj_description(oid, 'pg_tablespace') AS \"Description\" FROM pg_catalog.pg_tablespace ORDER BY 1"
 
 #define ROLES_TITLE "Roles"
-#define ROLES_SQL "SELECT r.rolname, r.rolsuper, r.rolinherit, r.rolcreaterole, r.rolcreatedb, r.rolcanlogin, r.rolconnlimit, r.rolvaliduntil, ARRAY(SELECT b.rolname FROM pg_catalog.pg_auth_members m JOIN pg_catalog.pg_roles b ON (m.roleid = b.oid) WHERE m.member = r.oid) as memberof, r.rolreplication, r.rolbypassrls FROM pg_catalog.pg_roles r WHERE r.rolname !~ '^pg_' ORDER BY 1"
+#define ROLES_SQL_94max "SELECT r.rolname, r.rolsuper, r.rolinherit, r.rolcreaterole, r.rolcreatedb, r.rolcanlogin, r.rolconnlimit, r.rolvaliduntil, ARRAY(SELECT b.rolname FROM pg_catalog.pg_auth_members m JOIN pg_catalog.pg_roles b ON (m.roleid = b.oid) WHERE m.member = r.oid) as memberof, r.rolreplication FROM pg_catalog.pg_roles r WHERE r.rolname !~ '^pg_' ORDER BY 1"
+#define ROLES_SQL_95min "SELECT r.rolname, r.rolsuper, r.rolinherit, r.rolcreaterole, r.rolcreatedb, r.rolcanlogin, r.rolconnlimit, r.rolvaliduntil, ARRAY(SELECT b.rolname FROM pg_catalog.pg_auth_members m JOIN pg_catalog.pg_roles b ON (m.roleid = b.oid) WHERE m.member = r.oid) as memberof, r.rolreplication, r.rolbypassrls FROM pg_catalog.pg_roles r WHERE r.rolname !~ '^pg_' ORDER BY 1"
 
 #define USER_PASSWORDS_TITLE "User passwords"
 #define USER_PASSWORDS_SQL "SELECT usename, valuntil, CASE WHEN passwd IS NULL THEN '<NULL>' else passwd END AS passwd FROM pg_catalog.pg_shadow ORDER BY 1"
