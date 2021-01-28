@@ -126,8 +126,6 @@
 #define TOP20BLOAT_INDEXES_TITLE "Top 20 most fragmented indexes (over 1MB)"
 #define TOP20BLOAT_INDEXES_SQL "SELECT * FROM bloat_index WHERE bloat_size>1e6 ORDER BY bloat_size DESC LIMIT 20"
 
-#define DROP_GETVALUE_FUNCTION_SQL "DROP FUNCTION get_value(text, text[], \"char\")"
-
-#define DROP_BLOATTABLE_VIEW_SQL "DROP VIEW bloat_table"
-
-#define DROP_BLOATINDEX_VIEW_SQL "DROP VIEW bloat_index"
+#define CREATE_SCHEMA "CREATE SCHEMA pgreport"
+#define SET_SEARCHPATH "SET search_path TO pgreport"
+#define DROP_ALL "DROP SCHEMA pgreport CASCADE"

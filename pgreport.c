@@ -820,6 +820,9 @@ main(int argc, char **argv)
 		conn = sql_conn();
 	}
 
+	/* Create schema, and set if as our search_path */
+	execute(CREATE_SCHEMA);
+	execute(SET_SEARCHPATH);
 	/* Install some extensions if they are not already there */
 	install_extension("pg_buffercache");
 	/* Install some functions/views */
@@ -920,10 +923,11 @@ main(int argc, char **argv)
 	fetch_table(TOP10QUERIES_TITLE, TOP10QUERIES_SQL);
 	*/
 
-	/* Uninstall some functions/views */
-	execute(DROP_GETVALUE_FUNCTION_SQL);
-	execute(DROP_BLOATTABLE_VIEW_SQL);
-	execute(DROP_BLOATINDEX_VIEW_SQL);
+	/*
+	 * Uninstall all
+	 * Actually, it drops our schema, which should get rid of all our stuff
+	 */
+	execute(DROP_ALL);
 
 	if (opts->script)
 	{
