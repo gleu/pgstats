@@ -4,6 +4,9 @@
 #define SETTINGS_NOTCONFIGFILE_NOTDEFAULTVALUE_TITLE "Non default value and not config file settings"
 #define SETTINGS_NOTCONFIGFILE_NOTDEFAULTVALUE_SQL "SELECT source, name, setting, unit FROM pg_settings WHERE source NOT IN ('configuration file', 'default') ORDER BY source, name"
 
+#define CLUSTER_HITRATIO_TITLE "Hit ratio"
+#define CLUSTER_HITRATIO_SQL "SELECT 'index hit rate' AS name, 100.*sum(idx_blks_hit) / nullif(sum(idx_blks_hit + idx_blks_read),0) AS ratio FROM pg_statio_user_indexes UNION ALL SELECT 'table hit rate' AS name, 100.*sum(heap_blks_hit) / nullif(sum(heap_blks_hit) + sum(heap_blks_read),0) AS ratio FROM pg_statio_user_tables"
+
 #define DATABASES_TITLE "Databases"
 #define DATABASES_SQL "SELECT d.datname as \"Name\", pg_catalog.pg_get_userbyid(d.datdba) as \"Owner\", pg_catalog.pg_encoding_to_char(d.encoding) as \"Encoding\", d.datcollate as \"Collate\", d.datctype as \"Ctype\", pg_catalog.array_to_string(d.datacl, E'\n') AS \"Access privileges\", CASE WHEN pg_catalog.has_database_privilege(d.datname, 'CONNECT') THEN pg_catalog.pg_size_pretty(pg_catalog.pg_database_size(d.datname)) ELSE 'No Access' END as \"Size\", t.spcname as \"Tablespace\", pg_catalog.shobj_description(d.oid, 'pg_database') as \"Description\" FROM pg_catalog.pg_database d JOIN pg_catalog.pg_tablespace t on d.dattablespace = t.oid ORDER BY 1"
 
