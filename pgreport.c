@@ -831,6 +831,7 @@ main(int argc, char **argv)
 	strcat(sql, CREATE_BLOATINDEX_VIEW_SQL_1);
 	strcat(sql, CREATE_BLOATINDEX_VIEW_SQL_2);
 	execute(sql);
+	execute(CREATE_ORPHANEDFILES_VIEW_SQL);
 
 	/* Fetch version */
 	printf("%s# PostgreSQL Version\n\n", opts->script ? "\\echo " : "");
@@ -895,6 +896,7 @@ main(int argc, char **argv)
 	fetch_table(PERCENTUSEDINDEXES_TITLE, PERCENTUSEDINDEXES_SQL);
 	fetch_table(UNUSEDINDEXES_TITLE, UNUSEDINDEXES_SQL);
 	fetch_table(REDUNDANTINDEXES_TITLE, REDUNDANTINDEXES_SQL);
+	fetch_table(ORPHANEDFILES_TITLE, ORPHANEDFILES_SQL);
 	fetch_table(NBFUNCS_TITLE, NBFUNCS_SQL);
 	if (backend_minimum_version(11,0))
 	{
