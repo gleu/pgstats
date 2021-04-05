@@ -14,6 +14,8 @@
  * Headers
  */
 #include "postgres_fe.h"
+#include "common/string.h"
+
 #include <err.h>
 #include <sys/ioctl.h>
 #include <sys/signal.h>
@@ -780,13 +782,15 @@ sql_conn()
 #if PG_VERSION_NUM >= 80200
 		if (PQstatus(my_conn) == CONNECTION_BAD &&
 			PQconnectionNeedsPassword(my_conn) &&
-			password == NULL)
+			!password)
 		{
 			PQfinish(my_conn);
 #if PG_VERSION_NUM < 100000
 			password = simple_prompt("Password: ", 100, false);
-#else
+#elif PG_VERSION_NUM < 140000
 			simple_prompt("Password: ", password, 100, false);
+#else
+			password = simple_prompt("Password: ", false);
 #endif
 			new_pass = true;
 		}
