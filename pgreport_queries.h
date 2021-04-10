@@ -141,4 +141,5 @@
 
 #define CREATE_SCHEMA "CREATE SCHEMA pgreport"
 #define SET_SEARCHPATH "SET search_path TO pgreport"
-#define DROP_ALL "DROP SCHEMA pgreport CASCADE"
+#define DROP_ALL "DROP FUNCTION get_value(text, text[], \"char\");DROP VIEW bloat_table;DROP VIEW bloat_index;DROP VIEW orphaned_files;DROP EXTENSION pg_buffercache;DROP SCHEMA pgreport"
+
