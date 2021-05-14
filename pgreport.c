@@ -870,6 +870,8 @@ main(int argc, char **argv)
 	/* Fetch global objects */
 	printf("%s# Global objects\n\n", opts->script ? "\\echo " : "");
 	fetch_table(CLUSTER_HITRATIO_TITLE, CLUSTER_HITRATIO_SQL);
+	fetch_table(CLUSTER_BUFFERSUSAGE_TITLE, CLUSTER_BUFFERSUSAGE_SQL);
+	fetch_table(CLUSTER_BUFFERSUSAGEDIRTY_TITLE, CLUSTER_BUFFERSUSAGEDIRTY_SQL);
 	fetch_table(DATABASES_TITLE, DATABASES_SQL);
 	fetch_table(DATABASES_IN_CACHE_TITLE, DATABASES_IN_CACHE_SQL);
 	fetch_table(TABLESPACES_TITLE, TABLESPACES_SQL);

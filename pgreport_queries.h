@@ -7,6 +7,12 @@
 #define CLUSTER_HITRATIO_TITLE "Hit ratio"
 #define CLUSTER_HITRATIO_SQL "SELECT 'index hit rate' AS name, 100.*sum(idx_blks_hit) / nullif(sum(idx_blks_hit + idx_blks_read),0) AS ratio FROM pg_statio_user_indexes UNION ALL SELECT 'table hit rate' AS name, 100.*sum(heap_blks_hit) / nullif(sum(heap_blks_hit) + sum(heap_blks_read),0) AS ratio FROM pg_statio_user_tables"
 
+#define CLUSTER_BUFFERSUSAGE_TITLE "Buffers Usage"
+#define CLUSTER_BUFFERSUSAGE_SQL "SELECT usagecount, count(*) FROM pg_buffercache GROUP BY 1 ORDER BY 1"
+
+#define CLUSTER_BUFFERSUSAGEDIRTY_TITLE "Buffers Usage with dirty"
+#define CLUSTER_BUFFERSUSAGEDIRTY_SQL "SELECT usagecount, isdirty, count(*) FROM pg_buffercache GROUP BY 1,2 ORDER BY 1,2"
+
 #define DATABASES_TITLE "Databases"
 #define DATABASES_SQL "SELECT d.datname as \"Name\", pg_catalog.pg_get_userbyid(d.datdba) as \"Owner\", pg_catalog.pg_encoding_to_char(d.encoding) as \"Encoding\", d.datcollate as \"Collate\", d.datctype as \"Ctype\", pg_catalog.array_to_string(d.datacl, E'\n') AS \"Access privileges\", CASE WHEN pg_catalog.has_database_privilege(d.datname, 'CONNECT') THEN pg_catalog.pg_size_pretty(pg_catalog.pg_database_size(d.datname)) ELSE 'No Access' END as \"Size\", t.spcname as \"Tablespace\", pg_catalog.shobj_description(d.oid, 'pg_database') as \"Description\" FROM pg_catalog.pg_database d JOIN pg_catalog.pg_tablespace t on d.dattablespace = t.oid ORDER BY 1"
 
