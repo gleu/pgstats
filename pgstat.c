@@ -60,6 +60,7 @@ typedef enum
 	PROGRESS_ANALYZE,
 	PROGRESS_BASEBACKUP,
 	PROGRESS_CLUSTER,
+	PROGRESS_COPY,
 	PROGRESS_CREATEINDEX,
 	PROGRESS_VACUUM,
 	PBPOOLS,
@@ -351,6 +352,7 @@ void        print_pgstatslru(void);
 void        print_pgstatprogressanalyze(void);
 void        print_pgstatprogressbasebackup(void);
 void        print_pgstatprogresscluster(void);
+void        print_pgstatprogresscopy(void);
 void        print_pgstatprogresscreateindex(void);
 void        print_pgstatprogressvacuum(void);
 void        print_xlogstats(void);
@@ -418,6 +420,8 @@ help(const char *progname)
 		   "                         for 13+)\n"
 		   "  * progress_cluster     for cluster progress monitoring (only for\n"
 		   "                         12+)\n"
+		   "  * progress_copy        for copy progress monitoring (only for\n"
+		   "                         14+)\n"
 		   "  * progress_createindex for create index progress monitoring (only\n"
 		   "                         for 12+)\n"
 		   "  * progress_vacuum      for vacuum progress monitoring (only for\n"
@@ -566,6 +570,10 @@ get_opts(int argc, char **argv)
 				else if (!strcmp(optarg, "progress_cluster"))
 				{
 					opts->stat = PROGRESS_CLUSTER;
+				}
+				else if (!strcmp(optarg, "progress_copy"))
+				{
+					opts->stat = PROGRESS_COPY;
 				}
 				else if (!strcmp(optarg, "progress_createindex"))
 				{
@@ -2259,6 +2267,63 @@ print_pgstatprogresscluster()
 }
 
 /*
+ * Dump copy progress.
+ */
+void
+print_pgstatprogresscopy()
+{
+	char		sql[PGSTAT_DEFAULT_STRING_SIZE];
+	PGresult   *res;
+	int			nrows;
+	int			row;
+
+	snprintf(sql, sizeof(sql),
+		 "SELECT pc.datname, t.relname,"
+	 	 "		 command, type,"
+		 "		 bytes_processed, bytes_total, tuples_processed, tuples_excluded,"
+		 "       (now()-query_start)::time(0) "
+		 "FROM pg_stat_progress_copy pc "
+		 "JOIN pg_stat_activity USING (pid) "
+		 "LEFT JOIN pg_class t ON t.oid=pc.relid "
+		 "ORDER BY pid");
+
+	res = PQexec(conn, sql);
+
+	/* check and deal with errors */
+	if (!res || PQresultStatus(res) > 2)
+	{
+		warnx("pgstat: query failed: %s", PQerrorMessage(conn));
+		PQclear(res);
+		PQfinish(conn);
+		errx(1, "pgstat: query was: %s", sql);
+	}
+
+	/* get the number of fields */
+	nrows = PQntuples(res);
+
+	/* for each row, dump the information */
+	/* this is stupid, a simple if would do the trick, but it will help for other cases */
+	for (row = 0; row < nrows; row++)
+	{
+		/* printing the value... */
+		(void)printf(" %-16s %-20s      %-23s  %-20s  %10ld  %10ld   %10ld  %10ld         %s\n",
+			PQgetvalue(res, row, 0),
+			PQgetvalue(res, row, 1),
+			PQgetvalue(res, row, 2),
+			PQgetvalue(res, row, 3),
+		    atol(PQgetvalue(res, row, 4)),
+		    atol(PQgetvalue(res, row, 5)),
+		    atol(PQgetvalue(res, row, 6)),
+		    atol(PQgetvalue(res, row, 7)),
+		    PQgetvalue(res, row, 8)
+		    );
+	};
+
+	/* cleanup */
+	PQclear(res);
+}
+
+/*
  * Dump index creation progress.
  */
 void
@@ -3034,6 +3099,10 @@ print_header(void)
 			(void)printf("--------------------------- object -------------------------- -------------------- phase -------------------- ------------------- stats ------------------- -- time elapsed --\n");
 			(void)printf(" database         table                 index                                                                  tuples scanned  tuples written  %%blocks  index rebuilt\n");
 			break;
+		case PROGRESS_COPY:
+			(void)printf("----------------- object ---------------- -------------------- phase -------------------- --------- bytes --------- ------- tuples -------- -- time elapsed --\n");
+			(void)printf(" database         table                     command                  type                   processed       total    processed    excluded\n");
+			break;
 		case PROGRESS_CREATEINDEX:
 			(void)printf("--------------------------- object -------------------------- -------------------- phase -------------------- ------------------- stats ------------------- -- time elapsed --\n");
 			(void)printf(" database         table                 index                                                                  %%lockers  %%blocks  %%tuples  %%partitions\n");
@@ -3115,6 +3184,9 @@ print_line(void)
 			break;
 		case PROGRESS_CLUSTER:
 			print_pgstatprogresscluster();
+			break;
+		case PROGRESS_COPY:
+			print_pgstatprogresscopy();
 			break;
 		case PROGRESS_CREATEINDEX:
 			print_pgstatprogresscreateindex();
@@ -3289,6 +3361,7 @@ allocate_struct(void)
 		case PROGRESS_ANALYZE:
 		case PROGRESS_BASEBACKUP:
 		case PROGRESS_CLUSTER:
+		case PROGRESS_COPY:
 		case PROGRESS_CREATEINDEX:
 		case PROGRESS_VACUUM:
 		case PBPOOLS:
@@ -3443,6 +3516,12 @@ main(int argc, char **argv)
 	{
 		PQfinish(conn);
 		errx(1, "You need at least v13 for this statistic.");
+	}
+
+	if (opts->stat == PROGRESS_COPY && !backend_minimum_version(14, 0))
+	{
+		PQfinish(conn);
+		errx(1, "You need at least v14 for this statistic.");
 	}
 
 	/* Check if the configuration matches the statistics */

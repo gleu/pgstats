@@ -470,7 +470,6 @@ Ideas
 
 * pgstat
   * add report for pg_stat_wal
-  * add report for pg_stat_progress_copy
 * pgcsvstat
   * update pg_stat_statements export with the new columns
   * add export of pg_stat_slru
