@@ -468,7 +468,7 @@ Ideas
   * pg_stat_X_tables: display the duration since the last vacuum and analyze
   * sum the number of archived wal files
 
-* pgcsvstat
+* pgstat
   * add export of pg_stat_wal
   * add export of pg_stat_progress_copy
 * pgcsvstat
