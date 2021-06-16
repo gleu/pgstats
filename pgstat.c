@@ -254,7 +254,6 @@ struct pgstatstatement
 };
 
 /* pg_stat_slru struct */
-/* to be fixed wrt v14 */
 struct pgstatslru
 {
     long blks_zeroed;
@@ -264,6 +263,7 @@ struct pgstatslru
     long blks_exists;
     long flushes;
     long truncates;
+	char *stats_reset;
 };
 
 /* xlogstats struct */
@@ -1927,6 +1927,8 @@ print_pgstatslru()
     long blks_exists = 0;
     long flushes = 0;
     long truncates = 0;
+	char *stats_reset;
+	bool has_been_reset;
 
 	/*
 	 * With a filter, we assume we'll get only one row.
@@ -1936,8 +1938,10 @@ print_pgstatslru()
 	{
 		snprintf(sql, sizeof(sql),
 				 "SELECT sum(blks_zeroed), sum(blks_hit), sum(blks_read), sum(blks_written), "
-				 "sum(blks_exists), sum(flushes), sum(truncates) "
-	             "FROM pg_stat_slru ");
+				 "sum(blks_exists), sum(flushes), sum(truncates), "
+				 "max(stats_reset), max(stats_reset)>'%s' "
+	             "FROM pg_stat_slru ",
+				previous_pgstatslru->stats_reset);
 
 		res = PQexec(conn, sql);
 	}
@@ -1945,9 +1949,11 @@ print_pgstatslru()
 	{
 		snprintf(sql, sizeof(sql),
 				 "SELECT sum(blks_zeroed), sum(blks_hit), sum(blks_read), sum(blks_written), "
-				 "sum(blks_exists), sum(flushes), sum(truncates) "
+				 "sum(blks_exists), sum(flushes), sum(truncates), "
+				 "stats_reset, stats_reset>'%s' "
 	             "FROM pg_stat_slru "
-				 "WHERE name = $1");
+				 "WHERE name = $1",
+				previous_pgstatslru->stats_reset);
 
 		paramValues[0] = pg_strdup(opts->filter);
 
@@ -1988,6 +1994,14 @@ print_pgstatslru()
         flushes = atol(PQgetvalue(res, row, column++));
         truncates = atol(PQgetvalue(res, row, column++));
 
+		stats_reset = PQgetvalue(res, row, column++);
+		has_been_reset = strcmp(PQgetvalue(res, row, column++), "f") && strcmp(previous_pgstatslru->stats_reset, PGSTAT_OLDEST_STAT_RESET);
+
+		if (has_been_reset)
+		{
+			(void)printf("pg_stat_slru has been reset!\n");
+		}
+
 		/* printing the diff... note that the first line will be the current value, rather than the diff */
 		(void)printf(" %6ld   %6ld  %6ld  %6ld   %6ld  %6ld     %6ld\n",
 		    blks_zeroed - previous_pgstatslru->blks_zeroed,
@@ -2007,6 +2021,7 @@ print_pgstatslru()
 		previous_pgstatslru->blks_exists = blks_exists;
 		previous_pgstatslru->flushes = flushes;
 		previous_pgstatslru->truncates = truncates;
+		previous_pgstatslru->stats_reset = stats_reset;
 	}
 
 	/* cleanup */
@@ -3206,6 +3221,7 @@ allocate_struct(void)
 		    previous_pgstatslru->blks_exists = 0;
 		    previous_pgstatslru->flushes = 0;
 		    previous_pgstatslru->truncates = 0;
+		    previous_pgstatslru->stats_reset = PGSTAT_OLDEST_STAT_RESET;
 			break;
 		case XLOG:
 			previous_xlogstats = (struct xlogstats *) pg_malloc(sizeof(struct xlogstats));
