@@ -221,7 +221,6 @@ struct pgstatfunction
 };
 
 /* pg_stat_statements struct */
-/* to be fixed wrt v14 */
 struct pgstatstatement
 {
 	/*
@@ -230,13 +229,21 @@ struct pgstatstatement
 	long queryid;
 	text query;
 	*/
-	long calls;
-	float total_time;
+	long plans;
+	float total_plan_time;
 	/*
-	float min_time;
-	float max_time;
-	float mean_time;
-	float stddev_time;
+	float min_plan_time;
+	float max_plan_time;
+	float mean_plan_time;
+	float stddev_plan_time;
+	*/
+	long calls;
+	float total_exec_time;
+	/*
+	float min_exec_time;
+	float max_exec_time;
+	float mean_exec_time;
+	float stddev_exec_time;
 	*/
 	long rows;
 	long shared_blks_hit;
@@ -251,6 +258,9 @@ struct pgstatstatement
 	long temp_blks_written;
 	float blk_read_time;
 	float blk_write_time;
+	long wal_records;
+	long wal_fpi;
+	long wal_bytes;
 };
 
 /* pg_stat_slru struct */
@@ -1780,8 +1790,10 @@ print_pgstatstatement()
 	int			nrows;
 	int			row, column;
 
+	long plans = 0;
+	float total_plan_time = 0;
 	long calls = 0;
-	float total_time = 0;
+	float total_exec_time = 0;
 	long rows = 0;
 	long shared_blks_hit = 0;
 	long shared_blks_read = 0;
@@ -1795,29 +1807,42 @@ print_pgstatstatement()
 	long temp_blks_written = 0;
 	float blk_read_time = 0;
 	float blk_write_time = 0;
+	long wal_records = 0;
+	long wal_fpi = 0;
+	long wal_bytes = 0;
 
 	if (opts->filter == NULL)
 	{
 		snprintf(sql, sizeof(sql),
-			 "SELECT sum(calls), sum(total_time), sum(rows),"
+			 "SELECT %ssum(calls), sum(%s), sum(rows),"
 	         " sum(shared_blks_hit), sum(shared_blks_read), sum(shared_blks_dirtied), sum(shared_blks_written),"
 	         " sum(local_blks_hit), sum(local_blks_read), sum(local_blks_dirtied), sum(local_blks_written),"
 	         " sum(temp_blks_read), sum(temp_blks_written),"
 	         " sum(blk_read_time), sum(blk_write_time)"
-             " FROM %s.pg_stat_statements ", opts->namespace);
+	         "%s"
+             " FROM %s.pg_stat_statements ",
+             backend_minimum_version(13, 0) ? "sum(plans), sum(total_plan_time), " : "",
+             backend_minimum_version(13, 0) ? "total_exec_time" : "total_time",
+             backend_minimum_version(13, 0) ? ", sum(wal_records), sum(wal_fpi), sum(wal_bytes)" : "",
+             opts->namespace);
 
 		res = PQexec(conn, sql);
 	}
 	else
 	{
 		snprintf(sql, sizeof(sql),
-			 "SELECT calls, total_time, rows,"
+			 "SELECT %scalls, %s, rows,"
 	         " shared_blks_hit, shared_blks_read, shared_blks_dirtied, shared_blks_written,"
 	         " local_blks_hit, local_blks_read, local_blks_dirtied, local_blks_written,"
 	         " temp_blks_read, temp_blks_written,"
 	         " blk_read_time, blk_write_time"
+	         "%s"
              " FROM %s.pg_stat_statements "
-			 "WHERE queryid=$1", opts->namespace);
+			 "WHERE queryid=$1",
+             backend_minimum_version(13, 0) ? "plans, total_plan_time, " : "",
+             backend_minimum_version(13, 0) ? "total_exec_time" : "total_time",
+             backend_minimum_version(13, 0) ? ", wal_records, wal_fpi, wal_bytes" : "",
+             opts->namespace);
 
 		paramValues[0] = pg_strdup(opts->filter);
 
@@ -1850,8 +1875,13 @@ print_pgstatstatement()
 		column = 0;
 
 		/* getting new values */
+		if (backend_minimum_version(13, 0))
+		{
+			plans = atol(PQgetvalue(res, row, column++));
+			total_plan_time = atof(PQgetvalue(res, row, column++));
+		}
 		calls = atol(PQgetvalue(res, row, column++));
-		total_time = atof(PQgetvalue(res, row, column++));
+		total_exec_time = atof(PQgetvalue(res, row, column++));
 		rows = atol(PQgetvalue(res, row, column++));
 		shared_blks_hit = atol(PQgetvalue(res, row, column++));
 		shared_blks_read = atol(PQgetvalue(res, row, column++));
@@ -1865,12 +1895,20 @@ print_pgstatstatement()
 		temp_blks_written = atol(PQgetvalue(res, row, column++));
 		blk_read_time = atof(PQgetvalue(res, row, column++));
 		blk_write_time = atof(PQgetvalue(res, row, column++));
+		if (backend_minimum_version(13, 0))
+		{
+			wal_records = atol(PQgetvalue(res, row, column++));
+			wal_fpi = atol(PQgetvalue(res, row, column++));
+			wal_bytes = atol(PQgetvalue(res, row, column++));
+		}
 
 		/* printing the diff...
 		 * note that the first line will be the current value, rather than the diff */
-		(void)printf(" %6ld   %6.2f %6ld   %6ld %6ld %6ld  %6ld   %6ld %6ld %6ld  %6ld  %6ld  %6ld      %6.2f    %6.2f\n",
+		(void)printf(" %6ld  %6.2f   %6ld    %6.2f %6ld   %6ld %6ld %6ld  %6ld   %6ld %6ld %6ld  %6ld  %6ld  %6ld      %6.2f    %6.2f          %6ld  %6ld    %6ld\n",
+			plans - previous_pgstatstatement->plans,
+			total_plan_time - previous_pgstatstatement->total_plan_time,
 			calls - previous_pgstatstatement->calls,
-			total_time - previous_pgstatstatement->total_time,
+			total_exec_time - previous_pgstatstatement->total_exec_time,
 			rows - previous_pgstatstatement->rows,
 			shared_blks_hit - previous_pgstatstatement->shared_blks_hit,
 			shared_blks_read - previous_pgstatstatement->shared_blks_read,
@@ -1883,12 +1921,17 @@ print_pgstatstatement()
 			temp_blks_read - previous_pgstatstatement->temp_blks_read,
 			temp_blks_written - previous_pgstatstatement->temp_blks_written,
 			blk_read_time - previous_pgstatstatement->blk_read_time,
-			blk_write_time - previous_pgstatstatement->blk_write_time
+			blk_write_time - previous_pgstatstatement->blk_write_time,
+			wal_records - previous_pgstatstatement->wal_records,
+			wal_fpi - previous_pgstatstatement->wal_fpi,
+			wal_bytes - previous_pgstatstatement->wal_bytes
 		    );
 
 		/* setting the new old value */
+		previous_pgstatstatement->plans = plans;
+		previous_pgstatstatement->total_plan_time = total_plan_time;
 		previous_pgstatstatement->calls = calls;
-		previous_pgstatstatement->total_time = total_time;
+		previous_pgstatstatement->total_exec_time = total_exec_time;
 		previous_pgstatstatement->rows = rows;
 		previous_pgstatstatement->shared_blks_hit = shared_blks_hit;
 		previous_pgstatstatement->shared_blks_read = shared_blks_read;
@@ -1902,6 +1945,9 @@ print_pgstatstatement()
 		previous_pgstatstatement->temp_blks_written = temp_blks_written;
 		previous_pgstatstatement->blk_read_time = blk_read_time;
 		previous_pgstatstatement->blk_write_time = blk_write_time;
+		previous_pgstatstatement->wal_records = wal_records;
+		previous_pgstatstatement->wal_fpi = wal_fpi;
+		previous_pgstatstatement->wal_bytes = wal_bytes;
 	};
 
 	/* cleanup */
@@ -2960,8 +3006,8 @@ print_header(void)
 			(void)printf("             total     self\n");
 			break;
 		case STATEMENT:
-			(void)printf("--------- misc ---------- ----------- shared ----------- ----------- local ----------- ----- temp ----- -------- time --------\n");
-			(void)printf("  calls      time   rows      hit   read  dirty written      hit   read  dirty written    read written        read   written\n");
+			(void)printf("----- plan ----- --------- exec ---------- ----------- shared ----------- ----------- local ----------- ----- temp ----- -------- time -------- -------------- wal --------------\n");
+			(void)printf("  plans    time    calls      time   rows      hit   read  dirty written      hit   read  dirty written    read written        read   written     wal_records wal_fpi wal_bytes\n");
 			break;
 		case SLRU:
 			(void)printf("  zeroed  hit     read    written  exists  flushes  truncates\n");
@@ -3196,8 +3242,10 @@ allocate_struct(void)
 			break;
 		case STATEMENT:
 			previous_pgstatstatement = (struct pgstatstatement *) pg_malloc(sizeof(struct pgstatstatement));
+			previous_pgstatstatement->plans = 0;
+			previous_pgstatstatement->total_plan_time = 0;
 			previous_pgstatstatement->calls = 0;
-			previous_pgstatstatement->total_time = 0;
+			previous_pgstatstatement->total_exec_time = 0;
 			previous_pgstatstatement->rows = 0;
 			previous_pgstatstatement->shared_blks_hit = 0;
 			previous_pgstatstatement->shared_blks_read = 0;
@@ -3211,6 +3259,9 @@ allocate_struct(void)
 			previous_pgstatstatement->temp_blks_written = 0;
 			previous_pgstatstatement->blk_read_time = 0;
 			previous_pgstatstatement->blk_write_time = 0;
+			previous_pgstatstatement->wal_records = 0;
+			previous_pgstatstatement->wal_fpi = 0;
+			previous_pgstatstatement->wal_bytes = 0;
 			break;
 		case SLRU:
 			previous_pgstatslru = (struct pgstatslru *) pg_malloc(sizeof(struct pgstatslru));
