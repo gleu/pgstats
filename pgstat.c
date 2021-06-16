@@ -130,6 +130,7 @@ struct pgstatbgwriter
 };
 
 /* pg_stat_database struct */
+/* to be fixed wrt v14 */
 struct pgstatdatabase
 {
 	/*
@@ -214,6 +215,7 @@ struct pgstatfunction
 };
 
 /* pg_stat_statements struct */
+/* to be fixed wrt v14 */
 struct pgstatstatement
 {
 	/*
@@ -246,6 +248,7 @@ struct pgstatstatement
 };
 
 /* pg_stat_slru struct */
+/* to be fixed wrt v14 */
 struct pgstatslru
 {
     long blks_zeroed;

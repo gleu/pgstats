@@ -498,6 +498,7 @@ sql_exec_dump_pgstatarchiver()
 
 /*
  * Dump all databases stats.
+ * to be fixed wrt v14
  */
 void
 sql_exec_dump_pgstatdatabase()
@@ -736,6 +737,7 @@ sql_exec_dump_pgclass_size()
 
 /*
  * Dump all statements stats.
+ * to be fixed wrt v14
  */
 void
 sql_exec_dump_pgstatstatements()

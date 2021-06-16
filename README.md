@@ -469,7 +469,11 @@ Ideas
   * sum the number of archived wal files
 
 * pgcsvstat
+  * add export of pg_stat_wal
+  * add export of pg_stat_progress_copy
+* pgcsvstat
   * update pg_stat_statements export with the new columns
+  * add export of pg_stat_slru
   * add export of pg_stat_subscription
   * add export of pg_stat_walreceiver
   * add export of pg_publication
