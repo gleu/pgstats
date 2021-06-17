@@ -426,7 +426,7 @@ sql_exec_dump_pgstatactivity()
 			 "SELECT date_trunc('seconds', now()), datid, datname, %s, %s"
              "usesysid, usename, %s%s%s%s%s"
 			 "date_trunc('seconds', query_start) AS query_start, "
-             "%s%s%s%s%s%s state "
+             "%s%s%s%s%s%s%s state "
              "FROM pg_stat_activity "
 			 "ORDER BY %s",
 		backend_minimum_version(9, 2) ? "pid" : "procpid",
@@ -440,6 +440,7 @@ sql_exec_dump_pgstatactivity()
         backend_minimum_version(9, 6) ? "wait_event_type, wait_event, " : backend_minimum_version(8, 2) ? "waiting, " : "",
         backend_minimum_version(9, 4) ? "backend_xid, " : "",
         backend_minimum_version(9, 4) ? "backend_xmin, " : "",
+        backend_minimum_version(14, 0) ? "query_id, " : "",
         backend_minimum_version(9, 2) ? "query, " : "current_query,",
 		backend_minimum_version(10, 0) ? "backend_type, " : "",
 		backend_minimum_version(9, 2) ? "pid" : "procpid");   // the last one is for the ORDER BY
@@ -510,13 +511,14 @@ sql_exec_dump_pgstatdatabase()
 	snprintf(query, sizeof(query),
 			 "SELECT date_trunc('seconds', now()), datid, datname, "
              "numbackends, xact_commit, xact_rollback, blks_read, blks_hit"
-             "%s%s%s%s "
+             "%s%s%s%s%s "
              "FROM pg_stat_database "
              "ORDER BY datname",
 		backend_minimum_version(8, 3) ? ", tup_returned, tup_fetched, tup_inserted, tup_updated, tup_deleted" : "",
 		backend_minimum_version(9, 1) ? ", conflicts, date_trunc('seconds', stats_reset) AS stats_reset" : "",
 		backend_minimum_version(9, 2) ? ", temp_files, temp_bytes, deadlocks, blk_read_time, blk_write_time" : "",
-		backend_minimum_version(12, 0) ? ", checksum_failures, checksum_last_failure" : "");
+		backend_minimum_version(12, 0) ? ", checksum_failures, checksum_last_failure" : "",
+		backend_minimum_version(14, 0) ? ", session_time, active_time, idle_in_transaction_time, sessions, sessions_abandoned, sessions_fatal, sessions_killed" : "");
 	snprintf(filename, sizeof(filename),
 			 "%s/pg_stat_database.csv", opts->directory);
 
@@ -748,13 +750,17 @@ sql_exec_dump_pgstatstatements()
 	/* get the oid and database name from the system pg_database table */
 	snprintf(query, sizeof(query),
 			 "SELECT date_trunc('seconds', now()), r.rolname, d.datname, "
-             "regexp_replace(query, E'\n', ' ', 'g') as query, calls, total_time, rows, "
+             "%sregexp_replace(query, E'\n', ' ', 'g') as query, %scalls, %s, rows, "
              "shared_blks_hit, shared_blks_read, shared_blks_written, "
              "local_blks_hit, local_blks_read, local_blks_written, "
-             "temp_blks_read, temp_blks_written "
+             "temp_blks_read, temp_blks_written%s "
 			 "FROM pg_stat_statements q, pg_database d, pg_roles r "
 			 "WHERE q.userid=r.oid and q.dbid=d.oid "
-			 "ORDER BY r.rolname, d.datname");
+			 "ORDER BY r.rolname, d.datname",
+		backend_minimum_version(14, 0) ? "toplevel, queryid, " : "",
+		backend_minimum_version(13, 0) ? "plans, total_plan_time, min_plan_time, max_plan_time, mean_plan_time, stddev_plan_time, " : "",
+		backend_minimum_version(13, 0) ? "total_exec_time, min_exec_time, max_exec_time, mean_exec_time, stddev_exec_time" : "total_time",
+		backend_minimum_version(14, 0) ? ", wal_records, wal_fpi, wal_bytes" : "");
 	snprintf(filename, sizeof(filename),
 			 "%s/pg_stat_statements.csv", opts->directory);
 
