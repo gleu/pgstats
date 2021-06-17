@@ -68,6 +68,7 @@ void        sql_exec_dump_pgstatdatabaseconflicts(void);
 void        sql_exec_dump_pgstatreplication(void);
 void        sql_exec_dump_pgstatreplicationslots(void);
 void        sql_exec_dump_pgstatslru(void);
+void        sql_exec_dump_pgstatsubscription(void);
 void		sql_exec_dump_pgstatalltables(void);
 void		sql_exec_dump_pgstatallindexes(void);
 void		sql_exec_dump_pgstatioalltables(void);
@@ -627,6 +628,30 @@ sql_exec_dump_pgstatslru()
 }
 
 /*
+ * Dump all SLRU stats.
+ */
+void
+sql_exec_dump_pgstatsubscription()
+{
+	char		query[1024];
+	char		filename[1024];
+
+	/* get the oid and database name from the system pg_database table */
+	snprintf(query, sizeof(query),
+			 "SELECT date_trunc('seconds', now()), subid, subname, "
+			 "pid, relid, received_lsn, "
+			 "date_trunc('seconds', last_msg_send_time) AS last_msg_send_time, "
+			 "date_trunc('seconds', last_msg_receipt_time) AS last_msg_receipt_time, "
+			 "latest_end_lsn, date_trunc('seconds', latest_end_time) AS latest_end_time "
+             "FROM pg_stat_subscription "
+             "ORDER BY subid");
+	snprintf(filename, sizeof(filename),
+			 "%s/pg_stat_subscription.csv", opts->directory);
+
+	sql_exec(query, filename, opts->quiet);
+}
+
+/*
  * Dump all tables stats.
  */
 void
@@ -1020,8 +1045,8 @@ main(int argc, char **argv)
 		sql_exec_dump_pgstatreplicationslots();
 	if (backend_minimum_version(13, 0))
 		sql_exec_dump_pgstatslru();
-    /* TODO pg_stat_slru */
-    /* TODO pg_stat_subscription */
+	if (backend_minimum_version(10, 0))
+		sql_exec_dump_pgstatsubscription();
     /* TODO pg_stat_wal */
     /* TODO pg_stat_walreceiver */
 
