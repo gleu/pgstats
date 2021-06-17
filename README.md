@@ -469,9 +469,5 @@ Ideas
   * sum the number of archived wal files
 
 * pgcsvstat
-  * add export of pg_stat_slru
-  * add export of pg_stat_subscription
   * add export of pg_stat_walreceiver
-  * add export of pg_publication
-  * add export of pg_replication_slots
   * add export of progress views

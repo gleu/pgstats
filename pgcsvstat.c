@@ -69,6 +69,7 @@ void        sql_exec_dump_pgstatreplication(void);
 void        sql_exec_dump_pgstatreplicationslots(void);
 void        sql_exec_dump_pgstatslru(void);
 void        sql_exec_dump_pgstatsubscription(void);
+void        sql_exec_dump_pgstatwal(void);
 void		sql_exec_dump_pgstatalltables(void);
 void		sql_exec_dump_pgstatallindexes(void);
 void		sql_exec_dump_pgstatioalltables(void);
@@ -628,7 +629,7 @@ sql_exec_dump_pgstatslru()
 }
 
 /*
- * Dump all SLRU stats.
+ * Dump all subscriptions stats.
  */
 void
 sql_exec_dump_pgstatsubscription()
@@ -647,6 +648,28 @@ sql_exec_dump_pgstatsubscription()
              "ORDER BY subid");
 	snprintf(filename, sizeof(filename),
 			 "%s/pg_stat_subscription.csv", opts->directory);
+
+	sql_exec(query, filename, opts->quiet);
+}
+
+/*
+ * Dump all WAL stats.
+ */
+void
+sql_exec_dump_pgstatwal()
+{
+	char		query[1024];
+	char		filename[1024];
+
+	/* get the oid and database name from the system pg_database table */
+	snprintf(query, sizeof(query),
+			 "SELECT date_trunc('seconds', now()), "
+			 "wal_records, wal_fpi, wal_bytes, wal_buffers_full, wal_write, "
+			 "wal_sync, wal_write_time, wal_sync_time, "
+			 "date_trunc('seconds', stats_reset) AS stats_reset "
+             "FROM pg_stat_wal");
+	snprintf(filename, sizeof(filename),
+			 "%s/pg_stat_wal.csv", opts->directory);
 
 	sql_exec(query, filename, opts->quiet);
 }
@@ -1047,7 +1070,8 @@ main(int argc, char **argv)
 		sql_exec_dump_pgstatslru();
 	if (backend_minimum_version(10, 0))
 		sql_exec_dump_pgstatsubscription();
-    /* TODO pg_stat_wal */
+	if (backend_minimum_version(14, 0))
+		sql_exec_dump_pgstatwal();
     /* TODO pg_stat_walreceiver */
 
 	/* grab database stats info */
