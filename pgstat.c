@@ -57,6 +57,7 @@ typedef enum
 	TEMPFILE,
 	REPSLOTS,
 	WAITEVENT,
+	WAL,
 	PROGRESS_ANALYZE,
 	PROGRESS_BASEBACKUP,
 	PROGRESS_CLUSTER,
@@ -292,6 +293,20 @@ struct repslots
 	long restartlsndiff;
 };
 
+/* pg_stat_wal struct */
+struct pgstatwal
+{
+	long wal_records;
+	long wal_fpi;
+	long wal_bytes;
+	long wal_buffers_full;
+	long wal_write;
+	long wal_sync;
+	float wal_write_time;
+	float wal_sync_time;
+	char *stats_reset;
+};
+
 /* pgBouncer stats struct */
 struct pgbouncerstats
 {
@@ -322,6 +337,7 @@ struct pgstatindex     *previous_pgstatindex;
 struct pgstatfunction  *previous_pgstatfunction;
 struct pgstatstatement *previous_pgstatstatement;
 struct pgstatslru      *previous_pgstatslru;
+struct pgstatwal       *previous_pgstatwal;
 struct xlogstats       *previous_xlogstats;
 struct repslots        *previous_repslots;
 struct pgbouncerstats  *previous_pgbouncerstats;
@@ -349,6 +365,7 @@ void        print_pgstatindex(void);
 void        print_pgstatfunction(void);
 void        print_pgstatstatement(void);
 void        print_pgstatslru(void);
+void        print_pgstatwal(void);
 void        print_pgstatprogressanalyze(void);
 void        print_pgstatprogressbasebackup(void);
 void        print_pgstatprogresscluster(void);
@@ -414,6 +431,7 @@ help(const char *progname)
 		   "  * repslots             for replication slots\n"
 		   "  * tempfile             for temporary file usage\n"
 		   "  * waitevent            for wait events usage\n"
+		   "  * wal                  for pg_stat_wal (only for 14+)\n"
 		   "  * progress_analyze     for analyze progress monitoring (only for\n"
 		   "                         13+)\n"
 		   "  * progress_basebackup  for base backup progress monitoring (only\n"
@@ -542,6 +560,10 @@ get_opts(int argc, char **argv)
 				else if (!strcmp(optarg, "slru"))
 				{
 					opts->stat = SLRU;
+				}
+				else if (!strcmp(optarg, "wal"))
+				{
+					opts->stat = WAL;
 				}
 				else if (!strcmp(optarg, "xlog"))
 				{
@@ -2083,6 +2105,103 @@ print_pgstatslru()
 }
 
 /*
+ * Dump all wal stats.
+ */
+void
+print_pgstatwal()
+{
+	char		sql[PGSTAT_DEFAULT_STRING_SIZE];
+	PGresult   *res;
+	int			nrows;
+	int			row, column;
+
+	long wal_records;
+	long wal_fpi;
+	long wal_bytes;
+	long wal_buffers_full;
+	long wal_write;
+	long wal_sync;
+	float wal_write_time;
+	float wal_sync_time;
+	char *stats_reset;
+	bool has_been_reset;
+
+	/* grab the stats (this is the only stats on one line) */
+	snprintf(sql, sizeof(sql),
+			 "SELECT wal_records, wal_fpi, wal_bytes, wal_buffers_full, "
+			 "wal_write, wal_sync, wal_write_time, wal_sync_time, "
+			 "stats_reset, stats_reset>'%s' "
+             "FROM pg_stat_wal ",
+		previous_pgstatwal->stats_reset);
+
+	/* make the call */
+	res = PQexec(conn, sql);
+
+	/* check and deal with errors */
+	if (!res || PQresultStatus(res) > 2)
+	{
+		warnx("pgstat: query failed: %s", PQerrorMessage(conn));
+		PQclear(res);
+		PQfinish(conn);
+		errx(1, "pgstat: query was: %s", sql);
+	}
+
+	/* get the number of fields */
+	nrows = PQntuples(res);
+
+	/* for each row, dump the information */
+	/* this is stupid, a simple if would do the trick, but it will help for other cases */
+	for (row = 0; row < nrows; row++)
+	{
+		column = 0;
+
+		/* getting new values */
+		wal_records = atol(PQgetvalue(res, row, column++));
+		wal_fpi = atol(PQgetvalue(res, row, column++));
+		wal_bytes = atol(PQgetvalue(res, row, column++));
+		wal_buffers_full = atol(PQgetvalue(res, row, column++));
+		wal_write = atol(PQgetvalue(res, row, column++));
+		wal_sync = atol(PQgetvalue(res, row, column++));
+		wal_write_time = atof(PQgetvalue(res, row, column++));
+		wal_sync_time = atof(PQgetvalue(res, row, column++));
+		stats_reset = PQgetvalue(res, row, column++);
+		has_been_reset = strcmp(PQgetvalue(res, row, column++), "f") && strcmp(previous_pgstatwal->stats_reset, PGSTAT_OLDEST_STAT_RESET);
+
+		if (has_been_reset)
+		{
+			(void)printf("pg_stat_wal has been reset!\n");
+		}
+
+		/* printing the diff...
+		 * note that the first line will be the current value, rather than the diff */
+		(void)printf("   %6ld   %6ld   %6ld         %6ld  %6ld   %6ld      %6.2f      %6.2f\n",
+			wal_records - previous_pgstatwal->wal_records,
+			wal_fpi - previous_pgstatwal->wal_fpi,
+			wal_bytes - previous_pgstatwal->wal_bytes,
+			wal_buffers_full - previous_pgstatwal->wal_buffers_full,
+			wal_write - previous_pgstatwal->wal_write,
+			wal_sync - previous_pgstatwal->wal_sync,
+			wal_write_time - previous_pgstatwal->wal_write_time,
+			wal_sync_time - previous_pgstatwal->wal_sync_time
+		    );
+
+		/* setting the new old value */
+		previous_pgstatwal->wal_records = wal_records;
+		previous_pgstatwal->wal_fpi = wal_fpi;
+		previous_pgstatwal->wal_bytes = wal_bytes;
+		previous_pgstatwal->wal_buffers_full = wal_buffers_full;
+		previous_pgstatwal->wal_write = wal_write;
+		previous_pgstatwal->wal_sync = wal_sync;
+		previous_pgstatwal->wal_write_time = wal_write_time;
+		previous_pgstatwal->wal_sync_time = wal_sync_time;
+	    previous_pgstatwal->stats_reset = stats_reset;
+	}
+
+	/* cleanup */
+	PQclear(res);
+}
+
+/*
  * Dump base backup progress.
  */
 void
@@ -3077,6 +3196,9 @@ print_header(void)
 		case SLRU:
 			(void)printf("  zeroed  hit     read    written  exists  flushes  truncates\n");
 			break;
+		case WAL:
+			(void)printf("  records      FPI    bytes   buffers_full   write     sync  write_time   sync_time\n");
+			break;
 		case XLOG:
 		case REPSLOTS:
 			(void)printf("-------- filename -------- -- location -- ---- bytes ----\n");
@@ -3169,6 +3291,9 @@ print_line(void)
 			break;
 		case SLRU:
 			print_pgstatslru();
+			break;
+		case WAL:
+			print_pgstatwal();
 			break;
 		case XLOG:
 			print_xlogstats();
@@ -3346,6 +3471,18 @@ allocate_struct(void)
 		    previous_pgstatslru->truncates = 0;
 		    previous_pgstatslru->stats_reset = PGSTAT_OLDEST_STAT_RESET;
 			break;
+		case WAL:
+			previous_pgstatwal = (struct pgstatwal *) pg_malloc(sizeof(struct pgstatwal));
+			previous_pgstatwal->wal_records = 0;
+			previous_pgstatwal->wal_fpi = 0;
+			previous_pgstatwal->wal_bytes = 0;
+			previous_pgstatwal->wal_buffers_full = 0;
+			previous_pgstatwal->wal_write = 0;
+			previous_pgstatwal->wal_sync = 0;
+			previous_pgstatwal->wal_write_time = 0;
+			previous_pgstatwal->wal_sync_time = 0;
+		    previous_pgstatwal->stats_reset = PGSTAT_OLDEST_STAT_RESET;
+		    break;
 		case XLOG:
 			previous_xlogstats = (struct xlogstats *) pg_malloc(sizeof(struct xlogstats));
 			previous_xlogstats->location = pg_strdup("0/0");
@@ -3518,7 +3655,7 @@ main(int argc, char **argv)
 		errx(1, "You need at least v13 for this statistic.");
 	}
 
-	if (opts->stat == PROGRESS_COPY && !backend_minimum_version(14, 0))
+	if ((opts->stat == WAL || opts->stat == PROGRESS_COPY) && !backend_minimum_version(14, 0))
 	{
 		PQfinish(conn);
 		errx(1, "You need at least v14 for this statistic.");

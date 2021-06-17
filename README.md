@@ -468,8 +468,6 @@ Ideas
   * pg_stat_X_tables: display the duration since the last vacuum and analyze
   * sum the number of archived wal files
 
-* pgstat
-  * add report for pg_stat_wal
 * pgcsvstat
   * update pg_stat_statements export with the new columns
   * add export of pg_stat_slru
