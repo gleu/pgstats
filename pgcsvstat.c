@@ -66,6 +66,7 @@ void		sql_exec_dump_pgstatbgwriter(void);
 void		sql_exec_dump_pgstatdatabase(void);
 void        sql_exec_dump_pgstatdatabaseconflicts(void);
 void        sql_exec_dump_pgstatreplication(void);
+void        sql_exec_dump_pgstatreplicationslots(void);
 void		sql_exec_dump_pgstatalltables(void);
 void		sql_exec_dump_pgstatallindexes(void);
 void		sql_exec_dump_pgstatioalltables(void);
@@ -578,6 +579,30 @@ sql_exec_dump_pgstatreplication()
 }
 
 /*
+ * Dump all replication slots stats.
+ */
+void
+sql_exec_dump_pgstatreplicationslots()
+{
+	char		query[1024];
+	char		filename[1024];
+
+	/* get the oid and database name from the system pg_database table */
+	snprintf(query, sizeof(query),
+			 "SELECT date_trunc('seconds', now()), slot_name, "
+			 "spill_txns, spill_count, spill_bytes, "
+			 "stream_txns, stream_count, stream_bytes, "
+			 "total_txns, total_bytes, "
+			 "date_trunc('seconds', stats_reset) AS stats_reset "
+             "FROM pg_stat_replication_slots "
+             "ORDER BY slot_name");
+	snprintf(filename, sizeof(filename),
+			 "%s/pg_stat_replication_slots.csv", opts->directory);
+
+	sql_exec(query, filename, opts->quiet);
+}
+
+/*
  * Dump all tables stats.
  */
 void
@@ -965,12 +990,13 @@ main(int argc, char **argv)
 		sql_exec_dump_pgstatdatabaseconflicts();
 		sql_exec_dump_pgstatreplication();
     }
+	if (backend_minimum_version(14, 0))
+		sql_exec_dump_pgstatreplicationslots();
 	if (backend_minimum_version(9, 4))
 		sql_exec_dump_pgstatarchiver();
     /* TODO pg_stat_subscription */
     /* TODO pg_stat_walreceiver */
     /* TODO pg_pubklication */
-    /* TODO pg_replication_slots */
 
 	/* grab database stats info */
 	sql_exec_dump_pgstatalltables();
