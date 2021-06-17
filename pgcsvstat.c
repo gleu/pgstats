@@ -67,6 +67,7 @@ void		sql_exec_dump_pgstatdatabase(void);
 void        sql_exec_dump_pgstatdatabaseconflicts(void);
 void        sql_exec_dump_pgstatreplication(void);
 void        sql_exec_dump_pgstatreplicationslots(void);
+void        sql_exec_dump_pgstatslru(void);
 void		sql_exec_dump_pgstatalltables(void);
 void		sql_exec_dump_pgstatallindexes(void);
 void		sql_exec_dump_pgstatioalltables(void);
@@ -603,6 +604,29 @@ sql_exec_dump_pgstatreplicationslots()
 }
 
 /*
+ * Dump all SLRU stats.
+ */
+void
+sql_exec_dump_pgstatslru()
+{
+	char		query[1024];
+	char		filename[1024];
+
+	/* get the oid and database name from the system pg_database table */
+	snprintf(query, sizeof(query),
+			 "SELECT date_trunc('seconds', now()), name, "
+			 "blks_zeroed, blks_hit, blks_read, blks_written, blks_exists, "
+			 "flushes, truncates, "
+			 "date_trunc('seconds', stats_reset) AS stats_reset "
+             "FROM pg_stat_slru "
+             "ORDER BY name");
+	snprintf(filename, sizeof(filename),
+			 "%s/pg_stat_slru.csv", opts->directory);
+
+	sql_exec(query, filename, opts->quiet);
+}
+
+/*
  * Dump all tables stats.
  */
 void
@@ -982,6 +1006,8 @@ main(int argc, char **argv)
 
 	/* grab cluster stats info */
 	sql_exec_dump_pgstatactivity();
+	if (backend_minimum_version(9, 4))
+		sql_exec_dump_pgstatarchiver();
 	if (backend_minimum_version(8, 3))
 		sql_exec_dump_pgstatbgwriter();
 	sql_exec_dump_pgstatdatabase();
@@ -992,11 +1018,12 @@ main(int argc, char **argv)
     }
 	if (backend_minimum_version(14, 0))
 		sql_exec_dump_pgstatreplicationslots();
-	if (backend_minimum_version(9, 4))
-		sql_exec_dump_pgstatarchiver();
+	if (backend_minimum_version(13, 0))
+		sql_exec_dump_pgstatslru();
+    /* TODO pg_stat_slru */
     /* TODO pg_stat_subscription */
+    /* TODO pg_stat_wal */
     /* TODO pg_stat_walreceiver */
-    /* TODO pg_pubklication */
 
 	/* grab database stats info */
 	sql_exec_dump_pgstatalltables();
