@@ -45,6 +45,7 @@ typedef enum
 	NONE = 0,
 	ARCHIVER,
 	BGWRITER,
+	BUFFERCACHE,
 	CONNECTION,
 	DATABASE,
 	TABLE,
@@ -89,7 +90,7 @@ struct options
 	int			major;
 	int			minor;
 
-	/* pg_stat_statements namespace */
+	/* extension namespace (pg_stat_statements or pg_buffercache) */
 	char	   *namespace;
 
 	/* frequency */
@@ -278,21 +279,6 @@ struct pgstatslru
 	char *stats_reset;
 };
 
-/* xlogstats struct */
-struct xlogstats
-{
-	char *location;
-	long locationdiff;
-};
-
-/* xlogstats struct */
-struct repslots
-{
-	char *currentlocation;
-	char *restartlsn;
-	long restartlsndiff;
-};
-
 /* pg_stat_wal struct */
 struct pgstatwal
 {
@@ -305,6 +291,21 @@ struct pgstatwal
 	float wal_write_time;
 	float wal_sync_time;
 	char *stats_reset;
+};
+
+/* repslots struct */
+struct repslots
+{
+	char *currentlocation;
+	char *restartlsn;
+	long restartlsndiff;
+};
+
+/* xlogstats struct */
+struct xlogstats
+{
+	char *location;
+	long locationdiff;
 };
 
 /* pgBouncer stats struct */
@@ -372,6 +373,7 @@ void        print_pgstatprogresscluster(void);
 void        print_pgstatprogresscopy(void);
 void        print_pgstatprogresscreateindex(void);
 void        print_pgstatprogressvacuum(void);
+void		print_buffercache(void);
 void        print_xlogstats(void);
 void        print_repslotsstats(void);
 void        print_tempfilestats(void);
@@ -380,6 +382,7 @@ void        print_pgbouncerpools(void);
 void        print_pgbouncerstats(void);
 void		fetch_version(void);
 char	   *fetch_setting(char *name);
+void		fetch_pgbuffercache_namespace(void);
 void		fetch_pgstatstatements_namespace(void);
 bool		backend_minimum_version(int major, int minor);
 void        print_header(void);
@@ -419,6 +422,7 @@ help(const char *progname)
 		   "the -s command line option, and one of its value (STAT):\n"
 		   "  * archiver             for pg_stat_archiver (only for 9.4+)\n"
 		   "  * bgwriter             for pg_stat_bgwriter\n"
+		   "  * buffercache          for pg_buffercache (needs the extension)\n"
 		   "  * connection           (only for 9.2+)\n"
 		   "  * database             for pg_stat_database\n"
 		   "  * table                for pg_stat_all_tables\n"
@@ -528,6 +532,10 @@ get_opts(int argc, char **argv)
 				else if (!strcmp(optarg, "bgwriter"))
 				{
 					opts->stat = BGWRITER;
+				}
+				else if (!strcmp(optarg, "buffercache"))
+				{
+					opts->stat = BUFFERCACHE;
 				}
 				else if (!strcmp(optarg, "connection"))
 				{
@@ -2564,6 +2572,64 @@ print_pgstatprogressvacuum()
 }
 
 /*
+ * Dump all buffercache stats.
+ */
+void
+print_buffercache()
+{
+	char		sql[PGSTAT_DEFAULT_STRING_SIZE];
+	PGresult   *res;
+	int			nrows;
+	int			row, column;
+
+	long usedblocks = 0;
+	long usedblocks_pct = 0;
+	long dirtyblocks = 0;
+	long dirtyblocks_pct = 0;
+
+	snprintf(sql, sizeof(sql),
+			 "SELECT count(*) FILTER (WHERE relfilenode IS NOT NULL), "
+			 "100. * count(*) FILTER (WHERE relfilenode IS NOT NULL) / count(*), "
+			 "count(*) FILTER (WHERE isdirty), "
+			 "100. * count(*) FILTER (WHERE isdirty) / count(*) "
+	         "FROM %s.pg_buffercache ",
+	         opts->namespace);
+
+	res = PQexec(conn, sql);
+
+	/* check and deal with errors */
+	if (!res || PQresultStatus(res) > 2)
+	{
+		warnx("pgstat: query failed: %s", PQerrorMessage(conn));
+		PQclear(res);
+		PQfinish(conn);
+		errx(1, "pgstat: query was: %s", sql);
+	}
+
+	/* get the number of fields */
+	nrows = PQntuples(res);
+
+	/* for each row, dump the information */
+	/* this is stupid, a simple if would do the trick, but it will help for other cases */
+	for (row = 0; row < nrows; row++)
+	{
+		column = 0;
+
+		usedblocks = atol(PQgetvalue(res, row, column++));
+		usedblocks_pct = atol(PQgetvalue(res, row, column++));
+		dirtyblocks = atol(PQgetvalue(res, row, column++));
+		dirtyblocks_pct = atol(PQgetvalue(res, row, column++));
+
+		/* printing the actual values for once */
+		(void)printf("   %4ld        %4ld     %4ld       %4ld\n",
+		    usedblocks, usedblocks_pct, dirtyblocks, dirtyblocks_pct);
+	}
+
+	/* cleanup */
+	PQclear(res);
+}
+
+/*
  * Dump all xlog writes stats.
  */
 void
@@ -3090,6 +3156,55 @@ char
 }
 
 /*
+ * Fetch pg_buffercache namespace
+ */
+void
+fetch_pgbuffercache_namespace()
+{
+	char		sql[PGSTAT_DEFAULT_STRING_SIZE];
+	PGresult   *res;
+
+	/* get the pg_stat_statement installation schema */
+	if (backend_minimum_version(9, 1))
+	{
+		snprintf(sql, sizeof(sql), "SELECT nspname FROM pg_extension e "
+		  "JOIN pg_namespace n ON e.extnamespace=n.oid "
+		  "WHERE extname='pg_buffercache'");
+	}
+	else
+	{
+		snprintf(sql, sizeof(sql), "SELECT nspname FROM pg_proc p "
+		  "JOIN pg_namespace n ON p.pronamespace=n.oid "
+		  "WHERE proname='pg_buffercache'");
+	}
+
+	/* make the call */
+	res = PQexec(conn, sql);
+
+	/* check and deal with errors */
+	if (!res || PQresultStatus(res) > 2)
+	{
+		warnx("pgstat: query failed: %s", PQerrorMessage(conn));
+		PQclear(res);
+		PQfinish(conn);
+		errx(1, "pgstat: query was: %s", sql);
+	}
+
+	if (PQntuples(res) > 0)
+	{
+		/* get the only row, and parse it to get major and minor numbers */
+		opts->namespace = pg_strdup(PQgetvalue(res, 0, 0));
+
+		/* print version */
+		if (opts->verbose)
+		    printf("pg_buffercache namespace: %s\n", opts->namespace);
+	}
+
+	/* cleanup */
+	PQclear(res);
+}
+
+/*
  * Fetch pg_stat_statement namespace
  */
 void
@@ -3199,6 +3314,10 @@ print_header(void)
 		case WAL:
 			(void)printf("  records      FPI    bytes   buffers_full   write     sync  write_time   sync_time\n");
 			break;
+		case BUFFERCACHE:
+			(void)printf("------- used ------- ------ dirty ------\n");
+			(void)printf("  total     percent    total    percent\n");
+			break;
 		case XLOG:
 		case REPSLOTS:
 			(void)printf("-------- filename -------- -- location -- ---- bytes ----\n");
@@ -3294,6 +3413,9 @@ print_line(void)
 			break;
 		case WAL:
 			print_pgstatwal();
+			break;
+		case BUFFERCACHE:
+			print_buffercache();
 			break;
 		case XLOG:
 			print_xlogstats();
@@ -3493,6 +3615,7 @@ allocate_struct(void)
 			previous_repslots->restartlsn = pg_strdup("0/0");
 			previous_repslots->restartlsndiff = 0;
 			break;
+		case BUFFERCACHE:
 		case TEMPFILE:
 		case WAITEVENT:
 		case PROGRESS_ANALYZE:
@@ -3678,6 +3801,16 @@ main(int argc, char **argv)
 		{
 			PQfinish(conn);
 			errx(1, "Cannot find the pg_stat_statements extension.");
+		}
+	}
+
+	if (opts->stat == BUFFERCACHE)
+	{
+		fetch_pgbuffercache_namespace();
+		if (!opts->namespace)
+		{
+			PQfinish(conn);
+			errx(1, "Cannot find the pg_buffercache extension.");
 		}
 	}
 

@@ -1072,7 +1072,7 @@ main(int argc, char **argv)
 		sql_exec_dump_pgstatsubscription();
 	if (backend_minimum_version(14, 0))
 		sql_exec_dump_pgstatwal();
-    /* TODO pg_stat_walreceiver */
+    /* TODO pg_stat_wal_receiver */
 
 	/* grab database stats info */
 	sql_exec_dump_pgstatalltables();
