@@ -398,8 +398,8 @@ sql_conn()
 	if (PQstatus(my_conn) == CONNECTION_BAD)
 	{
 		message = PQerrorMessage(my_conn);
-		PQfinish(my_conn);
 		errx(1, "could not connect to database %s: %s", opts->dbname, message);
+		PQfinish(my_conn);
 	}
 
 	/* return the conn if good */
