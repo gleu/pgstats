@@ -24,8 +24,13 @@ compatible with much older releases (8.x for most of them).
 Requirements
 ------------
 
-You only need the libpq library, PostgreSQL header files, and the pg_config
-tool. The header files and the tool are usually available in a -dev package.
+To compile these tools, you will need the libpq library (.so), the libpgcommon
+and libpgfeutils libraries (.a), the PostgreSQL 14+ header files, and the
+pg_config tool. The header files and the tool are usually available in a -dev
+package.
+
+To use them once compiled, you only need the libpq library. Any version should
+be fine.
 
 Compilation
 -----------

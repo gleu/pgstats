@@ -27,6 +27,16 @@
 #include <getopt.h>
 #endif
 
+#include "postgres_fe.h"
+#include "common/username.h"
+#include "common/logging.h"
+#include "fe_utils/cancel.h"
+#include "fe_utils/connect_utils.h"
+#include "fe_utils/option_utils.h"
+#include "fe_utils/query_utils.h"
+#include "fe_utils/simple_list.h"
+#include "fe_utils/string_utils.h"
+
 #include "fe_utils/print.h"
 #include "libpq-fe.h"
 #include "libpq/pqsignal.h"
@@ -82,7 +92,6 @@ void		get_opts(int, char **);
 void	   *pg_malloc(size_t size);
 char	   *pg_strdup(const char *in);
 #endif
-PGconn	   *sql_conn(void);
 bool		backend_minimum_version(int major, int minor);
 void		execute(char *query);
 void		install_extension(char *extension);
@@ -255,136 +264,6 @@ pg_strdup(const char *in)
 	return tmp;
 }
 #endif
-
-
-/*
- * Establish the PostgreSQL connection
- */
-PGconn *
-sql_conn()
-{
-	PGconn	   *my_conn;
-	char	   *password = NULL;
-	bool		new_pass;
-#if PG_VERSION_NUM >= 90300
-    const char **keywords;
-    const char **values;
-#else
-	int size;
-	char *dns;
-#endif
-	char		*message;
-
-	/*
-	 * Start the connection.  Loop until we have a password if requested by
-	 * backend.
-	 */
-	do
-	{
-
-#if PG_VERSION_NUM >= 90300
-		/*
-		 * We don't need to check if the database name is actually a complete
-		 * connection string, PQconnectdbParams being smart enough to check
-		 * this itself.
-		 */
-#define PARAMS_ARRAY_SIZE   8
-        keywords = pg_malloc(PARAMS_ARRAY_SIZE * sizeof(*keywords));
-        values = pg_malloc(PARAMS_ARRAY_SIZE * sizeof(*values));
-
-        keywords[0] = "host";
-        values[0] = opts->hostname,
-        keywords[1] = "port";
-        values[1] = opts->port;
-        keywords[2] = "user";
-        values[2] = opts->username;
-        keywords[3] = "password";
-        values[3] = password;
-        keywords[4] = "dbname";
-        values[4] = opts->dbname;
-        keywords[5] = "fallback_application_name";
-        values[5] = "pgreport";
-        keywords[7] = NULL;
-        values[7] = NULL;
-
-        my_conn = PQconnectdbParams(keywords, values, true);
-#else
-		/* 34 is the length of the fallback application name setting */
-		size = 34;
-		if (opts->hostname)
-			size += strlen(opts->hostname) + 6;
-		if (opts->port)
-			size += strlen(opts->port) + 6;
-		if (opts->username)
-			size += strlen(opts->username) + 6;
-		if (opts->dbname)
-			size += strlen(opts->dbname) + 8;
-		dns = pg_malloc(size);
-		/*
-		 * Checking the presence of a = sign is our way to check that the
-		 * database name is actually a connection string. In such a case, we
-		 * keep this string as the connection string, and add other parameters
-		 * if they are supplied.
-		 */
-		sprintf(dns, "%s", "fallback_application_name='pgreport' ");
-
-		if (strchr(opts->dbname, '=') != NULL)
-			sprintf(dns, "%s%s", dns, opts->dbname);
-		else if (opts->dbname)
-			sprintf(dns, "%sdbname=%s ", dns, opts->dbname);
-
-		if (opts->hostname)
-			sprintf(dns, "%shost=%s ", dns, opts->hostname);
-		if (opts->port)
-			sprintf(dns, "%sport=%s ", dns, opts->port);
-		if (opts->username)
-			sprintf(dns, "%suser=%s ", dns, opts->username);
-
-		if (opts->verbose)
-			printf("Connection string: %s\n", dns);
-
-		my_conn = PQconnectdb(dns);
-#endif
-
-        new_pass = false;
-
-		if (!my_conn)
-		{
-			errx(1, "could not connect to database %s\n", opts->dbname);
-		}
-
-#if PG_VERSION_NUM >= 80200
-		if (PQstatus(my_conn) == CONNECTION_BAD &&
-			PQconnectionNeedsPassword(my_conn) &&
-			!password)
-		{
-			PQfinish(my_conn);
-#if PG_VERSION_NUM < 100000
-			password = simple_prompt("Password: ", 100, false);
-#elif PG_VERSION_NUM < 140000
-			simple_prompt("Password: ", password, 100, false);
-#else
-			password = simple_prompt("Password: ", false);
-#endif
-			new_pass = true;
-		}
-#endif
-	} while (new_pass);
-
-	if (password)
-		free(password);
-
-	/* check to see that the backend connection was successfully made */
-	if (PQstatus(my_conn) == CONNECTION_BAD)
-	{
-		message = PQerrorMessage(my_conn);
-		PQfinish(my_conn);
-		errx(1, "could not connect to database %s: %s", opts->dbname, message);
-	}
-
-	/* return the conn if good */
-	return my_conn;
-}
 
 
 /*
@@ -797,6 +676,8 @@ quit_properly(SIGNAL_ARGS)
 int
 main(int argc, char **argv)
 {
+	const char  *progname;
+	ConnParams   cparams;
 	char sql[10240];
 
 	/*
@@ -811,6 +692,12 @@ main(int argc, char **argv)
 	/* Parse the options */
 	get_opts(argc, argv);
 
+	/* Initialize the logging interface */
+	pg_logging_init(argv[0]);
+
+	/* Get the program name */
+	progname = get_progname(argv[0]);
+
 	if (opts->script)
 	{
 		printf("\\echo =================================================================================\n");
@@ -820,8 +707,16 @@ main(int argc, char **argv)
 	}
 	else
 	{
-		/* connect to the database */
-		conn = sql_conn();
+		/* Set the connection struct */
+		cparams.pghost = opts->hostname;
+		cparams.pgport = opts->port;
+		cparams.pguser = opts->username;
+		cparams.dbname = opts->dbname;
+		cparams.prompt_password = TRI_DEFAULT;
+		cparams.override_dbname = NULL;
+
+		/* Connect to the database */
+		conn = connectDatabase(&cparams, progname, false, false, false);
 	}
 
 	/* Create schema, and set if as our search_path */
