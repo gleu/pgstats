@@ -200,7 +200,8 @@ get_opts(int argc, char **argv)
 				break;
 
 			default:
-				errx(1, "Try \"%s --help\" for more information.\n", progname);
+				pg_log_error("Try \"%s --help\" for more information.\n", progname);
+				exit(EXIT_FAILURE);
 		}
 	}
 
@@ -235,7 +236,7 @@ pg_malloc(size_t size)
 	tmp = malloc(size);
 	if (!tmp)
 	{
-		fprintf(stderr, "out of memory\n");
+		pg_log_error("out of memory (pg_malloc)\n");
 		exit(EXIT_FAILURE);
 	}
 	return tmp;
@@ -252,13 +253,13 @@ pg_strdup(const char *in)
 
 	if (!in)
 	{
-		fprintf(stderr, "cannot duplicate null pointer (internal error)\n");
+		pg_log_error("cannot duplicate null pointer (internal error)\n");
 		exit(EXIT_FAILURE);
 	}
 	tmp = strdup(in);
 	if (!tmp)
 	{
-		fprintf(stderr, "out of memory\n");
+		pg_log_error("out of memory (pg_strdup)\n");
 		exit(EXIT_FAILURE);
 	}
 	return tmp;
@@ -296,10 +297,11 @@ execute(char *query)
 		/* check and deal with errors */
 		if (!results)
 		{
-			warnx("pgreport: query failed: %s", PQerrorMessage(conn));
+			pg_log_error("query failed: %s", PQerrorMessage(conn));
+			pg_log_info("query was: %s", query);
 			PQclear(results);
 			PQfinish(conn);
-			errx(1, "pgreport: query was: %s", query);
+			exit(EXIT_FAILURE);
 		}
 
 		/* cleanup */
@@ -338,10 +340,11 @@ install_extension(char *extension)
 		/* check and deal with errors */
 		if (!check_res || PQresultStatus(check_res) > 2)
 		{
-			warnx("pgreport: query failed: %s", PQerrorMessage(conn));
+			pg_log_error("query failed: %s", PQerrorMessage(conn));
+			pg_log_info("query was: %s", check_sql);
 			PQclear(check_res);
 			PQfinish(conn);
-			errx(1, "pgreport: query was: %s", check_sql);
+			exit(EXIT_FAILURE);
 		}
 
 		if (PQntuples(check_res) == 0)
@@ -357,10 +360,11 @@ install_extension(char *extension)
 			/* install and deal with errors */
 			if (!install_res || PQresultStatus(install_res) > 2)
 			{
-				warnx("pgreport: query failed: %s", PQerrorMessage(conn));
+				pg_log_error("query failed: %s", PQerrorMessage(conn));
+				pg_log_info("query was: %s", install_sql);
 				PQclear(install_res);
 				PQfinish(conn);
-				errx(1, "pgreport: query was: %s", install_sql);
+				exit(EXIT_FAILURE);
 			}
 			/* cleanup */
 			PQclear(install_res);
@@ -397,10 +401,11 @@ fetch_version()
 		/* check and deal with errors */
 		if (!res || PQresultStatus(res) > 2)
 		{
-			warnx("pgreport: query failed: %s", PQerrorMessage(conn));
+			pg_log_error("query failed: %s", PQerrorMessage(conn));
+			pg_log_info("query was: %s", sql);
 			PQclear(res);
 			PQfinish(conn);
-			errx(1, "pgreport: query was: %s", sql);
+			exit(EXIT_FAILURE);
 		}
 
 		/* get the only row, and parse it to get major and minor numbers */
@@ -410,7 +415,7 @@ fetch_version()
 		if (opts->verbose)
 			printf("Detected release: %d.%d\n", opts->major, opts->minor);
 
-		printf ("PostgreSQL version: %s\n", PQgetvalue(res, 0, 0));
+		printf("PostgreSQL version: %s\n", PQgetvalue(res, 0, 0));
 
 		/* cleanup */
 		PQclear(res);
@@ -443,13 +448,14 @@ fetch_postmaster_reloadconftime()
 		/* check and deal with errors */
 		if (!res || PQresultStatus(res) > 2)
 		{
-			warnx("pgreport: query failed: %s", PQerrorMessage(conn));
+			pg_log_error("query failed: %s", PQerrorMessage(conn));
+			pg_log_info("query was: %s", sql);
 			PQclear(res);
 			PQfinish(conn);
-			errx(1, "pgreport: query was: %s", sql);
+			exit(EXIT_FAILURE);
 		}
 
-		printf ("PostgreSQL reload conf time: %s\n", PQgetvalue(res, 0, 0));
+		printf("PostgreSQL reload conf time: %s\n", PQgetvalue(res, 0, 0));
 
 		/* cleanup */
 		PQclear(res);
@@ -482,10 +488,11 @@ fetch_postmaster_starttime()
 		/* check and deal with errors */
 		if (!res || PQresultStatus(res) > 2)
 		{
-			warnx("pgreport: query failed: %s", PQerrorMessage(conn));
+			pg_log_error("query failed: %s", PQerrorMessage(conn));
+			pg_log_info("query was: %s", sql);
 			PQclear(res);
 			PQfinish(conn);
-			errx(1, "pgreport: query was: %s", sql);
+			exit(EXIT_FAILURE);
 		}
 
 		printf ("PostgreSQL start time: %s\n", PQgetvalue(res, 0, 0));
@@ -544,10 +551,11 @@ fetch_table(char *label, char *query)
 		/* check and deal with errors */
 		if (!res || PQresultStatus(res) > 2)
 		{
-			warnx("pgreport: query failed: %s", PQerrorMessage(conn));
+			pg_log_error("query failed: %s", PQerrorMessage(conn));
+			pg_log_info("query was: %s", query);
 			PQclear(res);
 			PQfinish(conn);
-			errx(1, "pgreport: query was: %s", query);
+			exit(EXIT_FAILURE);
 		}
 
 		/* print results */
@@ -607,14 +615,14 @@ exec_command(char *cmd)
 	if (pipe(filedes) == -1)
 	{
 		perror("pipe");
-		exit(1);
+		exit(EXIT_FAILURE);
 	}
 
 	pid = fork();
 	if (pid == -1)
 	{
 		perror("fork");
-		exit(1);
+		exit(EXIT_FAILURE);
 	}
 	else if (pid == 0)
 	{
@@ -623,7 +631,7 @@ exec_command(char *cmd)
 		close(filedes[0]);
 		execl(cmd, cmd, (char*)0);
 		perror("execl");
-		_exit(1);
+		_exit(EXIT_FAILURE);
 	}
 	close(filedes[1]);
 
@@ -641,7 +649,7 @@ exec_command(char *cmd)
 			else
 			{
 				perror("read");
-				exit(1);
+				exit(EXIT_FAILURE);
 			}
 		}
 		else if (count == 0)
@@ -666,7 +674,7 @@ static void
 quit_properly(SIGNAL_ARGS)
 {
 	PQfinish(conn);
-	exit(1);
+	exit(EXIT_FAILURE);
 }
 
 
@@ -686,17 +694,17 @@ main(int argc, char **argv)
 	 */
 	pqsignal(SIGINT, quit_properly);
 
-	/* Allocate the options struct */
-	opts = (struct options *) pg_malloc(sizeof(struct options));
-
-	/* Parse the options */
-	get_opts(argc, argv);
-
 	/* Initialize the logging interface */
 	pg_logging_init(argv[0]);
 
 	/* Get the program name */
 	progname = get_progname(argv[0]);
+
+	/* Allocate the options struct */
+	opts = (struct options *) pg_malloc(sizeof(struct options));
+
+	/* Parse the options */
+	get_opts(argc, argv);
 
 	if (opts->script)
 	{

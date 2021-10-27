@@ -531,7 +531,8 @@ get_opts(int argc, char **argv)
 			case 's':
 				if (opts->stat != NONE)
 				{
-					errx(1, "You can only use once the -s command line switch.\n");
+					pg_log_error("You can only use once the -s command line switch.\n");
+					exit(EXIT_FAILURE);
 				}
 
 				if (!strcmp(optarg, "archiver"))
@@ -632,8 +633,9 @@ get_opts(int argc, char **argv)
 				}
 				else
 				{
-					errx(1, "Unknown service \"%s\".\nTry \"%s --help\" for more information.\n",
-					     optarg, progname);
+					pg_log_error("Unknown service \"%s\".\n", optarg);
+					pg_log_info("Try \"%s --help\" for more information.\n", progname);
+					exit(EXIT_FAILURE);
 				}
 				break;
 
@@ -658,7 +660,8 @@ get_opts(int argc, char **argv)
 				break;
 
 			default:
-				errx(1, "Try \"%s --help\" for more information.\n", progname);
+				pg_log_error("Try \"%s --help\" for more information.\n", progname);
+				exit(EXIT_FAILURE);
 		}
 	}
 
@@ -667,7 +670,9 @@ get_opts(int argc, char **argv)
 		opts->interval = atoi(argv[optind]);
 		if (opts->interval == 0)
 		{
-			errx(1, "Invalid delay.\nTry \"%s --help\" for more information.\n", progname);
+			pg_log_error("Invalid delay.\n");
+			pg_log_info("Try \"%s --help\" for more information.\n", progname);
+			exit(EXIT_FAILURE);
 		}
 		optind++;
 	}
@@ -677,7 +682,9 @@ get_opts(int argc, char **argv)
 		opts->count = atoi(argv[optind]);
 		if (opts -> count == 0)
 		{
-			errx(1, "Invalid count.\nTry \"%s --help\" for more information.\n", progname);
+			pg_log_error("Invalid count.\n");
+			pg_log_info("Try \"%s --help\" for more information.\n", progname);
+			exit(EXIT_FAILURE);
 		}
 	}
 
@@ -720,7 +727,7 @@ pg_malloc(size_t size)
 	tmp = malloc(size);
 	if (!tmp)
 	{
-		fprintf(stderr, "out of memory\n");
+		pg_log_error("out of memory (pg_malloc)\n");
 		exit(EXIT_FAILURE);
 	}
 	return tmp;
@@ -736,13 +743,13 @@ pg_strdup(const char *in)
 
 	if (!in)
 	{
-		fprintf(stderr, "cannot duplicate null pointer (internal error)\n");
+		pg_log_error("cannot duplicate null pointer (internal error)\n");
 		exit(EXIT_FAILURE);
 	}
 	tmp = strdup(in);
 	if (!tmp)
 	{
-		fprintf(stderr, "out of memory\n");
+		pg_log_error("out of memory (pg_strdup)\n");
 		exit(EXIT_FAILURE);
 	}
 	return tmp;
@@ -777,10 +784,11 @@ print_pgstatarchiver()
 	/* check and deal with errors */
 	if (!res || PQresultStatus(res) > 2)
 	{
-		warnx("pgstat: query failed: %s", PQerrorMessage(conn));
+		pg_log_warning("query failed: %s", PQerrorMessage(conn));
 		PQclear(res);
 		PQfinish(conn);
-		errx(1, "pgstat: query was: %s", sql);
+		pg_log_error("query was: %s", sql);
+		exit(EXIT_FAILURE);
 	}
 
 	/* get the number of fields */
@@ -859,10 +867,11 @@ print_pgstatbgwriter()
 	/* check and deal with errors */
 	if (!res || PQresultStatus(res) > 2)
 	{
-		warnx("pgstat: query failed: %s", PQerrorMessage(conn));
+		pg_log_warning("query failed: %s", PQerrorMessage(conn));
 		PQclear(res);
 		PQfinish(conn);
-		errx(1, "pgstat: query was: %s", sql);
+		pg_log_error("query was: %s", sql);
+		exit(EXIT_FAILURE);
 	}
 
 	/* get the number of fields */
@@ -988,10 +997,11 @@ print_pgstatconnection()
 	/* check and deal with errors */
 	if (!res || PQresultStatus(res) > 2)
 	{
-		warnx("pgstat: query failed: %s", PQerrorMessage(conn));
+		pg_log_warning("query failed: %s", PQerrorMessage(conn));
 		PQclear(res);
 		PQfinish(conn);
-		errx(1, "pgstat: query was: %s", sql);
+		pg_log_error("query was: %s", sql);
+		exit(EXIT_FAILURE);
 	}
 
 	/* get the number of fields */
@@ -1107,10 +1117,11 @@ print_pgstatdatabase()
 	/* check and deal with errors */
 	if (!res || PQresultStatus(res) > 2)
 	{
-		warnx("pgstat: query failed: %s", PQerrorMessage(conn));
+		pg_log_warning("query failed: %s", PQerrorMessage(conn));
 		PQclear(res);
 		PQfinish(conn);
-		errx(1, "pgstat: query was: %s", sql);
+		pg_log_error("query was: %s", sql);
+		exit(EXIT_FAILURE);
 	}
 
 	/* get the number of fields */
@@ -1316,10 +1327,11 @@ print_pgstattable()
 	/* check and deal with errors */
 	if (!res || PQresultStatus(res) > 2)
 	{
-		warnx("pgstat: query failed: %s", PQerrorMessage(conn));
+		pg_log_warning("query failed: %s", PQerrorMessage(conn));
 		PQclear(res);
 		PQfinish(conn);
-		errx(1, "pgstat: query was: %s", sql);
+		pg_log_error("query was: %s", sql);
+		exit(EXIT_FAILURE);
 	}
 
 	/* get the number of fields */
@@ -1463,10 +1475,11 @@ print_pgstattableio()
 	/* check and deal with errors */
 	if (!res || PQresultStatus(res) > 2)
 	{
-		warnx("pgstat: query failed: %s", PQerrorMessage(conn));
+		pg_log_warning("query failed: %s", PQerrorMessage(conn));
 		PQclear(res);
 		PQfinish(conn);
-		errx(1, "pgstat: query was: %s", sql);
+		pg_log_error("query was: %s", sql);
+		exit(EXIT_FAILURE);
 	}
 
 	/* get the number of fields */
@@ -1568,10 +1581,11 @@ print_pgstatindex()
 	/* check and deal with errors */
 	if (!res || PQresultStatus(res) > 2)
 	{
-		warnx("pgstat: query failed: %s", PQerrorMessage(conn));
+		pg_log_warning("query failed: %s", PQerrorMessage(conn));
 		PQclear(res);
 		PQfinish(conn);
-		errx(1, "pgstat: query was: %s", sql);
+		pg_log_error("query was: %s", sql);
+		exit(EXIT_FAILURE);
 	}
 
 	/* get the number of fields */
@@ -1658,10 +1672,11 @@ print_pgstatfunction()
 	/* check and deal with errors */
 	if (!res || PQresultStatus(res) > 2)
 	{
-		warnx("pgstat: query failed: %s", PQerrorMessage(conn));
+		pg_log_warning("query failed: %s", PQerrorMessage(conn));
 		PQclear(res);
 		PQfinish(conn);
-		errx(1, "pgstat: query was: %s", sql);
+		pg_log_error("query was: %s", sql);
+		exit(EXIT_FAILURE);
 	}
 
 	/* get the number of fields */
@@ -1777,10 +1792,11 @@ print_pgstatstatement()
 	/* check and deal with errors */
 	if (!res || PQresultStatus(res) > 2)
 	{
-		warnx("pgstat: query failed: %s", PQerrorMessage(conn));
+		pg_log_warning("query failed: %s", PQerrorMessage(conn));
 		PQclear(res);
 		PQfinish(conn);
-		errx(1, "pgstat: query was: %s", sql);
+		pg_log_error("query was: %s", sql);
+		exit(EXIT_FAILURE);
 	}
 
 	/* get the number of fields */
@@ -1934,10 +1950,11 @@ print_pgstatslru()
 	/* check and deal with errors */
 	if (!res || PQresultStatus(res) > 2)
 	{
-		warnx("pgstat: query failed: %s", PQerrorMessage(conn));
+		pg_log_warning("query failed: %s", PQerrorMessage(conn));
 		PQclear(res);
 		PQfinish(conn);
-		errx(1, "pgstat: query was: %s", sql);
+		pg_log_error("query was: %s", sql);
+		exit(EXIT_FAILURE);
 	}
 
 	/* get the number of fields */
@@ -2028,10 +2045,11 @@ print_pgstatwal()
 	/* check and deal with errors */
 	if (!res || PQresultStatus(res) > 2)
 	{
-		warnx("pgstat: query failed: %s", PQerrorMessage(conn));
+		pg_log_warning("query failed: %s", PQerrorMessage(conn));
 		PQclear(res);
 		PQfinish(conn);
-		errx(1, "pgstat: query was: %s", sql);
+		pg_log_error("query was: %s", sql);
+		exit(EXIT_FAILURE);
 	}
 
 	/* get the number of fields */
@@ -2121,10 +2139,11 @@ print_pgstatprogressbasebackup()
 	/* check and deal with errors */
 	if (!res || PQresultStatus(res) > 2)
 	{
-		warnx("pgstat: query failed: %s", PQerrorMessage(conn));
+		pg_log_warning("query failed: %s", PQerrorMessage(conn));
 		PQclear(res);
 		PQfinish(conn);
-		errx(1, "pgstat: query was: %s", sql);
+		pg_log_error("query was: %s", sql);
+		exit(EXIT_FAILURE);
 	}
 
 	/* get the number of fields */
@@ -2184,10 +2203,11 @@ print_pgstatprogressanalyze()
 	/* check and deal with errors */
 	if (!res || PQresultStatus(res) > 2)
 	{
-		warnx("pgstat: query failed: %s", PQerrorMessage(conn));
+		pg_log_warning("query failed: %s", PQerrorMessage(conn));
 		PQclear(res);
 		PQfinish(conn);
-		errx(1, "pgstat: query was: %s", sql);
+		pg_log_error("query was: %s", sql);
+		exit(EXIT_FAILURE);
 	}
 
 	/* get the number of fields */
@@ -2242,10 +2262,11 @@ print_pgstatprogresscluster()
 	/* check and deal with errors */
 	if (!res || PQresultStatus(res) > 2)
 	{
-		warnx("pgstat: query failed: %s", PQerrorMessage(conn));
+		pg_log_warning("query failed: %s", PQerrorMessage(conn));
 		PQclear(res);
 		PQfinish(conn);
-		errx(1, "pgstat: query was: %s", sql);
+		pg_log_error("query was: %s", sql);
+		exit(EXIT_FAILURE);
 	}
 
 	/* get the number of fields */
@@ -2299,10 +2320,11 @@ print_pgstatprogresscopy()
 	/* check and deal with errors */
 	if (!res || PQresultStatus(res) > 2)
 	{
-		warnx("pgstat: query failed: %s", PQerrorMessage(conn));
+		pg_log_warning("query failed: %s", PQerrorMessage(conn));
 		PQclear(res);
 		PQfinish(conn);
-		errx(1, "pgstat: query was: %s", sql);
+		pg_log_error("query was: %s", sql);
+		exit(EXIT_FAILURE);
 	}
 
 	/* get the number of fields */
@@ -2359,10 +2381,11 @@ print_pgstatprogresscreateindex()
 	/* check and deal with errors */
 	if (!res || PQresultStatus(res) > 2)
 	{
-		warnx("pgstat: query failed: %s", PQerrorMessage(conn));
+		pg_log_warning("query failed: %s", PQerrorMessage(conn));
 		PQclear(res);
 		PQfinish(conn);
-		errx(1, "pgstat: query was: %s", sql);
+		pg_log_error("query was: %s", sql);
+		exit(EXIT_FAILURE);
 	}
 
 	/* get the number of fields */
@@ -2420,10 +2443,11 @@ print_pgstatprogressvacuum()
 	/* check and deal with errors */
 	if (!res || PQresultStatus(res) > 2)
 	{
-		warnx("pgstat: query failed: %s", PQerrorMessage(conn));
+		pg_log_warning("query failed: %s", PQerrorMessage(conn));
 		PQclear(res);
 		PQfinish(conn);
-		errx(1, "pgstat: query was: %s", sql);
+		pg_log_error("query was: %s", sql);
+		exit(EXIT_FAILURE);
 	}
 
 	/* get the number of fields */
@@ -2480,10 +2504,11 @@ print_buffercache()
 	/* check and deal with errors */
 	if (!res || PQresultStatus(res) > 2)
 	{
-		warnx("pgstat: query failed: %s", PQerrorMessage(conn));
+		pg_log_warning("query failed: %s", PQerrorMessage(conn));
 		PQclear(res);
 		PQfinish(conn);
-		errx(1, "pgstat: query was: %s", sql);
+		pg_log_error("query was: %s", sql);
+		exit(EXIT_FAILURE);
 	}
 
 	/* get the number of fields */
@@ -2550,10 +2575,11 @@ print_xlogstats()
 	/* check and deal with errors */
 	if (!res || PQresultStatus(res) > 2)
 	{
-		warnx("pgstat: query failed: %s", PQerrorMessage(conn));
+		pg_log_warning("query failed: %s", PQerrorMessage(conn));
 		PQclear(res);
 		PQfinish(conn);
-		errx(1, "pgstat: query was: %s", sql);
+		pg_log_error("query was: %s", sql);
+		exit(EXIT_FAILURE);
 	}
 
 	xlogfilename = pg_strdup(PQgetvalue(res, 0, 0));
@@ -2612,19 +2638,20 @@ print_repslotsstats()
 
 	if (!res || PQntuples(res) == 0)
 	{
-		warnx("pgstat: No results, meaning no replicaton slot");
 		PQclear(res);
 		PQfinish(conn);
-		errx(1, "pgstat: exiting");
+		pg_log_error("No results, meaning no replicaton slot");
+		exit(EXIT_FAILURE);
 	}
 
 	/* check and deal with errors */
 	if (!res || PQresultStatus(res) > 2)
 	{
-		warnx("pgstat: query failed: %s", PQerrorMessage(conn));
+		pg_log_warning("query failed: %s", PQerrorMessage(conn));
 		PQclear(res);
 		PQfinish(conn);
-		errx(1, "pgstat: query was: %s", sql);
+		pg_log_error("query was: %s", sql);
+		exit(EXIT_FAILURE);
 	}
 
 	xlogfilename = pg_strdup(PQgetvalue(res, 0, 0));
@@ -2733,10 +2760,11 @@ print_tempfilestats()
 	/* check and deal with errors */
 	if (!res || PQresultStatus(res) > 2)
 	{
-		warnx("pgstat: query failed: %s", PQerrorMessage(conn));
+		pg_log_warning("query failed: %s", PQerrorMessage(conn));
 		PQclear(res);
 		PQfinish(conn);
-		errx(1, "pgstat: query was: %s", sql);
+		pg_log_error("query was: %s", sql);
+		exit(EXIT_FAILURE);
 	}
 
 	/* get the number of fields */
@@ -2790,10 +2818,11 @@ print_pgstatwaitevent()
 	/* check and deal with errors */
 	if (!res || PQresultStatus(res) > 2)
 	{
-		warnx("pgstat: query failed: %s", PQerrorMessage(conn));
+		pg_log_warning("query failed: %s", PQerrorMessage(conn));
 		PQclear(res);
 		PQfinish(conn);
-		errx(1, "pgstat: query was: %s", sql);
+		pg_log_error("query was: %s", sql);
+		exit(EXIT_FAILURE);
 	}
 
 	/* get the number of fields */
@@ -2851,10 +2880,11 @@ print_pgbouncerpools()
 	/* check and deal with errors */
 	if (!res || PQresultStatus(res) > 2)
 	{
-		warnx("pgstat: query failed: %s", PQerrorMessage(conn));
+		pg_log_warning("query failed: %s", PQerrorMessage(conn));
 		PQclear(res);
 		PQfinish(conn);
-		errx(1, "pgstat: query was: %s", sql);
+		pg_log_error("query was: %s", sql);
+		exit(EXIT_FAILURE);
 	}
 
 	/* get the number of fields */
@@ -2920,10 +2950,11 @@ print_pgbouncerstats()
 	/* check and deal with errors */
 	if (!res || PQresultStatus(res) > 2)
 	{
-		warnx("pgstat: query failed: %s", PQerrorMessage(conn));
+		pg_log_warning("query failed: %s", PQerrorMessage(conn));
 		PQclear(res);
 		PQfinish(conn);
-		errx(1, "pgstat: query was: %s", sql);
+		pg_log_error("query was: %s", sql);
+		exit(EXIT_FAILURE);
 	}
 
 	/* get the number of fields */
@@ -2980,10 +3011,11 @@ fetch_version()
 	/* check and deal with errors */
 	if (!res || PQresultStatus(res) > 2)
 	{
-		warnx("pgstat: query failed: %s", PQerrorMessage(conn));
+		pg_log_warning("query failed: %s", PQerrorMessage(conn));
 		PQclear(res);
 		PQfinish(conn);
-		errx(1, "pgstat: query was: %s", sql);
+		pg_log_error("query was: %s", sql);
+		exit(EXIT_FAILURE);
 	}
 
 	/* get the only row, and parse it to get major and minor numbers */
@@ -3016,10 +3048,11 @@ char
 	/* check and deal with errors */
 	if (!res || PQresultStatus(res) > 2)
 	{
-		warnx("pgstat: query failed: %s", PQerrorMessage(conn));
+		pg_log_warning("query failed: %s", PQerrorMessage(conn));
 		PQclear(res);
 		PQfinish(conn);
-		errx(1, "pgstat: query was: %s", sql);
+		pg_log_error("query was: %s", sql);
+		exit(EXIT_FAILURE);
 	}
 
 	/* get the only row as the setting value */
@@ -3064,10 +3097,11 @@ fetch_pgbuffercache_namespace()
 	/* check and deal with errors */
 	if (!res || PQresultStatus(res) > 2)
 	{
-		warnx("pgstat: query failed: %s", PQerrorMessage(conn));
+		pg_log_warning("query failed: %s", PQerrorMessage(conn));
 		PQclear(res);
 		PQfinish(conn);
-		errx(1, "pgstat: query was: %s", sql);
+		pg_log_error("query was: %s", sql);
+		exit(EXIT_FAILURE);
 	}
 
 	if (PQntuples(res) > 0)
@@ -3113,10 +3147,11 @@ fetch_pgstatstatements_namespace()
 	/* check and deal with errors */
 	if (!res || PQresultStatus(res) > 2)
 	{
-		warnx("pgstat: query failed: %s", PQerrorMessage(conn));
+		pg_log_warning("query failed: %s", PQerrorMessage(conn));
 		PQclear(res);
 		PQfinish(conn);
-		errx(1, "pgstat: query was: %s", sql);
+		pg_log_error("query was: %s", sql);
+		exit(EXIT_FAILURE);
 	}
 
 	if (PQntuples(res) > 0)
@@ -3551,7 +3586,7 @@ doresize(void)
 		if (status == -1 && errno == EINTR)
 			continue;
 		else if (status == -1)
-			errx(1, "ioctl");
+			pg_log_error("ioctl");
 		if (w.ws_row > 3)
 			winlines = w.ws_row - 3;
 		else
@@ -3573,7 +3608,7 @@ static void
 quit_properly(SIGNAL_ARGS)
 {
 	PQfinish(conn);
-	exit(1);
+	exit(EXIT_FAILURE);
 }
 
 /*
@@ -3606,17 +3641,17 @@ main(int argc, char **argv)
 		winlines = PGSTAT_DEFAULT_LINES;
 	}
 
-	/* Allocate the options struct */
-	opts = (struct options *) pg_malloc(sizeof(struct options));
-
-	/* Parse the options */
-	get_opts(argc, argv);
-
 	/* Initialize the logging interface */
 	pg_logging_init(argv[0]);
 
 	/* Get the program name */
         progname = get_progname(argv[0]);
+
+	/* Allocate the options struct */
+	opts = (struct options *) pg_malloc(sizeof(struct options));
+
+	/* Parse the options */
+	get_opts(argc, argv);
 
 	/* Set the connection struct */
         cparams.pghost = opts->hostname;
@@ -3647,38 +3682,44 @@ main(int argc, char **argv)
 	if ((opts->stat == CONNECTION || opts->stat == XLOG) && !backend_minimum_version(9, 2))
 	{
 		PQfinish(conn);
-		errx(1, "You need at least v9.2 for this statistic.");
+		pg_log_error("You need at least v9.2 for this statistic.");
+		exit(EXIT_FAILURE);
 	}
 
 	if (opts->stat == ARCHIVER && !backend_minimum_version(9, 4))
 	{
 		PQfinish(conn);
-		errx(1, "You need at least v9.4 for this statistic.");
+		pg_log_error("You need at least v9.4 for this statistic.");
+		exit(EXIT_FAILURE);
 	}
 
 	if ((opts->stat == PROGRESS_VACUUM || opts->stat == WAITEVENT) && !backend_minimum_version(9, 6))
 	{
 		PQfinish(conn);
-		errx(1, "You need at least v9.6 for this statistic.");
+		pg_log_error("You need at least v9.6 for this statistic.");
+		exit(EXIT_FAILURE);
 	}
 
 	if ((opts->stat == PROGRESS_CREATEINDEX || opts->stat == PROGRESS_CLUSTER) && !backend_minimum_version(12, 0))
 	{
 		PQfinish(conn);
-		errx(1, "You need at least v12 for this statistic.");
+		pg_log_error("You need at least v12 for this statistic.");
+		exit(EXIT_FAILURE);
 	}
 
 	if ((opts->stat == PROGRESS_ANALYZE || opts->stat == PROGRESS_BASEBACKUP|| opts->stat == SLRU)
 		&& !backend_minimum_version(13, 0))
 	{
 		PQfinish(conn);
-		errx(1, "You need at least v13 for this statistic.");
+		pg_log_error("You need at least v13 for this statistic.");
+		exit(EXIT_FAILURE);
 	}
 
 	if ((opts->stat == WAL || opts->stat == PROGRESS_COPY) && !backend_minimum_version(14, 0))
 	{
 		PQfinish(conn);
-		errx(1, "You need at least v14 for this statistic.");
+		pg_log_error("You need at least v14 for this statistic.");
+		exit(EXIT_FAILURE);
 	}
 
 	/* Check if the configuration matches the statistics */
@@ -3687,7 +3728,8 @@ main(int argc, char **argv)
 		if (strcmp(fetch_setting("track_functions"), "none") == 0)
 		{
 			PQfinish(conn);
-			errx(1, "track_functions is set to \"none\".");
+			pg_log_error("track_functions is set to \"none\".");
+			exit(EXIT_FAILURE);
 		}
 	}
 
@@ -3697,7 +3739,8 @@ main(int argc, char **argv)
 		if (!opts->namespace)
 		{
 			PQfinish(conn);
-			errx(1, "Cannot find the pg_stat_statements extension.");
+			pg_log_error("Cannot find the pg_stat_statements extension.");
+			exit(EXIT_FAILURE);
 		}
 	}
 
@@ -3707,7 +3750,8 @@ main(int argc, char **argv)
 		if (!opts->namespace)
 		{
 			PQfinish(conn);
-			errx(1, "Cannot find the pg_buffercache extension.");
+			pg_log_error("Cannot find the pg_buffercache extension.");
+			exit(EXIT_FAILURE);
 		}
 	}
 
@@ -3715,7 +3759,8 @@ main(int argc, char **argv)
 	if (opts->stat == REPSLOTS && !opts->filter)
 	{
 		PQfinish(conn);
-		errx(1, "You need to specify a replication slot with -f for this statistic.");
+		pg_log_error("You need to specify a replication slot with -f for this statistic.");
+		exit(EXIT_FAILURE);
 	}
 
 

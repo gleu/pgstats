@@ -210,7 +210,8 @@ get_opts(int argc, char **argv)
 				break;
 
 			default:
-				errx(1, "Try \"%s --help\" for more information.\n", progname);
+				pg_log_error("Try \"%s --help\" for more information.\n", progname);
+				exit(EXIT_FAILURE);
 		}
 	}
 
@@ -221,7 +222,9 @@ get_opts(int argc, char **argv)
 	}
 	else
 	{
-		errx(1, "PID required.\nTry \"%s --help\" for more information.\n", progname);
+		pg_log_error("PID required.\n");
+		pg_log_info("Try \"%s --help\" for more information.\n", progname);
+		exit(EXIT_FAILURE);
 	}
 
 	/* set dbname if unset */
@@ -255,7 +258,7 @@ pg_malloc(size_t size)
 	tmp = malloc(size);
 	if (!tmp)
 	{
-		fprintf(stderr, "out of memory\n");
+		pg_log_error("out of memory (pg_malloc)\n");
 		exit(EXIT_FAILURE);
 	}
 	return tmp;
@@ -272,13 +275,13 @@ pg_strdup(const char *in)
 
 	if (!in)
 	{
-		fprintf(stderr, "cannot duplicate null pointer (internal error)\n");
+		pg_log_error("cannot duplicate null pointer (internal error)\n");
 		exit(EXIT_FAILURE);
 	}
 	tmp = strdup(in);
 	if (!tmp)
 	{
-		fprintf(stderr, "out of memory\n");
+		pg_log_error("out of memory (pg_strdup)\n");
 		exit(EXIT_FAILURE);
 	}
 	return tmp;
@@ -304,10 +307,11 @@ fetch_version()
 	/* check and deal with errors */
 	if (!res || PQresultStatus(res) > 2)
 	{
-		warnx("pgwaitevent: query failed: %s", PQerrorMessage(conn));
+		pg_log_error("query failed: %s", PQerrorMessage(conn));
+		pg_log_info("query was: %s", sql);
 		PQclear(res);
 		PQfinish(conn);
-		errx(1, "pgwaitevent: query was: %s", sql);
+		exit(EXIT_FAILURE);
 	}
 
 	/* get the only row, and parse it to get major and minor numbers */
@@ -340,7 +344,7 @@ quit_properly(SIGNAL_ARGS)
 {
 	drop_env();
 	PQfinish(conn);
-	exit(1);
+	exit(EXIT_FAILURE);
 }
 
 
@@ -364,10 +368,11 @@ build_env()
 	/* check and deal with errors */
 	if (!res || PQresultStatus(res) > 2)
 	{
-		warnx("pgwaitevent: query failed: %s", PQerrorMessage(conn));
+		pg_log_error("query failed: %s", PQerrorMessage(conn));
+		pg_log_info("query was: %s", sql);
 		PQclear(res);
 		PQfinish(conn);
-		errx(1, "pgwaitevent: query was: %s", sql);
+		exit(EXIT_FAILURE);
 	}
 
 	/* print verbose */
@@ -445,10 +450,11 @@ build_env()
 	/* check and deal with errors */
 	if (!res || PQresultStatus(res) > 2)
 	{
-		warnx("pgwaitevent: query failed: %s", PQerrorMessage(conn));
+		pg_log_error("query failed: %s", PQerrorMessage(conn));
+		pg_log_info("query was: %s", sql);
 		PQclear(res);
 		PQfinish(conn);
-		errx(1, "pgwaitevent: query was: %s", sql);
+		exit(EXIT_FAILURE);
 	}
 
 	/* print verbose */
@@ -483,10 +489,11 @@ active_session()
 	/* check and deal with errors */
 	if (!res || PQresultStatus(res) > 2)
 	{
-		warnx("pgwaitevent: query failed: %s", PQerrorMessage(conn));
+		pg_log_error("query failed: %s", PQerrorMessage(conn));
+		pg_log_info("query was: %s", sql);
 		PQclear(res);
 		PQfinish(conn);
-		errx(1, "pgwaitevent: query was: %s", sql);
+		exit(EXIT_FAILURE);
 	}
 
 	/* if zero row, then PID is gone */
@@ -547,10 +554,11 @@ handle_current_query()
 		/* check and deal with errors */
 		if (!workers_res || PQresultStatus(workers_res) > 2)
 		{
-			warnx("pgwaitevent: query failed: %s", PQerrorMessage(conn));
+			pg_log_error("query failed: %s", PQerrorMessage(conn));
+			pg_log_info("query was: %s", sql);
 			PQclear(workers_res);
 			PQfinish(conn);
-			errx(1, "pgwaitevent: query was: %s", sql);
+			exit(EXIT_FAILURE);
 		}
 
 		/* get the number of leader and workers */
@@ -570,10 +578,11 @@ handle_current_query()
 	/* check and deal with errors */
 	if (!trace_res || PQresultStatus(trace_res) > 2)
 	{
-		warnx("pgwaitevent: query failed: %s", PQerrorMessage(conn));
+		pg_log_error("query failed: %s", PQerrorMessage(conn));
+		pg_log_info("query was: %s", sql);
 		PQclear(trace_res);
 		PQfinish(conn);
-		errx(1, "pgwaitevent: query was: %s", sql);
+		exit(EXIT_FAILURE);
 	}
 
 	/* build the duration query */
@@ -586,10 +595,11 @@ handle_current_query()
 	/* check and deal with errors */
 	if (!duration_res || PQresultStatus(duration_res) > 2)
 	{
-		warnx("pgwaitevent: query failed: %s", PQerrorMessage(conn));
+		pg_log_error("query failed: %s", PQerrorMessage(conn));
+		pg_log_info("query was: %s", sql);
 		PQclear(duration_res);
 		PQfinish(conn);
-		errx(1, "pgwaitevent: query was: %s", sql);
+		exit(EXIT_FAILURE);
 	}
 
 	/* show durations */
@@ -653,10 +663,11 @@ drop_env()
 	/* check and deal with errors */
 	if (!res || PQresultStatus(res) > 2)
 	{
-		warnx("pgwaitevent: query failed: %s", PQerrorMessage(conn));
+		pg_log_error("query failed: %s", PQerrorMessage(conn));
+		pg_log_info("query was: %s", sql);
 		PQclear(res);
 		PQfinish(conn);
-		errx(1, "pgwaitevent: query was: %s", sql);
+		exit(EXIT_FAILURE);
 	}
 
 	/* print verbose */
@@ -683,17 +694,17 @@ main(int argc, char **argv)
 	 */
 	pqsignal(SIGINT, quit_properly);
 
-	/* Allocate the options struct */
-	opts = (struct options *) pg_malloc(sizeof(struct options));
-
-	/* Parse the options */
-	get_opts(argc, argv);
-
 	/* Initialize the logging interface */
 	pg_logging_init(argv[0]);
 
 	/* Get the program name */
 	progname = get_progname(argv[0]);
+
+	/* Allocate the options struct */
+	opts = (struct options *) pg_malloc(sizeof(struct options));
+
+	/* Parse the options */
+	get_opts(argc, argv);
 
 	/* Set the connection struct */
 	cparams.pghost = opts->hostname;
@@ -712,7 +723,8 @@ main(int argc, char **argv)
 	/* Check options */
 	if (opts->includeleaderworkers && !backend_minimum_version(13, 0))
 	{
-		errx(1, "You need at least v13 to include workers' wait events.");
+		pg_log_error("You need at least v13 to include workers' wait events.");
+		exit(EXIT_FAILURE);
 	}
 
 	/* Create the trace_wait_events_for_pid function */

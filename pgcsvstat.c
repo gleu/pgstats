@@ -162,8 +162,8 @@ get_opts(int argc, char **argv)
 				break;
 
 			default:
-				fprintf(stderr, "Try \"%s --help\" for more information.\n", progname);
-				exit(1);
+				pg_log_error("Try \"%s --help\" for more information.\n", progname);
+				exit(EXIT_FAILURE);
 		}
 	}
 }
@@ -197,8 +197,8 @@ myalloc(size_t size)
 
 	if (!ptr)
 	{
-		fprintf(stderr, "out of memory");
-		exit(1);
+		pg_log_error("out of memory (myalloc)");
+		exit(EXIT_FAILURE);
 	}
 	return ptr;
 }
@@ -210,8 +210,8 @@ mystrdup(const char *str)
 
 	if (!result)
 	{
-		fprintf(stderr, "out of memory");
-		exit(1);
+		pg_log_error("out of memory (mystrdup)");
+		exit(EXIT_FAILURE);
 	}
 	return result;
 }
@@ -236,11 +236,9 @@ sql_exec(const char *query, const char* filename, bool quiet)
 	fdcsv = fopen(filename, "a");
     if (!fdcsv)
     {
-        fprintf(stderr, "pgcsvstat: fopen failed: %d\n", errno);
-        fprintf(stderr, "pgcsvstat: filename was: %s\n", filename);
-        
+        pg_log_error("Cannot open file %s, errno %d\n", filename, errno);
         PQfinish(conn);
-        exit(-1);
+        exit(EXIT_FAILURE);
     }
 
 	/* get size of file */
@@ -253,8 +251,8 @@ sql_exec(const char *query, const char* filename, bool quiet)
 	/* check and deal with errors */
 	if (!res || PQresultStatus(res) > 2)
 	{
-		fprintf(stderr, "pgcsvstat: query failed: %s\n", PQerrorMessage(conn));
-		fprintf(stderr, "pgcsvstat: query was: %s\n", query);
+		pg_log_error("query failed: %s\n", PQerrorMessage(conn));
+		pg_log_info("query was: %s\n", query);
 
 		PQclear(res);
 		PQfinish(conn);
@@ -795,8 +793,8 @@ fetch_version()
 	/* check and deal with errors */
 	if (!res || PQresultStatus(res) > 2)
 	{
-		fprintf(stderr, "pgcsvstat: query failed: %s\n", PQerrorMessage(conn));
-		fprintf(stderr, "pgcsvstat: query was: %s\n", query);
+		pg_log_error("query failed: %s\n", PQerrorMessage(conn));
+		pg_log_info("query was: %s\n", query);
 
 		PQclear(res);
 		PQfinish(conn);
@@ -835,8 +833,8 @@ check_superuser()
 	/* check and deal with errors */
 	if (!res || PQresultStatus(res) > 2)
 	{
-		fprintf(stderr, "pgcsvstat: query failed: %s\n", PQerrorMessage(conn));
-		fprintf(stderr, "pgcsvstat: query was: %s\n", sql);
+		pg_log_error("query failed: %s\n", PQerrorMessage(conn));
+		pg_log_info("query was: %s\n", sql);
 
 		PQclear(res);
 		PQfinish(conn);
@@ -886,8 +884,8 @@ backend_has_pgstatstatements()
 	/* check and deal with errors */
 	if (!res || PQresultStatus(res) > 2)
 	{
-		fprintf(stderr, "pgcsvstat: query failed: %s\n", PQerrorMessage(conn));
-		fprintf(stderr, "pgcsvstat: query was: %s\n", sql);
+		pg_log_error("query failed: %s\n", PQerrorMessage(conn));
+		pg_log_info("query was: %s\n", sql);
 
 		PQclear(res);
 		PQfinish(conn);
@@ -911,6 +909,12 @@ main(int argc, char **argv)
 	ConnParams   cparams;
 	bool is_superuser = false;
 
+	/* Initialize the logging interface */
+	pg_logging_init(argv[0]);
+
+	/* Get the program name */
+	progname = get_progname(argv[0]);
+
 	opts = (struct options *) myalloc(sizeof(struct options));
 
 	/* parse the opts */
@@ -926,12 +930,6 @@ main(int argc, char **argv)
 	{
 		opts->directory = "./";
 	}
-
-	/* Initialize the logging interface */
-	pg_logging_init(argv[0]);
-
-	/* Get the program name */
-	progname = get_progname(argv[0]);
 
 	/* Set the connection struct */
 	cparams.pghost = opts->hostname;

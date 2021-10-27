@@ -192,12 +192,13 @@ get_opts(int argc, char **argv)
 
 			default:
 				errx(1, "Try \"%s --help\" for more information.\n", progname);
+				exit(EXIT_FAILURE);
 		}
 	}
 
 	if (opts->table == NULL)
 	{
-		fprintf(stderr, "missing table name\n");
+		pg_log_error("missing table name\n");
 		exit(EXIT_FAILURE);
 	}
 
@@ -230,7 +231,7 @@ pg_malloc(size_t size)
 	tmp = malloc(size);
 	if (!tmp)
 	{
-		fprintf(stderr, "out of memory\n");
+		pg_log_error("out of memory\n");
 		exit(EXIT_FAILURE);
 	}
 	return tmp;
@@ -246,13 +247,13 @@ pg_strdup(const char *in)
 
 	if (!in)
 	{
-		fprintf(stderr, "cannot duplicate null pointer (internal error)\n");
+		pg_log_error("cannot duplicate null pointer (internal error)\n");
 		exit(EXIT_FAILURE);
 	}
 	tmp = strdup(in);
 	if (!tmp)
 	{
-		fprintf(stderr, "out of memory\n");
+		pg_log_error("out of memory\n");
 		exit(EXIT_FAILURE);
 	}
 	return tmp;
@@ -430,7 +431,7 @@ static void
 quit_properly(SIGNAL_ARGS)
 {
 	PQfinish(conn);
-	exit(1);
+	exit(EXIT_FAILURE);
 }
 
 /*
