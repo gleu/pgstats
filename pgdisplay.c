@@ -52,44 +52,44 @@
 struct options
 {
 	/* misc */
-	bool		verbose;
-	char       *table;
-	int         groups;
-	int			blocksize;
+	bool	verbose;
+	char	*table;
+	int	groups;
+	int	blocksize;
 
 	/* connection parameters */
-	char	   *dbname;
-	char	   *hostname;
-	char	   *port;
-	char	   *username;
+	char   *dbname;
+	char   *hostname;
+	char   *port;
+	char   *username;
 
 	/* version number */
-	int			major;
-	int			minor;
+	int	major;
+	int	minor;
 };
 
 /*
  * Global variables
  */
-PGconn	   		       *conn;
-struct options	       *opts;
-extern char            *optarg;
+PGconn		*conn;
+struct options	*opts;
+extern char	*optarg;
 
 /*
  * Function prototypes
  */
-static void help(const char *progname);
+static void	help(const char *progname);
 void		get_opts(int, char **);
 #ifndef FE_MEMUTILS_H
-void	   *pg_malloc(size_t size);
-char	   *pg_strdup(const char *in);
+void		*pg_malloc(size_t size);
+char		*pg_strdup(const char *in);
 #endif
-void        display_fsm(char *table);
+void		display_fsm(char *table);
 void		fetch_version(void);
 void		fetch_blocksize(void);
 bool		backend_minimum_version(int major, int minor);
-void        allocate_struct(void);
-static void quit_properly(SIGNAL_ARGS);
+void		allocate_struct(void);
+static void	quit_properly(SIGNAL_ARGS);
 
 /*
  * Print help message
@@ -223,7 +223,7 @@ get_opts(int argc, char **argv)
 void *
 pg_malloc(size_t size)
 {
-	void       *tmp;
+	void	*tmp;
 
 	/* Avoid unportable behavior of malloc(0) */
 	if (size == 0)
@@ -243,7 +243,7 @@ pg_malloc(size_t size)
 char *
 pg_strdup(const char *in)
 {
-	char       *tmp;
+	char	*tmp;
 
 	if (!in)
 	{
@@ -267,13 +267,13 @@ void
 display_fsm(char *table)
 {
 	char		sql[PGSTAT_DEFAULT_STRING_SIZE];
-	PGresult   *res;
-	int			nrows;
-	int			row;
-	int         color;
-	int			totalspace, freespace;
-	int			groupby, blocksize;
-	int			n;
+	PGresult	*res;
+	int		nrows;
+	int		row;
+	int		color;
+	int		totalspace, freespace;
+	int		groupby, blocksize;
+	int		n;
 
 	blocksize = 8192;
 
@@ -285,8 +285,8 @@ display_fsm(char *table)
 			 table);
 	*/
 	snprintf(sql, sizeof(sql),
-			 "select avail from pg_freespace('%s') order by blkno",
-			 table);
+		"select avail from pg_freespace('%s') order by blkno",
+		table);
 
 	/* make the call */
 	res = PQexec(conn, sql);
@@ -374,7 +374,7 @@ fetch_blocksize()
 
 	/* print version */
 	if (opts->verbose)
-	    printf("Detected block size: %d\n", opts->blocksize);
+		printf("Detected block size: %d\n", opts->blocksize);
 
 	/* cleanup */
 	PQclear(res);
@@ -387,7 +387,7 @@ void
 fetch_version()
 {
 	char		sql[PGSTAT_DEFAULT_STRING_SIZE];
-	PGresult   *res;
+	PGresult	*res;
 
 	/* get the cluster version */
 	snprintf(sql, sizeof(sql), "SELECT version()");
@@ -409,7 +409,7 @@ fetch_version()
 
 	/* print version */
 	if (opts->verbose)
-	    printf("Detected release: %d.%d\n", opts->major, opts->minor);
+		printf("Detected release: %d.%d\n", opts->major, opts->minor);
 
 	/* cleanup */
 	PQclear(res);
@@ -477,7 +477,7 @@ main(int argc, char **argv)
 
 	fetch_blocksize();
 
-    display_fsm(opts->table);
+	display_fsm(opts->table);
 
 	PQfinish(conn);
 	return 0;

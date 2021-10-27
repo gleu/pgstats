@@ -84,44 +84,44 @@ typedef enum
 struct options
 {
 	/* misc */
-	bool		verbose;
-	bool        dontredisplayheader;
-	stat_t      stat;
-	char	   *filter;
-	bool        human_readable;
+	bool	verbose;
+	bool	dontredisplayheader;
+	stat_t	stat;
+	char	*filter;
+	bool	human_readable;
 
 	/* connection parameters */
-	char	   *dbname;
-	char	   *hostname;
-	char	   *port;
-	char	   *username;
+	char   *dbname;
+	char   *hostname;
+	char   *port;
+	char   *username;
 
 	/* version number */
-	int			major;
-	int			minor;
+	int	major;
+	int	minor;
 
 	/* extension namespace (pg_stat_statements or pg_buffercache) */
-	char	   *namespace;
+	char   *namespace;
 
 	/* frequency */
-	int			interval;
-	int			count;
+	int	interval;
+	int	count;
 };
 
 /* pg_stat_archiver struct */
 struct pgstatarchiver
 {
 	long archived_count;
-    /*
+	/*
 	we don't put these columns here because it makes no sense to get a diff between the new and the old values
 	? last_archived_wal;
-    ? last_archived_time;
+	? last_archived_time;
 	*/
 	long failed_count;
-    /*
+	/*
 	we don't put these columns here because it makes no sense to get a diff between the new and the old values
 	? last_failed_wal;
-    ? last_failed_time;
+	? last_failed_time;
 	*/
 	char *stats_reset;
 };
@@ -179,29 +179,29 @@ struct pgstatdatabase
 /* pg_stat_all_tables struct */
 struct pgstattable
 {
-    long seq_scan;
-    long seq_tup_read;
-    long idx_scan;
-    long idx_tup_fetch;
-    long n_tup_ins;
-    long n_tup_upd;
-    long n_tup_del;
-    long n_tup_hot_upd;
-    long n_live_tup;
-    long n_dead_tup;
-    long n_mod_since_analyze;
+	long seq_scan;
+	long seq_tup_read;
+	long idx_scan;
+	long idx_tup_fetch;
+	long n_tup_ins;
+	long n_tup_upd;
+	long n_tup_del;
+	long n_tup_hot_upd;
+	long n_live_tup;
+	long n_dead_tup;
+	long n_mod_since_analyze;
 	long n_ins_since_vacuum;
-    /*
+	/*
 	we don't put the timestamps here because it makes no sense to get a diff between the new and the old values
 	? last_vacuum;
-    ? last_autovacuum;
-    ? last_analyze;
-    ? last_autoanalyze;
+	? last_autovacuum;
+	? last_analyze;
+	? last_autoanalyze;
 	*/
 	long vacuum_count;
-    long autovacuum_count;
-    long analyze_count;
-    long autoanalyze_count;
+	long autovacuum_count;
+	long analyze_count;
+	long autoanalyze_count;
 };
 
 /* pg_statio_all_tables struct */
@@ -228,9 +228,9 @@ struct pgstatindex
 /* pg_stat_user_functions struct */
 struct pgstatfunction
 {
-    long   calls;
-    float total_time;
-    float self_time;
+	long   calls;
+	float total_time;
+	float self_time;
 };
 
 /* pg_stat_statements struct */
@@ -279,13 +279,13 @@ struct pgstatstatement
 /* pg_stat_slru struct */
 struct pgstatslru
 {
-    long blks_zeroed;
-    long blks_hit;
-    long blks_read;
-    long blks_written;
-    long blks_exists;
-    long flushes;
-    long truncates;
+	long blks_zeroed;
+	long blks_hit;
+	long blks_read;
+	long blks_written;
+	long blks_exists;
+	long flushes;
+	long truncates;
 	char *stats_reset;
 };
 
@@ -321,86 +321,86 @@ struct xlogstats
 /* pgBouncer stats struct */
 struct pgbouncerstats
 {
-    long total_request;
-    long total_received;
-    long total_sent;
-    long total_query_time;
+	long total_request;
+	long total_received;
+	long total_sent;
+	long total_query_time;
 	/* not used yet
-    float avg_req;
-    float avg_recv;
-    float avg_sent;
-    float avg_query;
+	float avg_req;
+	float avg_recv;
+	float avg_sent;
+	float avg_query;
 	*/
 };
 
 /*
  * Global variables
  */
-PGconn	   		       *conn;
-struct options	       *opts;
-extern char            *optarg;
-struct pgstatarchiver  *previous_pgstatarchiver;
-struct pgstatbgwriter  *previous_pgstatbgwriter;
-struct pgstatdatabase  *previous_pgstatdatabase;
-struct pgstattable     *previous_pgstattable;
-struct pgstattableio   *previous_pgstattableio;
-struct pgstatindex     *previous_pgstatindex;
-struct pgstatfunction  *previous_pgstatfunction;
-struct pgstatstatement *previous_pgstatstatement;
-struct pgstatslru      *previous_pgstatslru;
-struct pgstatwal       *previous_pgstatwal;
-struct xlogstats       *previous_xlogstats;
-struct repslots        *previous_repslots;
-struct pgbouncerstats  *previous_pgbouncerstats;
-int                     hdrcnt = 0;
-volatile sig_atomic_t   wresized;
-static int              winlines = PGSTAT_DEFAULT_LINES;
+PGconn			*conn;
+struct options		*opts;
+extern char		*optarg;
+struct pgstatarchiver	*previous_pgstatarchiver;
+struct pgstatbgwriter	*previous_pgstatbgwriter;
+struct pgstatdatabase	*previous_pgstatdatabase;
+struct pgstattable	*previous_pgstattable;
+struct pgstattableio	*previous_pgstattableio;
+struct pgstatindex	*previous_pgstatindex;
+struct pgstatfunction	*previous_pgstatfunction;
+struct pgstatstatement	*previous_pgstatstatement;
+struct pgstatslru	*previous_pgstatslru;
+struct pgstatwal	*previous_pgstatwal;
+struct xlogstats	*previous_xlogstats;
+struct repslots		*previous_repslots;
+struct pgbouncerstats	*previous_pgbouncerstats;
+int			hdrcnt = 0;
+volatile sig_atomic_t	wresized;
+static int		winlines = PGSTAT_DEFAULT_LINES;
 
 /*
  * Function prototypes
  */
-static void help(const char *progname);
+static void	help(const char *progname);
 void		get_opts(int, char **);
 #ifndef FE_MEMUTILS_H
-void	   *pg_malloc(size_t size);
-char	   *pg_strdup(const char *in);
+void	   	*pg_malloc(size_t size);
+char	   	*pg_strdup(const char *in);
 #endif
 void		print_pgstatarchiver(void);
 void		print_pgstatbgwriter(void);
-void        print_pgstatconnection(void);
-void        print_pgstatdatabase(void);
-void        print_pgstattable(void);
+void		print_pgstatconnection(void);
+void		print_pgstatdatabase(void);
+void		print_pgstattable(void);
 void		print_pgstattableio(void);
-void        print_pgstatindex(void);
-void        print_pgstatfunction(void);
-void        print_pgstatstatement(void);
-void        print_pgstatslru(void);
-void        print_pgstatwal(void);
-void        print_pgstatprogressanalyze(void);
-void        print_pgstatprogressbasebackup(void);
-void        print_pgstatprogresscluster(void);
-void        print_pgstatprogresscopy(void);
-void        print_pgstatprogresscreateindex(void);
-void        print_pgstatprogressvacuum(void);
+void		print_pgstatindex(void);
+void		print_pgstatfunction(void);
+void		print_pgstatstatement(void);
+void		print_pgstatslru(void);
+void		print_pgstatwal(void);
+void		print_pgstatprogressanalyze(void);
+void		print_pgstatprogressbasebackup(void);
+void		print_pgstatprogresscluster(void);
+void		print_pgstatprogresscopy(void);
+void		print_pgstatprogresscreateindex(void);
+void		print_pgstatprogressvacuum(void);
 void		print_buffercache(void);
-void        print_xlogstats(void);
-void        print_repslotsstats(void);
-void        print_tempfilestats(void);
-void        print_pgstatwaitevent(void);
-void        print_pgbouncerpools(void);
-void        print_pgbouncerstats(void);
+void		print_xlogstats(void);
+void		print_repslotsstats(void);
+void		print_tempfilestats(void);
+void		print_pgstatwaitevent(void);
+void		print_pgbouncerpools(void);
+void		print_pgbouncerstats(void);
 void		fetch_version(void);
-char	   *fetch_setting(char *name);
+char	   	*fetch_setting(char *name);
 void		fetch_pgbuffercache_namespace(void);
 void		fetch_pgstatstatements_namespace(void);
 bool		backend_minimum_version(int major, int minor);
-void        print_header(void);
-void        print_line(void);
-void        allocate_struct(void);
-static void needhdr(int dummy);
+void		print_header(void);
+void		print_line(void);
+void		allocate_struct(void);
+static void	needhdr(int dummy);
 static void	needresize(int);
-void        doresize(void);
-static void quit_properly(SIGNAL_ARGS);
+void		doresize(void);
+static void	quit_properly(SIGNAL_ARGS);
 
 /*
  * Print help message
@@ -1036,7 +1036,7 @@ print_pgstatdatabase()
 {
 	char		sql[PGSTAT_DEFAULT_STRING_SIZE];
 	PGresult   *res;
-    const char *paramValues[1];
+    	const char *paramValues[1];
 	int			nrows;
 	int			row, column;
 

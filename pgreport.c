@@ -78,19 +78,19 @@ struct options
 /*
  * Global variables
  */
-PGconn          *conn;
+PGconn		*conn;
 struct options  *opts;
-extern char     *optarg;
+extern char	*optarg;
 
 
 /*
  * Function prototypes
  */
-static void help(const char *progname);
+static void	help(const char *progname);
 void		get_opts(int, char **);
 #ifndef FE_MEMUTILS_H
-void	   *pg_malloc(size_t size);
-char	   *pg_strdup(const char *in);
+void		*pg_malloc(size_t size);
+char		*pg_strdup(const char *in);
 #endif
 bool		backend_minimum_version(int major, int minor);
 void		execute(char *query);
@@ -102,7 +102,7 @@ void		fetch_table(char *label, char *query);
 void		fetch_file(char *filename);
 void		fetch_kernelconfig(char *cfg);
 void		exec_command(char *cmd);
-static void quit_properly(SIGNAL_ARGS);
+static void	quit_properly(SIGNAL_ARGS);
 
 
 /*
@@ -186,7 +186,7 @@ get_opts(int argc, char **argv)
 				/* get script */
 			case 's':
 				opts->script = pg_strdup(optarg);
-	            sscanf(opts->script, "%d.%d", &(opts->major), &(opts->minor));
+				sscanf(opts->script, "%d.%d", &(opts->major), &(opts->minor));
 				break;
 
 				/* username */
@@ -317,8 +317,8 @@ void
 install_extension(char *extension)
 {
 	char		check_sql[PGREPORT_DEFAULT_STRING_SIZE],
-				install_sql[PGREPORT_DEFAULT_STRING_SIZE];
-	PGresult   *check_res, *install_res;
+			install_sql[PGREPORT_DEFAULT_STRING_SIZE];
+	PGresult	*check_res, *install_res;
 
 	if (opts->script)
 	{
@@ -383,7 +383,7 @@ void
 fetch_version()
 {
 	char		sql[PGREPORT_DEFAULT_STRING_SIZE];
-	PGresult   *res;
+	PGresult	*res;
 
 	if (opts->script)
 	{
@@ -430,7 +430,7 @@ void
 fetch_postmaster_reloadconftime()
 {
 	char		sql[PGREPORT_DEFAULT_STRING_SIZE];
-	PGresult   *res;
+	PGresult	*res;
 
 	if (opts->script)
 	{
@@ -470,7 +470,7 @@ void
 fetch_postmaster_starttime()
 {
 	char		sql[PGREPORT_DEFAULT_STRING_SIZE];
-	PGresult   *res;
+	PGresult	*res;
 
 	if (opts->script)
 	{
@@ -510,7 +510,7 @@ void
 fetch_table(char *label, char *query)
 {
 	PGresult	*res;
-	printQueryOpt myopt;
+	printQueryOpt	myopt;
 
 	if (opts->script)
 	{

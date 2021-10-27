@@ -64,11 +64,11 @@ struct options
 	char	*username;
 
 	/* version number */
-	int		major;
-	int		minor;
+	int	major;
+	int	minor;
 
 	/* pid */
-	int		pid;
+	int	pid;
 
 	/* include leader and workers PIDs */
 	bool	includeleaderworkers;
@@ -85,19 +85,19 @@ struct options
 /*
  * Global variables
  */
-PGconn	   		       *conn;
-struct options	       *opts;
-extern char            *optarg;
+PGconn		*conn;
+struct options	*opts;
+extern char	*optarg;
 
 
 /*
  * Function prototypes
  */
-static void help(const char *progname);
+static void	help(const char *progname);
 void		get_opts(int, char **);
 #ifndef FE_MEMUTILS_H
-void	   *pg_malloc(size_t size);
-char	   *pg_strdup(const char *in);
+void		*pg_malloc(size_t size);
+char		*pg_strdup(const char *in);
 #endif
 void		fetch_version(void);
 bool		backend_minimum_version(int major, int minor);
@@ -105,7 +105,7 @@ void		build_env(void);
 bool		active_session(void);
 void		handle_current_query(void);
 void		drop_env(void);
-static void quit_properly(SIGNAL_ARGS);
+static void	quit_properly(SIGNAL_ARGS);
 
 
 /*
@@ -250,7 +250,7 @@ get_opts(int argc, char **argv)
 void *
 pg_malloc(size_t size)
 {
-	void       *tmp;
+	void	*tmp;
 
 	/* Avoid unportable behavior of malloc(0) */
 	if (size == 0)
@@ -271,7 +271,7 @@ pg_malloc(size_t size)
 char *
 pg_strdup(const char *in)
 {
-	char       *tmp;
+	char	*tmp;
 
 	if (!in)
 	{
@@ -296,7 +296,7 @@ void
 fetch_version()
 {
 	char		sql[PGWAITEVENT_DEFAULT_STRING_SIZE];
-	PGresult   *res;
+	PGresult	*res;
 
 	/* get the cluster version */
 	snprintf(sql, sizeof(sql), "SELECT version()");
@@ -319,7 +319,7 @@ fetch_version()
 
 	/* print version */
 	if (opts->verbose)
-	    printf("Detected release: %d.%d\n", opts->major, opts->minor);
+		printf("Detected release: %d.%d\n", opts->major, opts->minor);
 
 	/* cleanup */
 	PQclear(res);
@@ -377,7 +377,7 @@ build_env()
 
 	/* print verbose */
 	if (opts->verbose)
-	    printf("Temporary table created\n");
+		printf("Temporary table created\n");
 
 	/* cleanup */
 	PQclear(res);
@@ -459,7 +459,7 @@ build_env()
 
 	/* print verbose */
 	if (opts->verbose)
-	    printf("Function created\n");
+		printf("Function created\n");
 
 	/* cleanup */
 	PQclear(res);
@@ -629,7 +629,7 @@ handle_current_query()
 			PQgetvalue(trace_res, row, 1),
 			atol(PQgetvalue(trace_res, row, 2)),
 			atof(PQgetvalue(trace_res, row, 3))
-		    );
+		);
 	}
 
 	/* print footers */
@@ -649,7 +649,7 @@ void
 drop_env()
 {
 	char		sql[PGWAITEVENT_DEFAULT_STRING_SIZE];
-	PGresult   *res;
+	PGresult	*res;
 
 	/* no need to drop the temp table */
 
@@ -672,7 +672,7 @@ drop_env()
 
 	/* print verbose */
 	if (opts->verbose)
-	    printf("Function dropped\n");
+		printf("Function dropped\n");
 
 	/* cleanup */
 	PQclear(res);
