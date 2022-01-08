@@ -383,8 +383,28 @@ build_env()
 	PQclear(res);
 
 	/* build the DDL query */
+	snprintf(sql, sizeof(sql), "CREATE SCHEMA pgwaitevent;");
+
+	/* make the call */
+	res = PQexec(conn, sql);
+
+	/* check and deal with errors */
+	if (!res || PQresultStatus(res) > 2)
+	{
+		pg_log_error("query failed: %s", PQerrorMessage(conn));
+		pg_log_info("query was: %s", sql);
+		PQclear(res);
+		PQfinish(conn);
+		exit(EXIT_FAILURE);
+	}
+
+	/* print verbose */
+	if (opts->verbose)
+		printf("Schema created\n");
+
+	/* build the DDL query */
 	snprintf(sql, sizeof(sql),
-"CREATE OR REPLACE FUNCTION trace_wait_events_for_pid(p integer, leader boolean, s numeric default 1)\n"
+"CREATE OR REPLACE FUNCTION pgwaitevent.trace_wait_events_for_pid(p integer, leader boolean, s numeric default 1)\n"
 "RETURNS TABLE (wait_event text, wait_event_type text, occurences integer, percent numeric(5,2))\n"
 "LANGUAGE plpgsql\n"
 "AS $$\n"
@@ -569,7 +589,7 @@ handle_current_query()
 	}
 
 	/* build the trace query */
-	snprintf(sql, sizeof(sql), "SELECT * FROM trace_wait_events_for_pid(%d, %s, %f);",
+	snprintf(sql, sizeof(sql), "SELECT * FROM pgwaitevent.trace_wait_events_for_pid(%d, %s, %f);",
 		opts->pid, opts->includeleaderworkers ? "'t'" : "'f'", opts->interval);
 
 	/* execute it */
@@ -655,7 +675,7 @@ drop_env()
 
 	/* drop function */
 	snprintf(sql, sizeof(sql),
-		"DROP FUNCTION trace_wait_events_for_pid(integer, boolean, numeric)");
+		"DROP FUNCTION pgwaitevent.trace_wait_events_for_pid(integer, boolean, numeric)");
 
 	/* make the call */
 	res = PQexec(conn, sql);
@@ -673,6 +693,27 @@ drop_env()
 	/* print verbose */
 	if (opts->verbose)
 		printf("Function dropped\n");
+
+	/* drop function */
+	snprintf(sql, sizeof(sql),
+		"DROP SCHEMA pgwaitevent");
+
+	/* make the call */
+	res = PQexec(conn, sql);
+
+	/* check and deal with errors */
+	if (!res || PQresultStatus(res) > 2)
+	{
+		pg_log_error("query failed: %s", PQerrorMessage(conn));
+		pg_log_info("query was: %s", sql);
+		PQclear(res);
+		PQfinish(conn);
+		exit(EXIT_FAILURE);
+	}
+
+	/* print verbose */
+	if (opts->verbose)
+		printf("Schema dropped\n");
 
 	/* cleanup */
 	PQclear(res);
