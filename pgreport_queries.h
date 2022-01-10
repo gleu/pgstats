@@ -65,6 +65,9 @@
 #define INDEXTYPE_TITLE "Index by types"
 #define INDEXTYPE_SQL "SELECT nspname, count(*) FILTER (WHERE not indisunique AND not indisprimary) as standard, count(*) FILTER (WHERE indisunique AND not indisprimary) as unique, count(*) FILTER (WHERE indisprimary) as primary, count(*) FILTER (WHERE indisexclusion) as exclusion, count(*) FILTER (WHERE indisclustered) as clustered, count(*) FILTER (WHERE indisvalid) as valid FROM pg_index i JOIN pg_class c ON c.oid=i.indexrelid JOIN pg_namespace n ON n.oid=c.relnamespace GROUP BY 1;"
 
+#define INDEXONTEXT_TITLE "Index and opclass"
+#define INDEXONTEXT_SQL "WITH colind AS (SELECT i.indrelid AS oid, i.indrelid::regclass AS tbl, c.relname AS idx, unnest(i.indkey::int4[]) AS num, unnest(i.indclass::int4[]) AS class FROM pg_class c JOIN pg_am a ON a.oid = c.relam JOIN pg_index i ON i.indexrelid = c.oid WHERE c.relkind = 'i' AND c.relname NOT LIKE 'pg%' AND a.amname = 'btree') SELECT colind.tbl AS \"Table\", colind.idx AS \"Index\", a.attname AS \"Colonne\", t.typname AS \"Type\", oc.opcname AS \"Classe d'opérateur\" FROM colind JOIN pg_attribute a ON a.attrelid = colind.oid AND a.attnum = colind.num JOIN pg_type t ON t.oid = a.atttypid JOIN pg_opclass oc ON oc.oid = colind.class WHERE t.typname LIKE '%char%' ORDER BY colind.tbl, colind.idx, colind.num"
+
 #define NBFUNCS_TITLE "User routines"
 #define NBFUNCS_SQL "select count(*) from pg_proc where pronamespace=2200 or pronamespace>16383"
 
