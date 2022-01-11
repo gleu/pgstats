@@ -732,6 +732,7 @@ main(int argc, char **argv)
 	execute(SET_SEARCHPATH);
 	/* Install some extensions if they are not already there */
 	install_extension("pg_buffercache");
+	install_extension("pg_visibility");
 	/* Install some functions/views */
 	execute(CREATE_GETVALUE_FUNCTION_SQL);
 	execute(CREATE_BLOATTABLE_VIEW_SQL);

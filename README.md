@@ -476,9 +476,3 @@ Ideas
 * pgcsvstat
   * add export of pg_stat_walreceiver
   * add export of progress views
-
-* pgreport
-  * 
-SELECT count(*) FILTER(WHERE NOT all_visible) AS blocs_a_traiter,
-         count(*) AS total_blocs
-           FROM pg_visibility_map('t1');
