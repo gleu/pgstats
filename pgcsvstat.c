@@ -89,6 +89,7 @@ void sql_exec_dump_pgstatuserfunctions(void);
 void sql_exec_dump_pgclass_size(void);
 void sql_exec_dump_pgstatstatements(void);
 void sql_exec_dump_xlog_stat(void);
+void sql_exec_dump_pgstatprogressanalyze(void);
 void fetch_version(void);
 bool check_superuser(void);
 bool backend_minimum_version(int major, int minor);
@@ -800,6 +801,30 @@ sql_exec_dump_xlog_stat()
 
 
 /*
+ * Dump ANALYZE progress
+ */
+void
+sql_exec_dump_pgstatprogressanalyze()
+{
+  char query[1024];
+  char filename[1024];
+
+  /* get the oid and database name from the system pg_database table */
+  snprintf(query, sizeof(query),
+    "SELECT date_trunc('seconds', now()), pid, datid, datname, "
+    "relid, relid::regclass relname, phase, sample_blks_total, "
+    "sample_blks_scanned, ext_stats_total, ext_stats_computed, "
+    "child_tables_total, child_tables_done, current_child_table_relid, "
+    "current_child_table_relid::regclass current_child_table_relname "
+    "FROM pg_stat_progress_analyze "
+    "ORDER BY pid");
+  snprintf(filename, sizeof(filename),
+    "%s/pg_stat_progress_analyze.csv", opts->directory);
+
+  sql_exec(query, filename, opts->quiet);
+}
+
+/*
  * Fetch PostgreSQL major and minor numbers
  */
 void
@@ -1006,7 +1031,20 @@ main(int argc, char **argv)
     sql_exec_dump_pgstatuserfunctions();
 
   /* grab progress stats info */
-  /* TODO */
+  if (backend_minimum_version(13, 0))
+    sql_exec_dump_pgstatprogressanalyze();
+  /*
+  if (backend_minimum_version(13, 0))
+    sql_exec_dump_pgstatprogressbasebackup();
+  if (backend_minimum_version(12, 0))
+    sql_exec_dump_pgstatprogresscluster();
+  if (backend_minimum_version(14, 0))
+    sql_exec_dump_pgstatprogresscopy();
+  if (backend_minimum_version(12, 0))
+    sql_exec_dump_pgstatprogresscreateindex();
+  if (backend_minimum_version(10, 0))
+    sql_exec_dump_pgstatprogressvacuum();
+  */
 
   /* grab other informations */
   sql_exec_dump_pgclass_size();
