@@ -79,6 +79,7 @@ void sql_exec_dump_pgstatreplicationslots(void);
 void sql_exec_dump_pgstatslru(void);
 void sql_exec_dump_pgstatsubscription(void);
 void sql_exec_dump_pgstatwal(void);
+void sql_exec_dump_pgstatwalreceiver(void);
 void sql_exec_dump_pgstatalltables(void);
 void sql_exec_dump_pgstatallindexes(void);
 void sql_exec_dump_pgstatioalltables(void);
@@ -553,6 +554,30 @@ sql_exec_dump_pgstatwal()
 }
 
 /*
+ * Dump all wal receiver stats.
+ */
+void
+sql_exec_dump_pgstatwalreceiver()
+{
+  char query[1024];
+  char filename[1024];
+
+  /* get the stats */
+  snprintf(query, sizeof(query),
+    "SELECT pid, status, receive_start_lsn, receive_start_tli, "
+    "written_lsn, flushed_lsn, received_tli, "
+    "date_trunc('seconds', last_msg_send_time) last_msg_send_time, "
+    "date_trunc('seconds', last_msg_receipt_time) last_msg_receipt_time, "
+    "latest_end_lsn, date_trunc('seconds', latest_end_time) latest_end_time, "
+    "slot_name, sender_host, sender_port, conninfo "
+    "from pg_stat_wal_receiver");
+  snprintf(filename, sizeof(filename),
+    "%s/pg_stat_wal_receiver.csv", opts->directory);
+
+  sql_exec(query, filename, opts->quiet);
+}
+
+/*
  * Dump all tables stats.
  */
 void
@@ -966,8 +991,10 @@ main(int argc, char **argv)
   if (backend_minimum_version(10, 0))
     sql_exec_dump_pgstatsubscription();
   if (backend_minimum_version(14, 0))
+  {
     sql_exec_dump_pgstatwal();
-  /* TODO pg_stat_wal_receiver */
+    sql_exec_dump_pgstatwalreceiver();
+  }
 
   /* grab database stats info */
   sql_exec_dump_pgstatalltables();
