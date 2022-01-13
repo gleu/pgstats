@@ -90,6 +90,7 @@ void sql_exec_dump_pgclass_size(void);
 void sql_exec_dump_pgstatstatements(void);
 void sql_exec_dump_xlog_stat(void);
 void sql_exec_dump_pgstatprogressanalyze(void);
+void sql_exec_dump_pgstatprogressbasebackup(void);
 void fetch_version(void);
 bool check_superuser(void);
 bool backend_minimum_version(int major, int minor);
@@ -825,6 +826,28 @@ sql_exec_dump_pgstatprogressanalyze()
 }
 
 /*
+ * Dump BASE BACKUP progress
+ */
+void
+sql_exec_dump_pgstatprogressbasebackup()
+{
+  char query[1024];
+  char filename[1024];
+
+  /* get the oid and database name from the system pg_database table */
+  snprintf(query, sizeof(query),
+    "SELECT date_trunc('seconds', now()), pid, phase, "
+    "backup_total, backup_streamed, "
+    "tablespaces_total, tablespaces_streamed "
+    "FROM pg_stat_progress_basebackup "
+    "ORDER BY pid");
+  snprintf(filename, sizeof(filename),
+    "%s/pg_stat_progress_basebackup.csv", opts->directory);
+
+  sql_exec(query, filename, opts->quiet);
+}
+
+/*
  * Fetch PostgreSQL major and minor numbers
  */
 void
@@ -1033,9 +1056,9 @@ main(int argc, char **argv)
   /* grab progress stats info */
   if (backend_minimum_version(13, 0))
     sql_exec_dump_pgstatprogressanalyze();
-  /*
   if (backend_minimum_version(13, 0))
     sql_exec_dump_pgstatprogressbasebackup();
+  /*
   if (backend_minimum_version(12, 0))
     sql_exec_dump_pgstatprogresscluster();
   if (backend_minimum_version(14, 0))
