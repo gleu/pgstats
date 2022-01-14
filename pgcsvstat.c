@@ -94,6 +94,7 @@ void sql_exec_dump_pgstatprogressbasebackup(void);
 void sql_exec_dump_pgstatprogresscluster(void);
 void sql_exec_dump_pgstatprogresscopy(void);
 void sql_exec_dump_pgstatprogresscreateindex(void);
+void sql_exec_dump_pgstatprogressvacuum(void);
 void fetch_version(void);
 bool check_superuser(void);
 bool backend_minimum_version(int major, int minor);
@@ -922,6 +923,29 @@ sql_exec_dump_pgstatprogresscreateindex()
 }
 
 /*
+ * Dump VACUUM progress
+ */
+void
+sql_exec_dump_pgstatprogressvacuum()
+{
+  char query[1024];
+  char filename[1024];
+
+  /* get the oid and database name from the system pg_database table */
+  snprintf(query, sizeof(query),
+    "SELECT date_trunc('seconds', now()), pid, datid, datname, "
+    "relid, relid::regclass relname, phase, "
+    "heap_blks_total, heap_blks_scanned, heap_blks_vacuumed, "
+    "index_vacuum_count, max_dead_tuples, num_dead_tuples "
+    "FROM pg_stat_progress_vacuum "
+    "ORDER BY pid");
+  snprintf(filename, sizeof(filename),
+    "%s/pg_stat_progress_vacuum.csv", opts->directory);
+
+  sql_exec(query, filename, opts->quiet);
+}
+
+/*
  * Fetch PostgreSQL major and minor numbers
  */
 void
@@ -1138,10 +1162,8 @@ main(int argc, char **argv)
     sql_exec_dump_pgstatprogresscopy();
   if (backend_minimum_version(12, 0))
     sql_exec_dump_pgstatprogresscreateindex();
-  /*
   if (backend_minimum_version(10, 0))
     sql_exec_dump_pgstatprogressvacuum();
-  */
 
   /* grab other informations */
   sql_exec_dump_pgclass_size();
