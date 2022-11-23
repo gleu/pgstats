@@ -95,6 +95,9 @@
 #define PGHBAFILERULES_TITLE "pg_hba_file_rules"
 #define PGHBAFILERULES_SQL "select * from pg_hba_file_rules"
 
+#define PGIDENTFILEMAPPINGS_TITLE "pg_ident_file_mappings"
+#define PGIDENTFILEMAPPINGS_SQL "select * from pg_ident_file_mappings"
+
 #define PUBLICATIONS_TITLE "Publications"
 #define PUBLICATIONS_SQL "select * from pg_publication"
 

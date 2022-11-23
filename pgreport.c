@@ -769,6 +769,10 @@ main(int argc, char **argv)
   {
     fetch_table(PGHBAFILERULES_TITLE, PGHBAFILERULES_SQL);
   }
+  if (backend_minimum_version(15,0))
+  {
+    fetch_table(PGIDENTFILEMAPPINGS_TITLE, PGIDENTFILEMAPPINGS_SQL);
+  }
   fetch_table(PGSETTINGS_TITLE, PGSETTINGS_SQL);
 
   /* Fetch global objects */
