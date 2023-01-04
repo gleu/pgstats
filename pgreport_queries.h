@@ -50,6 +50,9 @@
 #define EXTENSIONS_TITLE "Extensions"
 #define EXTENSIONS_SQL "SELECT e.extname AS \"Name\", e.extversion AS \"Version\", n.nspname AS \"Schema\", c.description AS \"Description\" FROM pg_catalog.pg_extension e LEFT JOIN pg_catalog.pg_namespace n ON n.oid = e.extnamespace LEFT JOIN pg_catalog.pg_description c ON c.objoid = e.oid AND c.classoid = 'pg_catalog.pg_extension'::pg_catalog.regclass ORDER BY 1"
 
+#define EXTENSIONSTABLE_TITLE "Extensions Tables (dumpable or not?)"
+#define EXTENSIONSTABLE_SQL "WITH tables_dumped AS (SELECT e.extname, n.nspname||'.'||c.relname AS relation_name1 FROM pg_extension e, LATERAL unnest(extconfig) AS toid JOIN pg_class c on c.oid=toid JOIN pg_namespace n on n.oid=c.relnamespace) SELECT e.extname AS extension_name, relation_name2, tables_dumped.extname IS NOT NULL AS to_be_dumped FROM pg_catalog.pg_depend d JOIN pg_catalog.pg_extension e ON e.oid=d.refobjid, LATERAL pg_catalog.pg_describe_object(d.classid, d.objid, 0), LATERAL substr(pg_describe_object, case when pg_describe_object like 'table %' then length('table ') else length('sequence ') end + 1) AS relation_name2 LEFT JOIN tables_dumped ON tables_dumped.relation_name1=relation_name2 WHERE d.refclassid = 'pg_catalog.pg_extension'::pg_catalog.regclass AND d.deptype = 'e' AND (pg_describe_object like 'table %' OR pg_describe_object like 'sequence %') ORDER BY 1,2,3"
+
 #define KINDS_SIZE_TITLE "Number and size per relations kinds"
 #define KINDS_SIZE_SQL "SELECT nspname, relkind, count(*), pg_size_pretty(sum(pg_table_size(c.oid))) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace GROUP BY 1,2 ORDER BY 1,2"
 
