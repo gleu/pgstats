@@ -472,3 +472,5 @@ Ideas
   * pg_stat_archiver: display the duration since the last archived wal
   * pg_stat_X_tables: display the duration since the last vacuum and analyze
   * sum the number of archived wal files
+* pgreport
+  * get data stats (idea from Christophe Courtois)
