@@ -727,6 +727,11 @@ main(int argc, char **argv)
     conn = connectDatabase(&cparams, progname, false, false, false);
   }
 
+  /* Fetch version */
+  printf("%s# PostgreSQL Version\n\n", opts->script ? "\\echo " : "");
+  fetch_version();
+  printf("\n");
+
   /* Create schema, and set if as our search_path */
   execute(CREATE_SCHEMA);
   execute(SET_SEARCHPATH);
@@ -739,12 +744,14 @@ main(int argc, char **argv)
   strcat(sql, CREATE_BLOATINDEX_VIEW_SQL_1);
   strcat(sql, CREATE_BLOATINDEX_VIEW_SQL_2);
   execute(sql);
-  execute(CREATE_ORPHANEDFILES_VIEW_SQL);
-
-  /* Fetch version */
-  printf("%s# PostgreSQL Version\n\n", opts->script ? "\\echo " : "");
-  fetch_version();
-  printf("\n");
+  if (backend_minimum_version(10,0))
+  {
+    execute(CREATE_ORPHANEDFILES_VIEW_SQL2);
+  }
+  else
+  {
+    execute(CREATE_ORPHANEDFILES_VIEW_SQL1);
+  }
 
   /* Fetch postmaster start time */
   printf("%s# PostgreSQL Start time\n\n", opts->script ? "\\echo " : "");
