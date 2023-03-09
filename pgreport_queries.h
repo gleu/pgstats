@@ -36,7 +36,7 @@
 #define SCHEMAS_SQL "SELECT n.nspname AS \"Name\", pg_catalog.pg_get_userbyid(n.nspowner) AS \"Owner\" FROM pg_catalog.pg_namespace n WHERE n.nspname !~ '^pg_' AND n.nspname <> 'information_schema' ORDER BY 1"
 
 #define NBRELS_IN_SCHEMA_TITLE "Relations per kinds and schemas"
-#define NBRELS_IN_SCHEMA_SQL "select nspname, rolname, count(*) filter (where relkind='r') as tables, count(*) filter (where relkind='t') as toasts, count(*) filter (where relkind='i') as index, count(*) filter (where relkind='S') as sequences from pg_namespace n join pg_roles r on r.oid=n.nspowner left join pg_class c on n.oid=c.relnamespace group by nspname, rolname order by 1, 2"
+#define NBRELS_IN_SCHEMA_SQL "select nspname, rolname, count(*) filter (where relkind='r') as tables, count(*) filter (where relkind='t') as toasts, count(*) filter (where relkind='i') as index, count(*) filter (where relkind='S') as sequences, count(*) filter (where relkind='v') as views, count(*) filter (where relkind='m') as matviews from pg_namespace n join pg_roles r on r.oid=n.nspowner left join pg_class c on n.oid=c.relnamespace group by nspname, rolname order by 1, 2"
 
 #define NBFUNCS_IN_SCHEMA_TITLE "Functions per schema"
 #define NBFUNCS_IN_SCHEMA_SQL "select nspname, rolname, count(*) filter (where p.oid is not null) as functions from pg_namespace n join pg_roles r on r.oid=n.nspowner left join pg_proc p on n.oid=p.pronamespace group by nspname, rolname order by 1, 2"
