@@ -474,3 +474,4 @@ Ideas
   * sum the number of archived wal files
 * pgreport
   * get data stats (idea from Christophe Courtois)
+  * for the "Relations per kinds and schemas", add relkind views and mat views
