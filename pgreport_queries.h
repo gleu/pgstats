@@ -2,7 +2,7 @@
 #define SETTINGS_BY_SOURCEFILE_SQL "SELECT source, sourcefile, count(*) AS nb FROM pg_settings GROUP BY 1, 2"
 
 #define SETTINGS_NOTCONFIGFILE_NOTDEFAULTVALUE_TITLE "Non default value and not config file settings"
-#define SETTINGS_NOTCONFIGFILE_NOTDEFAULTVALUE_SQL "SELECT source, name, setting, unit FROM pg_settings WHERE source NOT IN ('configuration file', 'default') ORDER BY source, name"
+#define SETTINGS_NOTCONFIGFILE_NOTDEFAULTVALUE_SQL "SELECT source, name, setting, unit FROM pg_settings WHERE source NOT IN ('configuration file', 'default') OR (setting != boot_val) ORDER BY source, name"
 
 #define CLUSTER_HITRATIO_TITLE "Hit ratio"
 #define CLUSTER_HITRATIO_SQL "SELECT 'index hit rate' AS name, 100.*sum(idx_blks_hit) / nullif(sum(idx_blks_hit + idx_blks_read),0) AS ratio FROM pg_statio_user_indexes UNION ALL SELECT 'table hit rate' AS name, 100.*sum(heap_blks_hit) / nullif(sum(heap_blks_hit) + sum(heap_blks_read),0) AS ratio FROM pg_statio_user_tables"
