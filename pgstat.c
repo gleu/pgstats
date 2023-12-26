@@ -65,6 +65,7 @@ typedef enum
   STATEMENT,
   SLRU,
   XLOG,
+  DEADLIVE,
   TEMPFILE,
   REPSLOTS,
   WAITEVENT,
@@ -318,6 +319,13 @@ struct xlogstats
   long locationdiff;
 };
 
+/* deadlivestats struct */
+struct deadlivestats
+{
+  long live;
+  long dead;
+};
+
 /* pgBouncer stats struct */
 struct pgbouncerstats
 {
@@ -350,6 +358,7 @@ struct pgstatstatement *previous_pgstatstatement;
 struct pgstatslru      *previous_pgstatslru;
 struct pgstatwal       *previous_pgstatwal;
 struct xlogstats       *previous_xlogstats;
+struct deadlivestats   *previous_deadlivestats;
 struct repslots        *previous_repslots;
 struct pgbouncerstats  *previous_pgbouncerstats;
 int                    hdrcnt = 0;
@@ -384,6 +393,7 @@ void        print_pgstatprogresscreateindex(void);
 void        print_pgstatprogressvacuum(void);
 void        print_buffercache(void);
 void        print_xlogstats(void);
+void        print_deadlivestats(void);
 void        print_repslotsstats(void);
 void        print_tempfilestats(void);
 void        print_pgstatwaitevent(void);
@@ -441,6 +451,7 @@ help(const char *progname)
        "  * statement            for pg_stat_statements (needs the extension)\n"
        "  * slru                 for pg_stat_slru (only for 13+)\n"
        "  * xlog                 for xlog writes (only for 9.2+)\n"
+       "  * deadlive             for dead/live tuples stats\n"
        "  * repslots             for replication slots\n"
        "  * tempfile             for temporary file usage\n"
        "  * waitevent            for wait events usage\n"
@@ -586,6 +597,10 @@ get_opts(int argc, char **argv)
         else if (!strcmp(optarg, "xlog"))
         {
           opts->stat = XLOG;
+        }
+        else if (!strcmp(optarg, "deadlive"))
+        {
+          opts->stat = DEADLIVE;
         }
         else if (!strcmp(optarg, "repslots"))
         {
@@ -2609,6 +2624,50 @@ print_xlogstats()
 }
 
 /*
+ * Dump dead live tuples stats.
+ */
+void
+print_deadlivestats()
+{
+  char     sql[PGSTAT_DEFAULT_STRING_SIZE];
+  PGresult *res;
+
+  long     live;
+  long     dead;
+
+  snprintf(sql, sizeof(sql),
+    "SELECT sum(n_live_tup), sum(n_dead_tup) FROM pg_stat_all_tables");
+
+  res = PQexec(conn, sql);
+
+  /* check and deal with errors */
+  if (!res || PQresultStatus(res) > 2)
+  {
+    pg_log_warning("query failed: %s", PQerrorMessage(conn));
+    PQclear(res);
+    PQfinish(conn);
+    pg_log_error("query was: %s", sql);
+    exit(EXIT_FAILURE);
+  }
+
+  live = atol(PQgetvalue(res, 0, 0));
+  dead = atol(PQgetvalue(res, 0, 1));
+
+  /* printing the actual values for once */
+  (void)printf(" %10ld   %10ld      %.2f\n",
+    live,
+    dead,
+    dead+live == 0 ? 0 : 100.*dead/((dead+live)));
+
+  /* setting the new old value */
+  previous_deadlivestats->live = live;
+  previous_deadlivestats->dead = dead;
+
+  /* cleanup */
+  PQclear(res);
+}
+
+/*
  * Dump all repslots informations
  */
 void
@@ -3233,6 +3292,9 @@ print_header(void)
       (void)printf("------- used ------- ------ dirty ------\n");
       (void)printf("  total     percent    total    percent\n");
       break;
+    case DEADLIVE:
+      (void)printf("  live       dead           percent\n");
+      break;
     case XLOG:
     case REPSLOTS:
       (void)printf("-------- filename -------- -- location -- ---- bytes ----\n");
@@ -3334,6 +3396,9 @@ print_line(void)
       break;
     case XLOG:
       print_xlogstats();
+      break;
+    case DEADLIVE:
+      print_deadlivestats();
       break;
     case REPSLOTS:
       print_repslotsstats();
@@ -3524,6 +3589,11 @@ allocate_struct(void)
       previous_xlogstats = (struct xlogstats *) pg_malloc(sizeof(struct xlogstats));
       previous_xlogstats->location = pg_strdup("0/0");
       previous_xlogstats->locationdiff = 0;
+      break;
+    case DEADLIVE:
+      previous_deadlivestats = (struct deadlivestats *) pg_malloc(sizeof(struct deadlivestats));
+      previous_deadlivestats->live = 0;
+      previous_deadlivestats->dead = 0;
       break;
     case REPSLOTS:
       previous_repslots = (struct repslots *) pg_malloc(sizeof(struct repslots));
