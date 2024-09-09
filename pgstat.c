@@ -1081,6 +1081,7 @@ print_pgstatdatabase()
   long       sessions_killed = 0;
   char       *stats_reset;
   bool       has_been_reset;
+  float      hit_ratio;
 
   /*
    * With a filter, we assume we'll get only one row.
@@ -1196,14 +1197,21 @@ print_pgstatdatabase()
       (void)printf("pg_stat_database has been reset!\n");
     }
 
+    // calculate hit ratio
+    if (blks_hit - previous_pgstatdatabase->blks_hit + blks_read - previous_pgstatdatabase->blks_read > 0)
+      hit_ratio = 100*(blks_hit - previous_pgstatdatabase->blks_hit)/(blks_hit - previous_pgstatdatabase->blks_hit + blks_read - previous_pgstatdatabase->blks_read);
+    else
+      hit_ratio = -1;
+
     /* printing the diff...
      * note that the first line will be the current value, rather than the diff */
-    (void)printf("      %4ld      %6ld   %6ld   %6ld %6ld      %5.2f        %5.2f   %6ld %6ld %6ld %6ld %6ld   %6ld %9ld    %8.2f    %8.2f %8.2f  %6ld    %6ld %6ld %6ld %9ld %9ld %9ld\n",
+    (void)printf("      %4ld      %6ld   %6ld   %6ld %6ld   %3.2f     %5.2f        %5.2f   %6ld %6ld %6ld %6ld %6ld   %6ld %9ld    %8.2f    %8.2f %8.2f  %6ld    %6ld %6ld %6ld %9ld %9ld %9ld\n",
       numbackends,
       xact_commit - previous_pgstatdatabase->xact_commit,
       xact_rollback - previous_pgstatdatabase->xact_rollback,
       blks_read - previous_pgstatdatabase->blks_read,
       blks_hit - previous_pgstatdatabase->blks_hit,
+      hit_ratio,
       blk_read_time - previous_pgstatdatabase->blk_read_time,
       blk_write_time - previous_pgstatdatabase->blk_write_time,
       tup_returned - previous_pgstatdatabase->tup_returned,
@@ -3260,7 +3268,7 @@ print_header(void)
       break;
     case DATABASE:
       (void)printf("- backends - ------ xacts ------ ---------------- blocks ---------------- -------------- tuples -------------- ------ temp ------ ---------------------------- session ---------------------------- ------------ misc -------------\n");
-      (void)printf("                commit rollback     read    hit   read_time   write_time      ret    fet    ins    upd    del    files     bytes     all_time active_time iit_time numbers abandoned  fatal killed conflicts deadlocks checksums\n");
+      (void)printf("                commit rollback     read    hit hit ratio  read_time   write_time      ret    fet    ins    upd    del    files     bytes     all_time active_time iit_time numbers abandoned  fatal killed conflicts deadlocks checksums\n");
       break;
     case TABLE:
       (void)printf("-- sequential -- ------ index ------ -------------------- tuples ----------------------------- -------------- maintenance --------------\n");
