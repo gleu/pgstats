@@ -72,6 +72,7 @@ int  sql_exec(const char *sql, const char *filename, bool quiet);
 void sql_exec_dump_pgstatactivity(void);
 void sql_exec_dump_pgstatarchiver(void);
 void sql_exec_dump_pgstatbgwriter(void);
+void sql_exec_dump_pgstatcheckpointer(void);
 void sql_exec_dump_pgstatdatabase(void);
 void sql_exec_dump_pgstatdatabaseconflicts(void);
 void sql_exec_dump_pgstatreplication(void);
@@ -349,17 +350,49 @@ sql_exec_dump_pgstatbgwriter()
   char filename[1024];
 
   /* get the oid and database name from the system pg_database table */
-  snprintf(query, sizeof(query),
-    "SELECT date_trunc('seconds', now()), checkpoints_timed, "
-    "checkpoints_req, %sbuffers_checkpoint, buffers_clean, "
-    "maxwritten_clean, buffers_backend, %sbuffers_alloc%s "
-    "FROM pg_stat_bgwriter ",
-    backend_minimum_version(9, 2) ? "checkpoint_write_time, checkpoint_sync_time, " : "",
-    backend_minimum_version(9, 1) ? "buffers_backend_fsync, " : "",
-    backend_minimum_version(9, 1) ? ", date_trunc('seconds', stats_reset) AS stats_reset " : "");
+  if (backend_minimum_version(17, 0))
+  {
+    snprintf(query, sizeof(query),
+      "SELECT date_trunc('seconds', now()), buffers_clean, "
+      "maxwritten_clean, buffers_alloc, "
+      "date_trunc('seconds', stats_reset) AS stats_reset "
+      "FROM pg_stat_bgwriter ");
+  }
+  else
+  {
+    snprintf(query, sizeof(query),
+      "SELECT date_trunc('seconds', now()), checkpoints_timed, "
+      "checkpoints_req, %sbuffers_checkpoint, buffers_clean, "
+      "maxwritten_clean, buffers_backend, %sbuffers_alloc%s "
+      "FROM pg_stat_bgwriter ",
+      backend_minimum_version(9, 2) ? "checkpoint_write_time, checkpoint_sync_time, " : "",
+      backend_minimum_version(9, 1) ? "buffers_backend_fsync, " : "",
+      backend_minimum_version(9, 1) ? ", date_trunc('seconds', stats_reset) AS stats_reset " : "");
+  }
   snprintf(filename, sizeof(filename),
     "%s/pg_stat_bgwriter.csv", opts->directory);
+  sql_exec(query, filename, opts->quiet);
+}
 
+/*
+ * Dump all bgwriter stats.
+ */
+void
+sql_exec_dump_pgstatcheckpointer()
+{
+  char query[1024];
+  char filename[1024];
+
+  /* get the oid and database name from the system pg_database table */
+  // TODO
+  snprintf(query, sizeof(query),
+    "SELECT date_trunc('seconds', now()), num_timed, num_requested, "
+    "restartpoints_timed, restartpoints_req, restartpoints_done, "
+    "write_time, sync_time, buffers_written, "
+    "date_trunc('seconds', stats_reset) AS stats_reset "
+    "FROM pg_stat_checkpointer ");
+  snprintf(filename, sizeof(filename),
+    "%s/pg_stat_checkpointer.csv", opts->directory);
   sql_exec(query, filename, opts->quiet);
 }
 
@@ -758,16 +791,21 @@ sql_exec_dump_pgstatstatements()
   snprintf(query, sizeof(query),
     "SELECT date_trunc('seconds', now()), r.rolname, d.datname, "
     "%sregexp_replace(query, E'\n', ' ', 'g') as query, %scalls, %s, rows, "
-    "shared_blks_hit, shared_blks_read, shared_blks_written, "
-    "local_blks_hit, local_blks_read, local_blks_written, "
-    "temp_blks_read, temp_blks_written%s "
+    "shared_blks_hit, shared_blks_read, shared_blks_dirtied, shared_blks_written, "
+    "local_blks_hit, local_blks_read, local_blks_dirtied, local_blks_written, "
+    "temp_blks_read, temp_blks_written%s%s%s%s%s%s "
     "FROM pg_stat_statements q, pg_database d, pg_roles r "
     "WHERE q.userid=r.oid and q.dbid=d.oid "
     "ORDER BY r.rolname, d.datname",
     backend_minimum_version(14, 0) ? "toplevel, queryid, " : "",
     backend_minimum_version(13, 0) ? "plans, total_plan_time, min_plan_time, max_plan_time, mean_plan_time, stddev_plan_time, " : "",
     backend_minimum_version(13, 0) ? "total_exec_time, min_exec_time, max_exec_time, mean_exec_time, stddev_exec_time" : "total_time",
-    backend_minimum_version(14, 0) ? ", wal_records, wal_fpi, wal_bytes" : "");
+    backend_minimum_version(17, 0) ? ", shared_blk_read_time, shared_blk_write_time, local_blk_read_time, local_blk_write_time" : ", blk_read_time, blk_write_time",
+    backend_minimum_version(15, 0) ? ", temp_blk_read_time, temp_blk_write_time" : "",
+    backend_minimum_version(13, 0) ? ", wal_records, wal_fpi, wal_bytes" : "",
+    backend_minimum_version(15, 0) ? ", jit_functions, jit_generation_time, jit_inlining_count, jit_inlining_time, jit_optimization_count, jit_optimization_time, jit_emission_count, jit_emission_time" : "",
+    backend_minimum_version(17, 0) ? ", date_trunc('seconds', stats_since) AS stats_since " : "",
+    backend_minimum_version(17, 0) ? ", date_trunc('seconds', minmax_stats_since) AS minmax_stats_since " : "");
   snprintf(filename, sizeof(filename),
     "%s/pg_stat_statements.csv", opts->directory);
 
@@ -936,9 +974,11 @@ sql_exec_dump_pgstatprogressvacuum()
     "SELECT date_trunc('seconds', now()), pid, datid, datname, "
     "relid, relid::regclass relname, phase, "
     "heap_blks_total, heap_blks_scanned, heap_blks_vacuumed, "
-    "index_vacuum_count, max_dead_tuples, num_dead_tuples "
+    "index_vacuum_count, %s, %s "
     "FROM pg_stat_progress_vacuum "
-    "ORDER BY pid");
+    "ORDER BY pid",
+    backend_minimum_version(17, 0) ? "max_dead_tuple_bytes" : "max_dead_tuples",
+    backend_minimum_version(17, 0) ? "dead_tuple_bytes"     : "num_dead_tuples");
   snprintf(filename, sizeof(filename),
     "%s/pg_stat_progress_vacuum.csv", opts->directory);
 
@@ -1043,7 +1083,7 @@ backend_has_pgstatstatements()
 
   /* get the oid and database name from the system pg_database table */
   snprintf(sql, sizeof(sql),
-    "SELECT 1 "
+    "SELECT n.nspname "
     "FROM pg_proc p, pg_namespace n "
     "WHERE p.proname='pg_stat_statements' "
     "  AND p.pronamespace=n.oid");
@@ -1064,6 +1104,31 @@ backend_has_pgstatstatements()
 
   /* get the information */
   has_pgstatstatements = PQntuples(res)>0;
+
+  /* if it's present, set search_path to access it */
+  if (has_pgstatstatements)
+  {
+    snprintf(sql, sizeof(sql),
+      "SET search_path TO %s",
+      PQgetvalue(res, 0, 0));
+
+    /* cleanup */
+    PQclear(res);
+
+    /* make the call to set search_path */
+    res = PQexec(conn, sql);
+
+    /* check and deal with errors */
+    if (!res || PQresultStatus(res) != PGRES_COMMAND_OK)
+    {
+      pg_log_error("query failed: %s\n", PQerrorMessage(conn));
+      pg_log_info("query was: %s\n", sql);
+
+      PQclear(res);
+      PQfinish(conn);
+      exit(-1);
+    }
+  }
 
   /* cleanup */
   PQclear(res);
@@ -1124,6 +1189,8 @@ main(int argc, char **argv)
     sql_exec_dump_pgstatarchiver();
   if (backend_minimum_version(8, 3))
     sql_exec_dump_pgstatbgwriter();
+  if (backend_minimum_version(17, 0))
+    sql_exec_dump_pgstatcheckpointer();
   sql_exec_dump_pgstatdatabase();
   if (backend_minimum_version(9, 1))
   {

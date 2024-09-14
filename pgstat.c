@@ -56,6 +56,7 @@ typedef enum
   ARCHIVER,
   BGWRITER,
   BUFFERCACHE,
+  CHECKPOINTER,
   CONNECTION,
   DATABASE,
   TABLE,
@@ -130,16 +131,23 @@ struct pgstatarchiver
 /* pg_stat_bgwriter struct */
 struct pgstatbgwriter
 {
-  long checkpoints_timed;
-  long checkpoints_req;
-  long checkpoint_write_time;
-  long checkpoint_sync_time;
-  long buffers_checkpoint;
   long buffers_clean;
   long maxwritten_clean;
-  long buffers_backend;
-  long buffers_backend_fsync;
   long buffers_alloc;
+  char *stats_reset;
+};
+
+/* pg_stat_checkpointer struct */
+struct pgstatcheckpointer
+{
+  long checkpoints_timed;
+  long checkpoints_requested;
+  long restartpoints_timed;
+  long restartpoints_requested;
+  long restartpoints_done;
+  long write_time;
+  long sync_time;
+  long buffers_written;
   char *stats_reset;
 };
 
@@ -344,26 +352,27 @@ struct pgbouncerstats
 /*
  * Global variables
  */
-PGconn                 *conn;
-struct options         *opts;
-extern char            *optarg;
-struct pgstatarchiver  *previous_pgstatarchiver;
-struct pgstatbgwriter  *previous_pgstatbgwriter;
-struct pgstatdatabase  *previous_pgstatdatabase;
-struct pgstattable     *previous_pgstattable;
-struct pgstattableio   *previous_pgstattableio;
-struct pgstatindex     *previous_pgstatindex;
-struct pgstatfunction  *previous_pgstatfunction;
-struct pgstatstatement *previous_pgstatstatement;
-struct pgstatslru      *previous_pgstatslru;
-struct pgstatwal       *previous_pgstatwal;
-struct xlogstats       *previous_xlogstats;
-struct deadlivestats   *previous_deadlivestats;
-struct repslots        *previous_repslots;
-struct pgbouncerstats  *previous_pgbouncerstats;
-int                    hdrcnt = 0;
-volatile sig_atomic_t  wresized;
-static int             winlines = PGSTAT_DEFAULT_LINES;
+PGconn                     *conn;
+struct options             *opts;
+extern char                *optarg;
+struct pgstatarchiver      *previous_pgstatarchiver;
+struct pgstatbgwriter      *previous_pgstatbgwriter;
+struct pgstatcheckpointer  *previous_pgstatcheckpointer;
+struct pgstatdatabase      *previous_pgstatdatabase;
+struct pgstattable         *previous_pgstattable;
+struct pgstattableio       *previous_pgstattableio;
+struct pgstatindex         *previous_pgstatindex;
+struct pgstatfunction      *previous_pgstatfunction;
+struct pgstatstatement     *previous_pgstatstatement;
+struct pgstatslru          *previous_pgstatslru;
+struct pgstatwal           *previous_pgstatwal;
+struct xlogstats           *previous_xlogstats;
+struct deadlivestats       *previous_deadlivestats;
+struct repslots            *previous_repslots;
+struct pgbouncerstats      *previous_pgbouncerstats;
+int                        hdrcnt = 0;
+volatile sig_atomic_t      wresized;
+static int                 winlines = PGSTAT_DEFAULT_LINES;
 
 /*
  * Function prototypes
@@ -376,6 +385,7 @@ char        *pg_strdup(const char *in);
 #endif
 void        print_pgstatarchiver(void);
 void        print_pgstatbgwriter(void);
+void        print_pgstatcheckpointer(void);
 void        print_pgstatconnection(void);
 void        print_pgstatdatabase(void);
 void        print_pgstattable(void);
@@ -442,6 +452,8 @@ help(const char *progname)
        "  * archiver             for pg_stat_archiver (only for 9.4+)\n"
        "  * bgwriter             for pg_stat_bgwriter\n"
        "  * buffercache          for pg_buffercache (needs the extension)\n"
+       "  * checkpointer         for pg_stat_bgwriter (<17) or\n"
+       "                         for pg_stat_checkpointer (17+)\n"
        "  * connection           (only for 9.2+)\n"
        "  * database             for pg_stat_database\n"
        "  * table                for pg_stat_all_tables\n"
@@ -557,6 +569,10 @@ get_opts(int argc, char **argv)
         else if (!strcmp(optarg, "buffercache"))
         {
           opts->stat = BUFFERCACHE;
+        }
+        else if (!strcmp(optarg, "checkpointer"))
+        {
+          opts->stat = CHECKPOINTER;
         }
         else if (!strcmp(optarg, "connection"))
         {
@@ -844,7 +860,7 @@ print_pgstatarchiver()
 }
 
 /*
- * Dump all bgwriter stats.
+ * dump all bgwriter stats.
  */
 void
 print_pgstatbgwriter()
@@ -854,26 +870,16 @@ print_pgstatbgwriter()
   int      nrows;
   int      row, column;
 
-  long     checkpoints_timed = 0;
-  long     checkpoints_req = 0;
-  long     checkpoint_write_time = 0;
-  long     checkpoint_sync_time = 0;
-  long     buffers_checkpoint = 0;
   long     buffers_clean = 0;
   long     maxwritten_clean = 0;
-  long     buffers_backend = 0;
-  long     buffers_backend_fsync = 0;
   long     buffers_alloc = 0;
   char     *stats_reset;
   bool     has_been_reset;
 
   /* grab the stats (this is the only stats on one line) */
   snprintf(sql, sizeof(sql),
-    "SELECT checkpoints_timed, checkpoints_req, %sbuffers_checkpoint, buffers_clean, "
-    "maxwritten_clean, buffers_backend, %sbuffers_alloc, stats_reset, stats_reset>'%s' "
-    "FROM pg_stat_bgwriter ",
-    backend_minimum_version(9, 2) ? "checkpoint_write_time, checkpoint_sync_time, " : "",
-    backend_minimum_version(9, 1) ? "buffers_backend_fsync, " : "",
+    "select buffers_clean, maxwritten_clean, buffers_alloc, stats_reset, stats_reset>'%s' "
+    "from pg_stat_bgwriter ",
     previous_pgstatbgwriter->stats_reset);
 
   /* make the call */
@@ -899,21 +905,8 @@ print_pgstatbgwriter()
     column = 0;
 
     /* getting new values */
-    checkpoints_timed = atol(PQgetvalue(res, row, column++));
-    checkpoints_req = atol(PQgetvalue(res, row, column++));
-    if (backend_minimum_version(9, 2))
-    {
-      checkpoint_write_time = atol(PQgetvalue(res, row, column++));
-      checkpoint_sync_time = atol(PQgetvalue(res, row, column++));
-    }
-    buffers_checkpoint = atol(PQgetvalue(res, row, column++));
     buffers_clean = atol(PQgetvalue(res, row, column++));
     maxwritten_clean = atol(PQgetvalue(res, row, column++));
-    buffers_backend = atol(PQgetvalue(res, row, column++));
-    if (backend_minimum_version(9, 1))
-    {
-      buffers_backend_fsync = atol(PQgetvalue(res, row, column++));
-    }
     buffers_alloc = atol(PQgetvalue(res, row, column++));
     stats_reset = PQgetvalue(res, row, column++);
     has_been_reset = strcmp(PQgetvalue(res, row, column++), "f") && strcmp(previous_pgstatbgwriter->stats_reset, PGSTAT_OLDEST_STAT_RESET);
@@ -925,31 +918,147 @@ print_pgstatbgwriter()
 
     /* printing the diff...
      * note that the first line will be the current value, rather than the diff */
-    (void)printf(" %6ld    %6ld     %6ld    %6ld       %6ld %6ld  %6ld %6ld         %4ld            %2ld\n",
-      checkpoints_timed - previous_pgstatbgwriter->checkpoints_timed,
-      checkpoints_req - previous_pgstatbgwriter->checkpoints_req,
-      checkpoint_write_time - previous_pgstatbgwriter->checkpoint_write_time,
-      checkpoint_sync_time - previous_pgstatbgwriter->checkpoint_sync_time,
-      buffers_checkpoint - previous_pgstatbgwriter->buffers_checkpoint,
+    (void)printf(" %6ld  %6ld         %4ld\n",
       buffers_clean - previous_pgstatbgwriter->buffers_clean,
-      buffers_backend - previous_pgstatbgwriter->buffers_backend,
       buffers_alloc - previous_pgstatbgwriter->buffers_alloc,
-      maxwritten_clean - previous_pgstatbgwriter->maxwritten_clean,
-      buffers_backend_fsync - previous_pgstatbgwriter->buffers_backend_fsync
+      maxwritten_clean - previous_pgstatbgwriter->maxwritten_clean
       );
 
     /* setting the new old value */
-    previous_pgstatbgwriter->checkpoints_timed = checkpoints_timed;
-      previous_pgstatbgwriter->checkpoints_req = checkpoints_req;
-      previous_pgstatbgwriter->checkpoint_write_time = checkpoint_write_time;
-      previous_pgstatbgwriter->checkpoint_sync_time = checkpoint_sync_time;
-      previous_pgstatbgwriter->buffers_checkpoint = buffers_checkpoint;
-      previous_pgstatbgwriter->buffers_clean = buffers_clean;
-      previous_pgstatbgwriter->maxwritten_clean = maxwritten_clean;
-      previous_pgstatbgwriter->buffers_backend = buffers_backend;
-      previous_pgstatbgwriter->buffers_backend_fsync = buffers_backend_fsync;
-      previous_pgstatbgwriter->buffers_alloc = buffers_alloc;
-      previous_pgstatbgwriter->stats_reset = stats_reset;
+    previous_pgstatbgwriter->buffers_clean = buffers_clean;
+    previous_pgstatbgwriter->maxwritten_clean = maxwritten_clean;
+    previous_pgstatbgwriter->buffers_alloc = buffers_alloc;
+    previous_pgstatbgwriter->stats_reset = stats_reset;
+  }
+
+  /* cleanup */
+  PQclear(res);
+}
+
+/*
+ * dump all checkpointer stats.
+ */
+void
+print_pgstatcheckpointer()
+{
+  char     sql[PGSTAT_DEFAULT_STRING_SIZE];
+  PGresult *res;
+  int      nrows;
+  int      row, column;
+
+  long     checkpoints_timed = 0;
+  long     checkpoints_requested = 0;
+  long     restartpoints_timed = 0;
+  long     restartpoints_requested = 0;
+  long     restartpoints_done = 0;
+  long     write_time = 0;
+  long     sync_time = 0;
+  long     buffers_written = 0;
+  char     *stats_reset;
+  bool     has_been_reset;
+
+  /* grab the stats (this is the only stats on one line) */
+  if (backend_minimum_version(17, 0))
+  {
+    snprintf(sql, sizeof(sql),
+      "select num_timed, num_requested, restartpoints_timed, restartpoints_req, "
+      "restartpoints_done, write_time, sync_time, buffers_written, "
+      "stats_reset, stats_reset>'%s' "
+      "from pg_stat_checkpointer ",
+      previous_pgstatcheckpointer->stats_reset);
+  }
+  else
+  {
+    snprintf(sql, sizeof(sql),
+      "select checkpoints_timed, checkpoints_req, %sbuffers_checkpoint, "
+      "stats_reset, stats_reset>'%s' "
+      "from pg_stat_bgwriter ",
+      backend_minimum_version(9, 2) ? "checkpoint_write_time, checkpoint_sync_time, " : "",
+      previous_pgstatcheckpointer->stats_reset);
+  }
+
+  /* make the call */
+  res = PQexec(conn, sql);
+
+  /* check and deal with errors */
+  if (!res || PQresultStatus(res) > 2)
+  {
+    pg_log_warning("query failed: %s", PQerrorMessage(conn));
+    PQclear(res);
+    PQfinish(conn);
+    pg_log_error("query was: %s", sql);
+    exit(EXIT_FAILURE);
+  }
+
+  /* get the number of fields */
+  nrows = PQntuples(res);
+
+  /* for each row, dump the information */
+  /* this is stupid, a simple if would do the trick, but it will help for other cases */
+  for (row = 0; row < nrows; row++)
+  {
+    column = 0;
+
+    /* getting new values */
+    checkpoints_timed = atol(PQgetvalue(res, row, column++));
+    checkpoints_requested = atol(PQgetvalue(res, row, column++));
+    if (backend_minimum_version(17, 0))
+    {
+      restartpoints_timed = atol(PQgetvalue(res, row, column++));
+      restartpoints_requested = atol(PQgetvalue(res, row, column++));
+      restartpoints_done = atol(PQgetvalue(res, row, column++));
+    }
+    if (backend_minimum_version(9, 2))
+    {
+      write_time = atol(PQgetvalue(res, row, column++));
+      sync_time = atol(PQgetvalue(res, row, column++));
+    }
+    buffers_written = atol(PQgetvalue(res, row, column++));
+    stats_reset = PQgetvalue(res, row, column++);
+    has_been_reset = strcmp(PQgetvalue(res, row, column++), "f") && strcmp(previous_pgstatcheckpointer->stats_reset, PGSTAT_OLDEST_STAT_RESET);
+
+    if (has_been_reset)
+    {
+      (void)printf("pg_stat_%s has been reset!\n",
+        backend_minimum_version(17, 0) ? "checkpointer" : "bgwriter");
+    }
+
+    /* printing the diff...
+     * note that the first line will be the current value, rather than the diff */
+    if (backend_minimum_version(17, 0))
+    {
+      (void)printf("  %6ld    %6ld    %6ld    %6ld    %6ld    %6ld    %6ld    %6ld\n",
+        checkpoints_timed - previous_pgstatcheckpointer->checkpoints_timed,
+        checkpoints_requested - previous_pgstatcheckpointer->checkpoints_requested,
+        restartpoints_timed - previous_pgstatcheckpointer->restartpoints_timed,
+        restartpoints_requested - previous_pgstatcheckpointer->restartpoints_requested,
+        restartpoints_done - previous_pgstatcheckpointer->restartpoints_done,
+        write_time - previous_pgstatcheckpointer->write_time,
+        sync_time - previous_pgstatcheckpointer->sync_time,
+        buffers_written - previous_pgstatcheckpointer->buffers_written
+      );
+    }
+    else
+    {
+      (void)printf("  %6ld    %6ld    %6ld    %6ld    %6ld\n",
+        checkpoints_timed - previous_pgstatcheckpointer->checkpoints_timed,
+        checkpoints_requested - previous_pgstatcheckpointer->checkpoints_requested,
+        write_time - previous_pgstatcheckpointer->write_time,
+        sync_time - previous_pgstatcheckpointer->sync_time,
+        buffers_written - previous_pgstatcheckpointer->buffers_written
+      );
+    }
+
+    /* setting the new old value */
+    previous_pgstatcheckpointer->checkpoints_timed = checkpoints_timed;
+    previous_pgstatcheckpointer->checkpoints_requested = checkpoints_requested;
+    previous_pgstatcheckpointer->restartpoints_timed = restartpoints_timed;
+    previous_pgstatcheckpointer->restartpoints_requested = restartpoints_requested;
+    previous_pgstatcheckpointer->restartpoints_done = restartpoints_requested;
+    previous_pgstatcheckpointer->write_time = write_time;
+    previous_pgstatcheckpointer->sync_time = sync_time;
+    previous_pgstatcheckpointer->buffers_written = buffers_written;
+    previous_pgstatcheckpointer->stats_reset = stats_reset;
   }
 
   /* cleanup */
@@ -1044,7 +1153,7 @@ print_pgstatconnection()
 }
 
 /*
- * Dump all bgwriter stats.
+ * Dump all database stats.
  */
 void
 print_pgstatdatabase()
@@ -2448,18 +2557,21 @@ print_pgstatprogressvacuum()
   int      row;
 
   snprintf(sql, sizeof(sql),
-    "SELECT s.datname, relname,"
-    "       pg_size_pretty(pg_table_size(relid)),"
-    "     phase,"
-    "     CASE WHEN heap_blks_total=0 THEN 'N/A' ELSE trunc(heap_blks_scanned::numeric*100/heap_blks_total,2)::text END,"
-    "     CASE WHEN heap_blks_total=0 THEN 'N/A' ELSE trunc(heap_blks_vacuumed::numeric*100/heap_blks_total,2)::text END,"
-    "     index_vacuum_count,"
-    "     CASE WHEN max_dead_tuples=0 THEN 'N/A' ELSE trunc(num_dead_tuples::numeric*100/max_dead_tuples,2)::text END,"
-    "       (now()-query_start)::time(0) "
+    "SELECT s.datname, c.relname,"
+    "  pg_size_pretty(pg_table_size(s.relid)),"
+    "  s.phase,"
+    "  CASE WHEN s.heap_blks_total=0 THEN 'N/A' ELSE trunc(s.heap_blks_scanned::numeric*100/s.heap_blks_total,2)::text END,"
+    "  CASE WHEN s.heap_blks_total=0 THEN 'N/A' ELSE trunc(s.heap_blks_vacuumed::numeric*100/s.heap_blks_total,2)::text END,"
+    "  s.index_vacuum_count,"
+    "  CASE WHEN s.%s=0 THEN 'N/A' ELSE trunc(s.%s::numeric*100/s.%s,2)::text END,"
+    "  (now()-a.query_start)::time(0) "
     "FROM pg_stat_progress_vacuum s "
-    "JOIN pg_stat_activity USING (pid) "
+    "JOIN pg_stat_activity a ON s.pid=a.pid "
     "LEFT JOIN pg_class c ON c.oid=s.relid "
-    "ORDER BY pid");
+    "ORDER BY s.pid",
+    backend_minimum_version(17, 0) ? "max_dead_tuple_bytes" : "max_dead_tuples",
+    backend_minimum_version(17, 0) ? "dead_tuple_bytes"     : "num_dead_tuples",
+    backend_minimum_version(17, 0) ? "max_dead_tuple_bytes" : "max_dead_tuples");
 
   res = PQexec(conn, sql);
 
@@ -3260,8 +3372,20 @@ print_header(void)
       (void)printf(" archived   failed \n");
       break;
     case BGWRITER:
-      (void)printf("------------ checkpoints ------------- ------------- buffers ------------- ---------- misc ----------\n");
-      (void)printf("  timed requested write_time sync_time   checkpoint  clean backend  alloc   maxwritten backend_fsync\n");
+      (void)printf("------------- buffers -------------\n");
+      (void)printf("  clean   alloc   maxwritten\n");
+      break;
+    case CHECKPOINTER:
+      if (backend_minimum_version(17, 0))
+      {
+        (void)printf("--- checkpoints --- ------- restartpoints ------- ------ time ------ - buffers -\n");
+        (void)printf("   timed requested     timed requested      done     write     sync    written\n");
+      }
+      else
+      {
+        (void)printf("--- checkpoints --- ------ time ------ - buffers -\n");
+        (void)printf("   timed requested     write     sync    written\n");
+      }
       break;
     case CONNECTION:
       (void)printf(" - total - active - lockwaiting - idle in transaction - idle -\n");
@@ -3372,6 +3496,9 @@ print_line(void)
     case BGWRITER:
       print_pgstatbgwriter();
       break;
+    case CHECKPOINTER:
+      print_pgstatcheckpointer();
+      break;
     case CONNECTION:
       print_pgstatconnection();
       break;
@@ -3463,17 +3590,22 @@ allocate_struct(void)
       break;
     case BGWRITER:
       previous_pgstatbgwriter = (struct pgstatbgwriter *) pg_malloc(sizeof(struct pgstatbgwriter));
-      previous_pgstatbgwriter->checkpoints_timed = 0;
-      previous_pgstatbgwriter->checkpoints_req = 0;
-      previous_pgstatbgwriter->checkpoint_write_time = 0;
-      previous_pgstatbgwriter->checkpoint_sync_time = 0;
-      previous_pgstatbgwriter->buffers_checkpoint = 0;
       previous_pgstatbgwriter->buffers_clean = 0;
       previous_pgstatbgwriter->maxwritten_clean = 0;
-      previous_pgstatbgwriter->buffers_backend = 0;
-      previous_pgstatbgwriter->buffers_backend_fsync = 0;
       previous_pgstatbgwriter->buffers_alloc = 0;
       previous_pgstatbgwriter->stats_reset = PGSTAT_OLDEST_STAT_RESET;
+      break;
+    case CHECKPOINTER:
+      previous_pgstatcheckpointer = (struct pgstatcheckpointer *) pg_malloc(sizeof(struct pgstatcheckpointer));
+      previous_pgstatcheckpointer->checkpoints_timed = 0;
+      previous_pgstatcheckpointer->checkpoints_requested = 0;
+      previous_pgstatcheckpointer->restartpoints_timed = 0;
+      previous_pgstatcheckpointer->restartpoints_requested = 0;
+      previous_pgstatcheckpointer->restartpoints_timed = 0;
+      previous_pgstatcheckpointer->write_time = 0;
+      previous_pgstatcheckpointer->sync_time = 0;
+      previous_pgstatcheckpointer->buffers_written = 0;
+      previous_pgstatcheckpointer->stats_reset = PGSTAT_OLDEST_STAT_RESET;
       break;
     case CONNECTION:
       // nothing to do

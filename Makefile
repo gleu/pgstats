@@ -16,7 +16,7 @@ all: $(PROGRAMS)
 
 pgreport.o: pgreport_queries.h
 %: %.o $(WIN32RES)
-	   $(CC) $(CFLAGS) $^ $(libpq_pgport) $(LDFLAGS) -lpgfeutils -lpgcommon -lm -o $@$(X)
+	   $(CC) $(CFLAGS) $^ $(libpq_pgport) $(LDFLAGS) -lpgfeutils -lpgcommon -lpgport -lm -o $@$(X)
 
 pgcsvstat: pgcsvstat.o
 pgdisplay: pgdisplay.o
