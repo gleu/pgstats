@@ -47,7 +47,7 @@
 /*
  * Defines
  */
-#define PGREPORT_VERSION "1.2.0"
+#define PGREPORT_VERSION "1.3.0"
 #define  PGREPORT_DEFAULT_LINES 20
 #define  PGREPORT_DEFAULT_STRING_SIZE 2048
 

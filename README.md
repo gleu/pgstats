@@ -24,10 +24,10 @@ compatible with much older releases (8.x for most of them).
 Requirements
 ------------
 
-To compile these tools, you will need the libpq library (.so), the libpgcommon
-and libpgfeutils libraries (.a), the PostgreSQL 14+ header files, and the
-pg_config tool. The header files and the tool are usually available in a -dev
-package.
+To compile these tools, you will need the libpq library (.so), the libpgcommon,
+libpgport, and libpgfeutils libraries (.a), the PostgreSQL 14+ header files, and
+the pg_config tool. The header files and the tool are usually available in a
+-dev package.
 
 To use them once compiled, you only need the libpq library. Any version should
 be fine.
@@ -57,6 +57,7 @@ switch to choose the one you want (-s):
 
 * archiver for pg_stat_archiver (9.4+)
 * bgwriter for pg_stat_bgwriter
+* checkpointer for pg_stat_checkpointer (17+)
 * connection for connections by type (9.2+)
 * database for pg_stat_database
 * table for pg_stat_all_tables
