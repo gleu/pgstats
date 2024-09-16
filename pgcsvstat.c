@@ -11,32 +11,32 @@
 
 
 /*
- * Headers
+ * System headers
  */
-#include "postgres_fe.h"
-#include "common/string.h"
-
+#include <unistd.h>
 #include <err.h>
 #include <sys/stat.h>
-
-#include <unistd.h>
 #ifdef HAVE_GETOPT_H
 #include <getopt.h>
 #endif
 
-extern char *optarg;
+/*
+ * PostgreSQL headers
+ */
 
 #include "postgres_fe.h"
-#include "common/username.h"
 #include "common/logging.h"
+#include "common/string.h"
+#include "common/username.h"
 #include "fe_utils/cancel.h"
 #include "fe_utils/connect_utils.h"
 #include "fe_utils/option_utils.h"
 #include "fe_utils/query_utils.h"
 #include "fe_utils/simple_list.h"
 #include "fe_utils/string_utils.h"
-
 #include "libpq-fe.h"
+
+extern char *optarg;
 
 /*
  * Defines
@@ -193,7 +193,7 @@ help(const char *progname)
      "  -h HOSTNAME  database server host or socket directory\n"
      "  -p PORT      database server port number\n"
      "  -U USER      connect as specified database user\n"
-     "\nThe default action is to create CSV files for each report.\n\n"
+     "\nIt creates CSV files for each report.\n\n"
      "Report bugs to <guillaume@lelarge.info>.\n",
      progname, progname);
 }
@@ -225,7 +225,8 @@ mystrdup(const char *str)
 }
 
 /*
- * Actual code to make call to the database and print the output data.
+ * Actual code to extrac statistics from the database
+ * and to store the output data in CSV files.
  */
 int
 sql_exec(const char *query, const char* filename, bool quiet)
@@ -311,7 +312,6 @@ sql_exec_dump_pgstatactivity()
   char query[1024];
   char filename[1024];
 
-  /* get the oid and database name from the system pg_database table */
   snprintf(query, sizeof(query),
     "SELECT date_trunc('seconds', now()), datid, datname, %s, %s"
     "usesysid, usename, %s%s%s%s%s"
@@ -334,6 +334,7 @@ sql_exec_dump_pgstatactivity()
     backend_minimum_version(9, 2) ? "query, " : "current_query,",
     backend_minimum_version(10, 0) ? "backend_type, " : "",
     backend_minimum_version(9, 2) ? "pid" : "procpid");   // the last one is for the ORDER BY
+
   snprintf(filename, sizeof(filename),
     "%s/pg_stat_activity.csv", opts->directory);
 
@@ -349,7 +350,6 @@ sql_exec_dump_pgstatbgwriter()
   char query[1024];
   char filename[1024];
 
-  /* get the oid and database name from the system pg_database table */
   if (backend_minimum_version(17, 0))
   {
     snprintf(query, sizeof(query),
@@ -369,13 +369,15 @@ sql_exec_dump_pgstatbgwriter()
       backend_minimum_version(9, 1) ? "buffers_backend_fsync, " : "",
       backend_minimum_version(9, 1) ? ", date_trunc('seconds', stats_reset) AS stats_reset " : "");
   }
+
   snprintf(filename, sizeof(filename),
     "%s/pg_stat_bgwriter.csv", opts->directory);
+
   sql_exec(query, filename, opts->quiet);
 }
 
 /*
- * Dump all bgwriter stats.
+ * Dump all checkpointer stats.
  */
 void
 sql_exec_dump_pgstatcheckpointer()
@@ -383,16 +385,16 @@ sql_exec_dump_pgstatcheckpointer()
   char query[1024];
   char filename[1024];
 
-  /* get the oid and database name from the system pg_database table */
-  // TODO
   snprintf(query, sizeof(query),
     "SELECT date_trunc('seconds', now()), num_timed, num_requested, "
     "restartpoints_timed, restartpoints_req, restartpoints_done, "
     "write_time, sync_time, buffers_written, "
     "date_trunc('seconds', stats_reset) AS stats_reset "
     "FROM pg_stat_checkpointer ");
+
   snprintf(filename, sizeof(filename),
     "%s/pg_stat_checkpointer.csv", opts->directory);
+
   sql_exec(query, filename, opts->quiet);
 }
 
@@ -405,7 +407,6 @@ sql_exec_dump_pgstatarchiver()
   char query[1024];
   char filename[1024];
 
-  /* get the oid and database name from the system pg_database table */
   snprintf(query, sizeof(query),
     "SELECT date_trunc('seconds', now()), archived_count, "
     "last_archived_wal, date_trunc('seconds', last_archived_time) AS last_archived_time, "
@@ -413,6 +414,7 @@ sql_exec_dump_pgstatarchiver()
     "last_failed_wal, date_trunc('seconds', last_failed_time) AS last_failed_time, "
     "date_trunc('seconds', stats_reset) AS stats_reset "
     "FROM pg_stat_archiver ");
+
   snprintf(filename, sizeof(filename),
     "%s/pg_stat_archiver.csv", opts->directory);
 
@@ -421,7 +423,6 @@ sql_exec_dump_pgstatarchiver()
 
 /*
  * Dump all databases stats.
- * to be fixed wrt v14
  */
 void
 sql_exec_dump_pgstatdatabase()
@@ -429,7 +430,6 @@ sql_exec_dump_pgstatdatabase()
   char query[1024];
   char filename[1024];
 
-  /* get the oid and database name from the system pg_database table */
   snprintf(query, sizeof(query),
     "SELECT date_trunc('seconds', now()), datid, datname, "
     "numbackends, xact_commit, xact_rollback, blks_read, blks_hit"
@@ -441,6 +441,7 @@ sql_exec_dump_pgstatdatabase()
     backend_minimum_version(9, 2) ? ", temp_files, temp_bytes, deadlocks, blk_read_time, blk_write_time" : "",
     backend_minimum_version(12, 0) ? ", checksum_failures, checksum_last_failure" : "",
     backend_minimum_version(14, 0) ? ", session_time, active_time, idle_in_transaction_time, sessions, sessions_abandoned, sessions_fatal, sessions_killed" : "");
+
   snprintf(filename, sizeof(filename),
     "%s/pg_stat_database.csv", opts->directory);
 
@@ -456,11 +457,11 @@ sql_exec_dump_pgstatdatabaseconflicts()
   char query[1024];
   char filename[1024];
 
-  /* get the oid and database name from the system pg_database table */
   snprintf(query, sizeof(query),
     "SELECT date_trunc('seconds', now()), * "
     "FROM pg_stat_database_conflicts "
     "ORDER BY datname");
+
   snprintf(filename, sizeof(filename),
     "%s/pg_stat_database_conflicts.csv", opts->directory);
 
@@ -493,6 +494,7 @@ sql_exec_dump_pgstatreplication()
       "sent_location, write_location, flush_location, replay_location, ",
     backend_minimum_version(10, 0) ? "write_lag, flush_lag, replay_lag, " : "",
     backend_minimum_version(12, 0) ? ", reply_time" : "");
+
   snprintf(filename, sizeof(filename),
     "%s/pg_stat_replication.csv", opts->directory);
 
@@ -517,6 +519,7 @@ sql_exec_dump_pgstatreplicationslots()
     "date_trunc('seconds', stats_reset) AS stats_reset "
     "FROM pg_stat_replication_slots "
     "ORDER BY slot_name");
+
   snprintf(filename, sizeof(filename),
     "%s/pg_stat_replication_slots.csv", opts->directory);
 
@@ -532,7 +535,6 @@ sql_exec_dump_pgstatslru()
   char query[1024];
   char filename[1024];
 
-  /* get the oid and database name from the system pg_database table */
   snprintf(query, sizeof(query),
     "SELECT date_trunc('seconds', now()), name, "
     "blks_zeroed, blks_hit, blks_read, blks_written, blks_exists, "
@@ -540,6 +542,7 @@ sql_exec_dump_pgstatslru()
     "date_trunc('seconds', stats_reset) AS stats_reset "
     "FROM pg_stat_slru "
     "ORDER BY name");
+
   snprintf(filename, sizeof(filename),
     "%s/pg_stat_slru.csv", opts->directory);
 
@@ -555,15 +558,18 @@ sql_exec_dump_pgstatsubscription()
   char query[1024];
   char filename[1024];
 
-  /* get the oid and database name from the system pg_database table */
   snprintf(query, sizeof(query),
-    "SELECT date_trunc('seconds', now()), subid, subname, "
-    "pid, relid, received_lsn, "
+    "SELECT date_trunc('seconds', now()), subid, subname%s, "
+    "pid%s, relid, relname, received_lsn, "
     "date_trunc('seconds', last_msg_send_time) AS last_msg_send_time, "
     "date_trunc('seconds', last_msg_receipt_time) AS last_msg_receipt_time, "
     "latest_end_lsn, date_trunc('seconds', latest_end_time) AS latest_end_time "
-    "FROM pg_stat_subscription "
-    "ORDER BY subid");
+    "FROM pg_stat_subscription s "
+    "LEFT JOIN pg_class c ON c.oid=s.relid "
+    "ORDER BY subid",
+    backend_minimum_version(17, 0) ? ", worker_type" : "",
+    backend_minimum_version(16, 0) ? ", leader_pid" : "");
+
   snprintf(filename, sizeof(filename),
     "%s/pg_stat_subscription.csv", opts->directory);
 
@@ -579,13 +585,13 @@ sql_exec_dump_pgstatwal()
   char query[1024];
   char filename[1024];
 
-  /* get the oid and database name from the system pg_database table */
   snprintf(query, sizeof(query),
     "SELECT date_trunc('seconds', now()), "
     "wal_records, wal_fpi, wal_bytes, wal_buffers_full, wal_write, "
     "wal_sync, wal_write_time, wal_sync_time, "
     "date_trunc('seconds', stats_reset) AS stats_reset "
     "FROM pg_stat_wal");
+
   snprintf(filename, sizeof(filename),
     "%s/pg_stat_wal.csv", opts->directory);
 
@@ -601,7 +607,6 @@ sql_exec_dump_pgstatwalreceiver()
   char query[1024];
   char filename[1024];
 
-  /* get the stats */
   snprintf(query, sizeof(query),
     "SELECT pid, status, receive_start_lsn, receive_start_tli, "
     "written_lsn, flushed_lsn, received_tli, "
@@ -609,7 +614,9 @@ sql_exec_dump_pgstatwalreceiver()
     "date_trunc('seconds', last_msg_receipt_time) last_msg_receipt_time, "
     "latest_end_lsn, date_trunc('seconds', latest_end_time) latest_end_time, "
     "slot_name, sender_host, sender_port, conninfo "
-    "from pg_stat_wal_receiver");
+    "FROM pg_stat_wal_receiver "
+    "ORDER BY pid");
+
   snprintf(filename, sizeof(filename),
     "%s/pg_stat_wal_receiver.csv", opts->directory);
 
@@ -625,24 +632,24 @@ sql_exec_dump_pgstatalltables()
   char query[1024];
   char filename[1024];
 
-  /* get the oid and database name from the system pg_database table */
   snprintf(query, sizeof(query),
     "SELECT date_trunc('seconds', now()), relid, schemaname, relname, "
-    "seq_scan, seq_tup_read, idx_scan, idx_tup_fetch, n_tup_ins, "
-    "n_tup_upd, n_tup_del"
-    "%s"
-    "%s"
-    "%s"
-    "%s"
-    "%s"
-    " FROM pg_stat_all_tables "
+    "seq_scan%s, seq_tup_read, idx_scan%s, idx_tup_fetch, "
+    "n_tup_ins, n_tup_upd, n_tup_del"
+    "%s%s%s%s%s%s%s "
+    "FROM pg_stat_all_tables "
     "WHERE schemaname <> 'information_schema' "
     "ORDER BY schemaname, relname",
-    backend_minimum_version(8, 3) ? ", n_tup_hot_upd, n_live_tup, n_dead_tup" : "",
+    backend_minimum_version(16, 0) ? ", date_trunc('seconds', last_seq_scan) AS last_seq_scan" : "",
+    backend_minimum_version(16, 0) ? ", date_trunc('seconds', last_idx_scan) AS last_idx_scan" : "",
+    backend_minimum_version(8, 3) ? ", n_tup_hot_upd" : "",
+    backend_minimum_version(16, 0) ? ", n_tup_newpage_upd" : "",
+    backend_minimum_version(8, 3) ? ", n_live_tup, n_dead_tup" : "",
     backend_minimum_version(9, 4) ? ", n_mod_since_analyze" : "",
     backend_minimum_version(13, 0) ? ", n_ins_since_vacuum" : "",
     backend_minimum_version(8, 2) ? ", date_trunc('seconds', last_vacuum) AS last_vacuum, date_trunc('seconds', last_autovacuum) AS last_autovacuum, date_trunc('seconds',last_analyze) AS last_analyze, date_trunc('seconds',last_autoanalyze) AS last_autoanalyze" : "",
     backend_minimum_version(9, 1) ? ", vacuum_count, autovacuum_count, analyze_count, autoanalyze_count" : "");
+
   snprintf(filename, sizeof(filename),
     "%s/pg_stat_all_tables.csv", opts->directory);
 
@@ -658,12 +665,16 @@ sql_exec_dump_pgstatallindexes()
   char query[1024];
   char filename[1024];
 
-  /* get the oid and database name from the system pg_database table */
   snprintf(query, sizeof(query),
-    "SELECT date_trunc('seconds', now()), * "
+    "SELECT date_trunc('seconds', now()), "
+    "relid, indexrelid, schemaname, relname, indexrelname, "
+    "idx_scan%s, idx_tup_read, idx_tup_fetch "
     "FROM pg_stat_all_indexes "
     "WHERE schemaname <> 'information_schema' "
-    "ORDER BY schemaname, relname");
+    "ORDER BY schemaname, relname",
+    backend_minimum_version(16, 0) ? ", date_trunc('seconds', last_idx_scan) AS last_idx_scan" : ""
+  );
+
   snprintf(filename, sizeof(filename),
     "%s/pg_stat_all_indexes.csv", opts->directory);
 
@@ -679,12 +690,12 @@ sql_exec_dump_pgstatioalltables()
   char query[1024];
   char filename[1024];
 
-  /* get the oid and database name from the system pg_database table */
   snprintf(query, sizeof(query),
     "SELECT date_trunc('seconds', now()), * "
     "FROM pg_statio_all_tables "
     "WHERE schemaname <> 'information_schema' "
     "ORDER BY schemaname, relname");
+
   snprintf(filename, sizeof(filename),
     "%s/pg_statio_all_tables.csv", opts->directory);
 
@@ -700,12 +711,12 @@ sql_exec_dump_pgstatioallindexes()
   char query[1024];
   char filename[1024];
 
-  /* get the oid and database name from the system pg_database table */
   snprintf(query, sizeof(query),
     "SELECT date_trunc('seconds', now()), * "
     "FROM pg_statio_all_indexes "
     "WHERE schemaname <> 'information_schema' "
     "ORDER BY schemaname, relname");
+
   snprintf(filename, sizeof(filename),
     "%s/pg_statio_all_indexes.csv", opts->directory);
 
@@ -721,12 +732,12 @@ sql_exec_dump_pgstatioallsequences()
   char query[1024];
   char filename[1024];
 
-  /* get the oid and database name from the system pg_database table */
   snprintf(query, sizeof(query),
     "SELECT date_trunc('seconds', now()), * "
     "FROM pg_statio_all_sequences "
     "WHERE schemaname <> 'information_schema' "
     "ORDER BY schemaname, relname");
+
   snprintf(filename, sizeof(filename),
     "%s/pg_statio_all_sequences.csv", opts->directory);
 
@@ -742,12 +753,12 @@ sql_exec_dump_pgstatuserfunctions()
   char query[1024];
   char filename[1024];
 
-  /* get the oid and database name from the system pg_database table */
   snprintf(query, sizeof(query),
     "SELECT date_trunc('seconds', now()), * "
     "FROM pg_stat_user_functions "
     "WHERE schemaname <> 'information_schema' "
     "ORDER BY schemaname, funcname");
+
   snprintf(filename, sizeof(filename),
     "%s/pg_stat_user_functions.csv", opts->directory);
 
@@ -763,14 +774,16 @@ sql_exec_dump_pgclass_size()
   char query[1024];
   char filename[1024];
 
-  /* get the oid and database name from the system pg_database table */
   snprintf(query, sizeof(query),
     "SELECT date_trunc('seconds', now()), n.nspname, c.relname, c.relkind, "
-    "c.reltuples, c.relpages%s "
-    "FROM pg_class c, pg_namespace n "
-    "WHERE n.oid=c.relnamespace AND n.nspname <> 'information_schema' "
+    "c.reltuples, c.relpages%s%s "
+    "FROM pg_class c "
+    "JOIN pg_namespace n ON n.oid=c.relnamespace "
+    "WHERE n.nspname <> 'information_schema' "
     "ORDER BY n.nspname, c.relname",
+    backend_minimum_version(9, 2) ? ", c.relallvisible" : "",
     backend_minimum_version(8, 1) ? ", pg_relation_size(c.oid)" : "");
+
   snprintf(filename, sizeof(filename),
     "%s/pg_class_size.csv", opts->directory);
 
@@ -787,15 +800,15 @@ sql_exec_dump_pgstatstatements()
   char query[1024];
   char filename[1024];
 
-  /* get the oid and database name from the system pg_database table */
   snprintf(query, sizeof(query),
     "SELECT date_trunc('seconds', now()), r.rolname, d.datname, "
     "%sregexp_replace(query, E'\n', ' ', 'g') as query, %scalls, %s, rows, "
     "shared_blks_hit, shared_blks_read, shared_blks_dirtied, shared_blks_written, "
     "local_blks_hit, local_blks_read, local_blks_dirtied, local_blks_written, "
     "temp_blks_read, temp_blks_written%s%s%s%s%s%s "
-    "FROM pg_stat_statements q, pg_database d, pg_roles r "
-    "WHERE q.userid=r.oid and q.dbid=d.oid "
+    "FROM pg_stat_statements q "
+    "LEFT JOIN pg_database d ON q.dbid=d.oid "
+    "LEFT JOIN pg_roles r ON q.userid=r.oid "
     "ORDER BY r.rolname, d.datname",
     backend_minimum_version(14, 0) ? "toplevel, queryid, " : "",
     backend_minimum_version(13, 0) ? "plans, total_plan_time, min_plan_time, max_plan_time, mean_plan_time, stddev_plan_time, " : "",
@@ -806,6 +819,7 @@ sql_exec_dump_pgstatstatements()
     backend_minimum_version(15, 0) ? ", jit_functions, jit_generation_time, jit_inlining_count, jit_inlining_time, jit_optimization_count, jit_optimization_time, jit_emission_count, jit_emission_time" : "",
     backend_minimum_version(17, 0) ? ", date_trunc('seconds', stats_since) AS stats_since " : "",
     backend_minimum_version(17, 0) ? ", date_trunc('seconds', minmax_stats_since) AS minmax_stats_since " : "");
+
   snprintf(filename, sizeof(filename),
     "%s/pg_stat_statements.csv", opts->directory);
 
@@ -821,7 +835,6 @@ sql_exec_dump_xlog_stat()
   char query[1024];
   char filename[1024];
 
-  /* get the oid and database name from the system pg_database table */
   snprintf(query, sizeof(query),
     backend_minimum_version(10, 0)
     ?
@@ -836,6 +849,7 @@ sql_exec_dump_xlog_stat()
     "FROM pg_ls_dir('pg_xlog') "
     "WHERE pg_ls_dir ~ E'^[0-9A-F]{24}' "
     "ORDER BY pg_ls_dir");
+
   snprintf(filename, sizeof(filename),
     "%s/pg_xlog_stat.csv", opts->directory);
 
@@ -852,7 +866,6 @@ sql_exec_dump_pgstatprogressanalyze()
   char query[1024];
   char filename[1024];
 
-  /* get the oid and database name from the system pg_database table */
   snprintf(query, sizeof(query),
     "SELECT date_trunc('seconds', now()), pid, datid, datname, "
     "relid, relid::regclass relname, phase, sample_blks_total, "
@@ -861,6 +874,7 @@ sql_exec_dump_pgstatprogressanalyze()
     "current_child_table_relid::regclass current_child_table_relname "
     "FROM pg_stat_progress_analyze "
     "ORDER BY pid");
+
   snprintf(filename, sizeof(filename),
     "%s/pg_stat_progress_analyze.csv", opts->directory);
 
@@ -876,13 +890,13 @@ sql_exec_dump_pgstatprogressbasebackup()
   char query[1024];
   char filename[1024];
 
-  /* get the oid and database name from the system pg_database table */
   snprintf(query, sizeof(query),
     "SELECT date_trunc('seconds', now()), pid, phase, "
     "backup_total, backup_streamed, "
     "tablespaces_total, tablespaces_streamed "
     "FROM pg_stat_progress_basebackup "
     "ORDER BY pid");
+
   snprintf(filename, sizeof(filename),
     "%s/pg_stat_progress_basebackup.csv", opts->directory);
 
@@ -898,7 +912,6 @@ sql_exec_dump_pgstatprogresscluster()
   char query[1024];
   char filename[1024];
 
-  /* get the oid and database name from the system pg_database table */
   snprintf(query, sizeof(query),
     "SELECT date_trunc('seconds', now()), pid, datid, datname, "
     "relid, relid::regclass relname, command, phase, "
@@ -907,6 +920,7 @@ sql_exec_dump_pgstatprogresscluster()
     "heap_blks_scanned, index_rebuild_count "
     "FROM pg_stat_progress_cluster "
     "ORDER BY pid");
+
   snprintf(filename, sizeof(filename),
     "%s/pg_stat_progress_cluster.csv", opts->directory);
 
@@ -922,14 +936,15 @@ sql_exec_dump_pgstatprogresscopy()
   char query[1024];
   char filename[1024];
 
-  /* get the oid and database name from the system pg_database table */
   snprintf(query, sizeof(query),
     "SELECT date_trunc('seconds', now()), pid, datid, datname, "
     "relid, relid::regclass relname, command, type, "
     "bytes_processed, bytes_total, "
-    "tuples_processed, tuples_excluded "
+    "tuples_processed, tuples_excluded%s "
     "FROM pg_stat_progress_copy "
-    "ORDER BY pid");
+    "ORDER BY pid",
+    backend_minimum_version(17, 0) ? ", tuples_excluded" : "");
+
   snprintf(filename, sizeof(filename),
     "%s/pg_stat_progress_copy.csv", opts->directory);
 
@@ -945,7 +960,6 @@ sql_exec_dump_pgstatprogresscreateindex()
   char query[1024];
   char filename[1024];
 
-  /* get the oid and database name from the system pg_database table */
   snprintf(query, sizeof(query),
     "SELECT date_trunc('seconds', now()), pid, datid, datname, "
     "relid, relid::regclass relname, index_relid, index_relid::regclass index_relname, "
@@ -954,6 +968,7 @@ sql_exec_dump_pgstatprogresscreateindex()
     "partitions_total, partitions_done "
     "FROM pg_stat_progress_create_index "
     "ORDER BY pid");
+
   snprintf(filename, sizeof(filename),
     "%s/pg_stat_progress_create_index.csv", opts->directory);
 
@@ -979,6 +994,7 @@ sql_exec_dump_pgstatprogressvacuum()
     "ORDER BY pid",
     backend_minimum_version(17, 0) ? "max_dead_tuple_bytes" : "max_dead_tuples",
     backend_minimum_version(17, 0) ? "dead_tuple_bytes"     : "num_dead_tuples");
+
   snprintf(filename, sizeof(filename),
     "%s/pg_stat_progress_vacuum.csv", opts->directory);
 
@@ -1083,10 +1099,12 @@ backend_has_pgstatstatements()
 
   /* get the oid and database name from the system pg_database table */
   snprintf(sql, sizeof(sql),
-    "SELECT n.nspname "
-    "FROM pg_proc p, pg_namespace n "
-    "WHERE p.proname='pg_stat_statements' "
-    "  AND p.pronamespace=n.oid");
+    "SELECT n.nspname, "
+    "has_schema_privilege(c.relnamespace, 'USAGE') AS schema_priv, "
+    "has_table_privilege(c.oid, 'SELECT') AS view_priv "
+    "FROM pg_class c "
+    "JOIN pg_namespace n ON c.relnamespace=n.oid "
+    "WHERE c.relname='pg_stat_statements' AND c.relkind='v'");
 
   /* make the call */
   res = PQexec(conn, sql);
@@ -1108,25 +1126,43 @@ backend_has_pgstatstatements()
   /* if it's present, set search_path to access it */
   if (has_pgstatstatements)
   {
-    snprintf(sql, sizeof(sql),
-      "SET search_path TO %s",
-      PQgetvalue(res, 0, 0));
-
-    /* cleanup */
-    PQclear(res);
-
-    /* make the call to set search_path */
-    res = PQexec(conn, sql);
-
-    /* check and deal with errors */
-    if (!res || PQresultStatus(res) != PGRES_COMMAND_OK)
+    // check if user has rights to use schema
+    if (!strcmp(PQgetvalue(res, 0, 1), "f"))
     {
-      pg_log_error("query failed: %s\n", PQerrorMessage(conn));
-      pg_log_info("query was: %s\n", sql);
+      pg_log_warning("pg_stat_statements is available, but user has no right to use schema \"%s\"!",
+        PQgetvalue(res, 0, 0));
+      has_pgstatstatements = false;
+    }
 
+    // check if user has rights to select view
+    if (!strcmp(PQgetvalue(res, 0, 2), "f"))
+    {
+      pg_log_warning("pg_stat_statements is available, but user has no right to use view \"pg_stat_statements\"!");
+      has_pgstatstatements = false;
+    }
+
+    if (has_pgstatstatements)
+    {
+      snprintf(sql, sizeof(sql),
+        "SET search_path TO %s",
+        PQgetvalue(res, 0, 0));
+
+      /* cleanup */
       PQclear(res);
-      PQfinish(conn);
-      exit(-1);
+
+      /* make the call to set search_path */
+      res = PQexec(conn, sql);
+
+      /* check and deal with errors */
+      if (!res || PQresultStatus(res) != PGRES_COMMAND_OK)
+      {
+        pg_log_error("query failed: %s\n", PQerrorMessage(conn));
+        pg_log_info("query was: %s\n", sql);
+
+        PQclear(res);
+        PQfinish(conn);
+        exit(-1);
+      }
     }
   }
 
