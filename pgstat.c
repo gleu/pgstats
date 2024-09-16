@@ -11,41 +11,28 @@
 
 
 /*
- * Headers
+ * System headers
+ */
+#include <sys/ioctl.h>
+
+
+/*
+ * PostgreSQL headers
  */
 #include "postgres_fe.h"
-#include "common/string.h"
-
-#include <err.h>
-#include <sys/ioctl.h>
-#include <sys/signal.h>
-#include <sys/stat.h>
-
-#include <unistd.h>
-#ifdef HAVE_GETOPT_H
-#include <getopt.h>
-#endif
-
-#include "postgres_fe.h"
-#include "common/username.h"
 #include "common/logging.h"
-#include "fe_utils/cancel.h"
 #include "fe_utils/connect_utils.h"
-#include "fe_utils/option_utils.h"
-#include "fe_utils/query_utils.h"
-#include "fe_utils/simple_list.h"
-#include "fe_utils/string_utils.h"
-
-#include "libpq-fe.h"
 #include "libpq/pqsignal.h"
+
 
 /*
  * Defines
  */
 #define PGSTAT_VERSION "1.3.0"
-#define  PGSTAT_DEFAULT_LINES 20
-#define  PGSTAT_DEFAULT_STRING_SIZE 1024
-#define  PGSTAT_OLDEST_STAT_RESET "0001-01-01"
+#define PGSTAT_DEFAULT_LINES 20
+#define PGSTAT_DEFAULT_STRING_SIZE 1024
+#define PGSTAT_OLDEST_STAT_RESET "0001-01-01"
+
 
 /*
  * Structs and enums
