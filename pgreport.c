@@ -11,36 +11,17 @@
 
 
 /*
- * Headers
+ * PostgreSQL headers
  */
 #include "postgres_fe.h"
-#include "common/string.h"
-
-#include <err.h>
-#include <math.h>
-#include <sys/ioctl.h>
-#include <sys/signal.h>
-#include <sys/stat.h>
-
-#include <unistd.h>
-#ifdef HAVE_GETOPT_H
-#include <getopt.h>
-#endif
-
-#include "postgres_fe.h"
-#include "common/username.h"
 #include "common/logging.h"
-#include "fe_utils/cancel.h"
 #include "fe_utils/connect_utils.h"
-#include "fe_utils/option_utils.h"
-#include "fe_utils/query_utils.h"
-#include "fe_utils/simple_list.h"
-#include "fe_utils/string_utils.h"
-
 #include "fe_utils/print.h"
-#include "libpq-fe.h"
-#include "libpq/pqsignal.h"
 
+
+/*
+ * pgreport headers
+ */
 #include "pgreport_queries.h"
 
 
@@ -48,8 +29,8 @@
  * Defines
  */
 #define PGREPORT_VERSION "1.3.0"
-#define  PGREPORT_DEFAULT_LINES 20
-#define  PGREPORT_DEFAULT_STRING_SIZE 2048
+#define PGREPORT_DEFAULT_LINES 20
+#define PGREPORT_DEFAULT_STRING_SIZE 2048
 
 
 /*
@@ -219,7 +200,6 @@ get_opts(int argc, char **argv)
       opts->dbname = getenv("PGDATABASE");
   }
 }
-
 
 #ifndef FE_MEMUTILS_H
 /*
