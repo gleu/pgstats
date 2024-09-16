@@ -13,12 +13,7 @@
 /*
  * System headers
  */
-#include <unistd.h>
-#include <err.h>
 #include <sys/stat.h>
-#ifdef HAVE_GETOPT_H
-#include <getopt.h>
-#endif
 
 /*
  * PostgreSQL headers
@@ -26,15 +21,8 @@
 
 #include "postgres_fe.h"
 #include "common/logging.h"
-#include "common/string.h"
-#include "common/username.h"
 #include "fe_utils/cancel.h"
 #include "fe_utils/connect_utils.h"
-#include "fe_utils/option_utils.h"
-#include "fe_utils/query_utils.h"
-#include "fe_utils/simple_list.h"
-#include "fe_utils/string_utils.h"
-#include "libpq-fe.h"
 
 extern char *optarg;
 
