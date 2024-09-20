@@ -473,6 +473,15 @@ Ideas
   * pg_stat_archiver: display the duration since the last archived wal
   * pg_stat_X_tables: display the duration since the last vacuum and analyze
   * sum the number of archived wal files
+  * add a report for pg_stat_database_conflicts
+  * add a report for pg_stat_io
   * add a report for pg_stat_recovery_prefetch
+  * add a report for pg_stat_replication
+  * add a report for pg_stat_replication_slots
+  * add a report for pg_stat_subscription
+  * add a report for pg_stat_subscription_stats
+  * add a report for pg_stat_wal_receiver
+* pgcsvstat
+  * check for anything missing in this tool
 * pgreport
   * get data stats (idea from Christophe Courtois)
