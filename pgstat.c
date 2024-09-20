@@ -127,10 +127,10 @@ struct pgstatbgwriter
 /* pg_stat_checkpointer struct */
 struct pgstatcheckpointer
 {
-  long checkpoints_timed;
-  long checkpoints_requested;
+  long checkpoints_timed;        /* real name is num_timed */
+  long checkpoints_requested;    /* real name is num_requested */
   long restartpoints_timed;
-  long restartpoints_requested;
+  long restartpoints_requested;  /* real name is restartpoints_req */
   long restartpoints_done;
   long write_time;
   long sync_time;
