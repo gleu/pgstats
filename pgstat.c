@@ -176,13 +176,22 @@ struct pgstatdatabase
 struct pgstattable
 {
   long seq_scan;
+  /*
+  we don't put the timestamps here because it makes no sense to get a diff between the new and the old values
+  ? last_seq_scan;
+  */
   long seq_tup_read;
   long idx_scan;
+  /*
+  we don't put the timestamps here because it makes no sense to get a diff between the new and the old values
+  ? last_idx_scan;
+  */
   long idx_tup_fetch;
   long n_tup_ins;
   long n_tup_upd;
   long n_tup_del;
   long n_tup_hot_upd;
+  long n_tup_newpage_upd;
   long n_live_tup;
   long n_dead_tup;
   long n_mod_since_analyze;
@@ -217,6 +226,10 @@ struct pgstattableio
 struct pgstatindex
 {
   long idx_scan;
+  /*
+  we don't put the timestamps here because it makes no sense to get a diff between the new and the old values
+  ? last_idx_scan;
+  */
   long idx_tup_read;
   long idx_tup_fetch;
 };
@@ -1383,6 +1396,7 @@ print_pgstattable()
   long       n_tup_upd = 0;
   long       n_tup_del = 0;
   long       n_tup_hot_upd = 0;
+  long       n_tup_newpage_upd = 0;
   long       n_live_tup = 0;
   long       n_dead_tup = 0;
   long       n_mod_since_analyze = 0;
@@ -1405,8 +1419,10 @@ print_pgstattable()
       "%s"
       "%s"
       "%s"
+      "%s"
       " FROM pg_stat_all_tables "
       "WHERE schemaname <> 'information_schema' ",
+      backend_minimum_version(16, 0) ? ", sum(n_tup_newpage_upd)" : "",
       backend_minimum_version(8, 3) ? ", sum(n_tup_hot_upd), sum(n_live_tup), sum(n_dead_tup)" : "",
       backend_minimum_version(9, 4) ? ", sum(n_mod_since_analyze)" : "",
       backend_minimum_version(13, 0) ? ", sum(n_ins_since_vacuum)" : "",
@@ -1423,9 +1439,11 @@ print_pgstattable()
       "%s"
       "%s"
       "%s"
+      "%s"
       " FROM pg_stat_all_tables "
       "WHERE schemaname <> 'information_schema' "
       "  AND relname = $1",
+      backend_minimum_version(16, 0) ? ", sum(n_tup_newpage_upd)" : "",
       backend_minimum_version(8, 3) ? ", sum(n_tup_hot_upd), sum(n_live_tup), sum(n_dead_tup)" : "",
       backend_minimum_version(9, 4) ? ", sum(n_mod_since_analyze)" : "",
       backend_minimum_version(13, 0) ? ", sum(n_ins_since_vacuum)" : "",
@@ -1470,6 +1488,10 @@ print_pgstattable()
     n_tup_ins = atol(PQgetvalue(res, row, column++));
     n_tup_upd = atol(PQgetvalue(res, row, column++));
     n_tup_del = atol(PQgetvalue(res, row, column++));
+    if (backend_minimum_version(16, 0))
+    {
+      n_tup_newpage_upd = atol(PQgetvalue(res, row, column++));
+    }
     if (backend_minimum_version(8, 3))
     {
       n_tup_hot_upd = atol(PQgetvalue(res, row, column++));
@@ -1493,7 +1515,7 @@ print_pgstattable()
     }
 
     /* printing the diff... note that the first line will be the current value, rather than the diff */
-    (void)printf(" %6ld  %6ld   %6ld  %6ld      %6ld %6ld %6ld %6ld %6ld %6ld %6ld %6ld  %6ld     %6ld  %6ld      %6ld\n",
+    (void)printf(" %6ld  %6ld   %6ld  %6ld      %6ld %6ld %6ld %6ld     %6ld %6ld %6ld  %6ld  %6ld   %6ld     %6ld  %6ld      %6ld\n",
       seq_scan - previous_pgstattable->seq_scan,
       seq_tup_read - previous_pgstattable->seq_tup_read,
       idx_scan - previous_pgstattable->idx_scan,
@@ -1502,6 +1524,7 @@ print_pgstattable()
       n_tup_upd - previous_pgstattable->n_tup_upd,
       n_tup_del - previous_pgstattable->n_tup_del,
       n_tup_hot_upd - previous_pgstattable->n_tup_hot_upd,
+      n_tup_newpage_upd - previous_pgstattable->n_tup_newpage_upd,
       n_live_tup - previous_pgstattable->n_live_tup,
       n_dead_tup - previous_pgstattable->n_dead_tup,
       n_mod_since_analyze - previous_pgstattable->n_mod_since_analyze,
@@ -1521,6 +1544,7 @@ print_pgstattable()
     previous_pgstattable->n_tup_upd = n_tup_upd;
     previous_pgstattable->n_tup_del = n_tup_del;
     previous_pgstattable->n_tup_hot_upd = n_tup_hot_upd;
+    previous_pgstattable->n_tup_newpage_upd = n_tup_newpage_upd;
     previous_pgstattable->n_live_tup = n_live_tup;
     previous_pgstattable->n_dead_tup = n_dead_tup;
     previous_pgstattable->n_mod_since_analyze = n_mod_since_analyze;
@@ -3382,8 +3406,8 @@ print_header(void)
       (void)printf("                commit rollback     read    hit hit ratio  read_time   write_time      ret    fet    ins    upd    del    files     bytes     all_time active_time iit_time numbers abandoned  fatal killed conflicts deadlocks checksums\n");
       break;
     case TABLE:
-      (void)printf("-- sequential -- ------ index ------ -------------------- tuples ----------------------------- -------------- maintenance --------------\n");
-      (void)printf("   scan  tuples     scan  tuples         ins    upd    del hotupd   live   dead analyze ins_vac   vacuum autovacuum analyze autoanalyze\n");
+      (void)printf("-- sequential -- ------ index ------ ------------------------------- tuples ------------------------------- -------------- maintenance --------------\n");
+      (void)printf("   scan  tuples     scan  tuples         ins    upd    del hotupd newpageupd   live   dead analyze ins_vac   vacuum autovacuum analyze autoanalyze\n");
       break;
     case TABLEIO:
       (void)printf("--- heap table ---  --- toast table ---  --- heap indexes ---  --- toast indexes ---\n");
@@ -3634,6 +3658,7 @@ allocate_struct(void)
       previous_pgstattable->n_tup_upd = 0;
       previous_pgstattable->n_tup_del = 0;
       previous_pgstattable->n_tup_hot_upd = 0;
+      previous_pgstattable->n_tup_newpage_upd = 0;
       previous_pgstattable->n_live_tup = 0;
       previous_pgstattable->n_dead_tup = 0;
       previous_pgstattable->n_mod_since_analyze = 0;
