@@ -278,11 +278,27 @@ struct pgstatstatement
   long  local_blks_written;
   long  temp_blks_read;
   long  temp_blks_written;
-  float blk_read_time;
-  float blk_write_time;
+  float shared_blk_read_time;  /* 9.2 - 16, blk_read_time  */
+  float shared_blk_write_time; /* 9.2 - 16, blk_write_time */
+  float local_blk_read_time;   /* 9.2 - 16, blk_read_time  */
+  float local_blk_write_time;  /* 9.2 - 16, blk_write_time */
+  float temp_blk_read_time;    /* 9.2 - 15, blk_read_time  */
+  float temp_blk_write_time;   /* 9.2 - 15, blk_write_time */
   long  wal_records;
   long  wal_fpi;
   long  wal_bytes;
+  long  jit_functions;
+  float jit_generation_time;
+  long  jit_inlining_count;
+  float jit_inlining_time;
+  long  jit_optimization_count;
+  float jit_optimization_time;
+  long  jit_emission_count;
+  float jit_emission_time;
+  long  jit_deform_count;
+  float jit_deform_time;
+  char  *stats_since;
+  char  *minmax_stats_since;
 };
 
 /* pg_stat_slru struct */
@@ -313,6 +329,7 @@ struct pgstatwal
 };
 
 /* repslots struct */
+/* TODO : there is a lot of other informations, might want to check them */
 struct repslots
 {
   char *currentlocation;
@@ -1038,13 +1055,21 @@ print_pgstatcheckpointer()
         buffers_written - previous_pgstatcheckpointer->buffers_written
       );
     }
-    else
+    else if (backend_minimum_version(9, 2))
     {
       (void)printf("  %6ld    %6ld    %6ld    %6ld    %6ld\n",
         checkpoints_timed - previous_pgstatcheckpointer->checkpoints_timed,
         checkpoints_requested - previous_pgstatcheckpointer->checkpoints_requested,
         write_time - previous_pgstatcheckpointer->write_time,
         sync_time - previous_pgstatcheckpointer->sync_time,
+        buffers_written - previous_pgstatcheckpointer->buffers_written
+      );
+    }
+   else
+    {
+      (void)printf("  %6ld    %6ld    %6ld\n",
+        checkpoints_timed - previous_pgstatcheckpointer->checkpoints_timed,
+        checkpoints_requested - previous_pgstatcheckpointer->checkpoints_requested,
         buffers_written - previous_pgstatcheckpointer->buffers_written
       );
     }
@@ -1310,37 +1335,129 @@ print_pgstatdatabase()
     if (blks_hit - previous_pgstatdatabase->blks_hit + blks_read - previous_pgstatdatabase->blks_read > 0)
       hit_ratio = 100*(blks_hit - previous_pgstatdatabase->blks_hit)/(blks_hit - previous_pgstatdatabase->blks_hit + blks_read - previous_pgstatdatabase->blks_read);
     else
-      hit_ratio = -1;
+      hit_ratio = 0;
 
     /* printing the diff...
      * note that the first line will be the current value, rather than the diff */
-    (void)printf("      %4ld      %6ld   %6ld   %6ld %6ld   %3.2f     %5.2f        %5.2f   %6ld %6ld %6ld %6ld %6ld   %6ld %9ld    %8.2f    %8.2f %8.2f  %6ld    %6ld %6ld %6ld %9ld %9ld %9ld\n",
-      numbackends,
-      xact_commit - previous_pgstatdatabase->xact_commit,
-      xact_rollback - previous_pgstatdatabase->xact_rollback,
-      blks_read - previous_pgstatdatabase->blks_read,
-      blks_hit - previous_pgstatdatabase->blks_hit,
-      hit_ratio,
-      blk_read_time - previous_pgstatdatabase->blk_read_time,
-      blk_write_time - previous_pgstatdatabase->blk_write_time,
-      tup_returned - previous_pgstatdatabase->tup_returned,
-      tup_fetched - previous_pgstatdatabase->tup_fetched,
-      tup_inserted - previous_pgstatdatabase->tup_inserted,
-      tup_updated - previous_pgstatdatabase->tup_updated,
-      tup_deleted - previous_pgstatdatabase->tup_deleted,
-      temp_files - previous_pgstatdatabase->temp_files,
-      temp_bytes - previous_pgstatdatabase->temp_bytes,
-      session_time - previous_pgstatdatabase->session_time,
-      active_time - previous_pgstatdatabase->active_time,
-      idle_in_transaction_time - previous_pgstatdatabase->idle_in_transaction_time,
-      sessions - previous_pgstatdatabase->sessions,
-      sessions_abandoned - previous_pgstatdatabase->sessions_abandoned,
-      sessions_fatal - previous_pgstatdatabase->sessions_fatal,
-      sessions_killed - previous_pgstatdatabase->sessions_killed,
-      conflicts - previous_pgstatdatabase->conflicts,
-      deadlocks - previous_pgstatdatabase->deadlocks,
-      checksum_failures - previous_pgstatdatabase->checksum_failures
-      );
+    if (backend_minimum_version(14, 0))
+    {
+      (void)printf("      %4ld      %6ld   %6ld   %6ld %6ld    %3.2f      %5.2f        %5.2f   %6ld %6ld %6ld %6ld %6ld   %6ld %9ld     %8.2f    %8.2f %8.2f  %6ld    %6ld %6ld %6ld   %9ld %9ld %9ld\n",
+        numbackends,
+        xact_commit - previous_pgstatdatabase->xact_commit,
+        xact_rollback - previous_pgstatdatabase->xact_rollback,
+        blks_read - previous_pgstatdatabase->blks_read,
+        blks_hit - previous_pgstatdatabase->blks_hit,
+        hit_ratio,
+        blk_read_time - previous_pgstatdatabase->blk_read_time,
+        blk_write_time - previous_pgstatdatabase->blk_write_time,
+        tup_returned - previous_pgstatdatabase->tup_returned,
+        tup_fetched - previous_pgstatdatabase->tup_fetched,
+        tup_inserted - previous_pgstatdatabase->tup_inserted,
+        tup_updated - previous_pgstatdatabase->tup_updated,
+        tup_deleted - previous_pgstatdatabase->tup_deleted,
+        temp_files - previous_pgstatdatabase->temp_files,
+        temp_bytes - previous_pgstatdatabase->temp_bytes,
+        session_time - previous_pgstatdatabase->session_time,
+        active_time - previous_pgstatdatabase->active_time,
+        idle_in_transaction_time - previous_pgstatdatabase->idle_in_transaction_time,
+        sessions - previous_pgstatdatabase->sessions,
+        sessions_abandoned - previous_pgstatdatabase->sessions_abandoned,
+        sessions_fatal - previous_pgstatdatabase->sessions_fatal,
+        sessions_killed - previous_pgstatdatabase->sessions_killed,
+        conflicts - previous_pgstatdatabase->conflicts,
+        deadlocks - previous_pgstatdatabase->deadlocks,
+        checksum_failures - previous_pgstatdatabase->checksum_failures
+        );
+    }
+    else if (backend_minimum_version(12, 0))
+    {
+      (void)printf("      %4ld      %6ld   %6ld   %6ld %6ld    %3.2f      %5.2f        %5.2f   %6ld %6ld %6ld %6ld %6ld   %6ld %9ld   %9ld %9ld %9ld\n",
+        numbackends,
+        xact_commit - previous_pgstatdatabase->xact_commit,
+        xact_rollback - previous_pgstatdatabase->xact_rollback,
+        blks_read - previous_pgstatdatabase->blks_read,
+        blks_hit - previous_pgstatdatabase->blks_hit,
+        hit_ratio,
+        blk_read_time - previous_pgstatdatabase->blk_read_time,
+        blk_write_time - previous_pgstatdatabase->blk_write_time,
+        tup_returned - previous_pgstatdatabase->tup_returned,
+        tup_fetched - previous_pgstatdatabase->tup_fetched,
+        tup_inserted - previous_pgstatdatabase->tup_inserted,
+        tup_updated - previous_pgstatdatabase->tup_updated,
+        tup_deleted - previous_pgstatdatabase->tup_deleted,
+        temp_files - previous_pgstatdatabase->temp_files,
+        temp_bytes - previous_pgstatdatabase->temp_bytes,
+        conflicts - previous_pgstatdatabase->conflicts,
+        deadlocks - previous_pgstatdatabase->deadlocks,
+        checksum_failures - previous_pgstatdatabase->checksum_failures
+        );
+    }
+    else if (backend_minimum_version(9, 2))
+    {
+      (void)printf("      %4ld      %6ld   %6ld   %6ld %6ld    %3.2f      %5.2f        %5.2f   %6ld %6ld %6ld %6ld %6ld   %6ld %9ld     %9ld %9ld\n",
+        numbackends,
+        xact_commit - previous_pgstatdatabase->xact_commit,
+        xact_rollback - previous_pgstatdatabase->xact_rollback,
+        blks_read - previous_pgstatdatabase->blks_read,
+        blks_hit - previous_pgstatdatabase->blks_hit,
+        hit_ratio,
+        blk_read_time - previous_pgstatdatabase->blk_read_time,
+        blk_write_time - previous_pgstatdatabase->blk_write_time,
+        tup_returned - previous_pgstatdatabase->tup_returned,
+        tup_fetched - previous_pgstatdatabase->tup_fetched,
+        tup_inserted - previous_pgstatdatabase->tup_inserted,
+        tup_updated - previous_pgstatdatabase->tup_updated,
+        tup_deleted - previous_pgstatdatabase->tup_deleted,
+        temp_files - previous_pgstatdatabase->temp_files,
+        temp_bytes - previous_pgstatdatabase->temp_bytes,
+        conflicts - previous_pgstatdatabase->conflicts,
+        deadlocks - previous_pgstatdatabase->deadlocks
+        );
+    }
+    else if (backend_minimum_version(9, 1))
+    {
+      (void)printf("      %4ld      %6ld   %6ld   %6ld %6ld    %3.2f   %6ld %6ld %6ld %6ld %6ld    %9ld\n",
+        numbackends,
+        xact_commit - previous_pgstatdatabase->xact_commit,
+        xact_rollback - previous_pgstatdatabase->xact_rollback,
+        blks_read - previous_pgstatdatabase->blks_read,
+        blks_hit - previous_pgstatdatabase->blks_hit,
+        hit_ratio,
+        tup_returned - previous_pgstatdatabase->tup_returned,
+        tup_fetched - previous_pgstatdatabase->tup_fetched,
+        tup_inserted - previous_pgstatdatabase->tup_inserted,
+        tup_updated - previous_pgstatdatabase->tup_updated,
+        tup_deleted - previous_pgstatdatabase->tup_deleted,
+        conflicts - previous_pgstatdatabase->conflicts
+        );
+    }
+    else if (backend_minimum_version(8, 3))
+    {
+      (void)printf("      %4ld      %6ld   %6ld   %6ld %6ld    %3.2f   %6ld %6ld %6ld %6ld %6ld\n",
+        numbackends,
+        xact_commit - previous_pgstatdatabase->xact_commit,
+        xact_rollback - previous_pgstatdatabase->xact_rollback,
+        blks_read - previous_pgstatdatabase->blks_read,
+        blks_hit - previous_pgstatdatabase->blks_hit,
+        hit_ratio,
+        tup_returned - previous_pgstatdatabase->tup_returned,
+        tup_fetched - previous_pgstatdatabase->tup_fetched,
+        tup_inserted - previous_pgstatdatabase->tup_inserted,
+        tup_updated - previous_pgstatdatabase->tup_updated,
+        tup_deleted - previous_pgstatdatabase->tup_deleted
+        );
+    }
+    else
+    {
+      (void)printf("      %4ld      %6ld   %6ld   %6ld %6ld    %3.2f\n",
+        numbackends,
+        xact_commit - previous_pgstatdatabase->xact_commit,
+        xact_rollback - previous_pgstatdatabase->xact_rollback,
+        blks_read - previous_pgstatdatabase->blks_read,
+        blks_hit - previous_pgstatdatabase->blks_hit,
+        hit_ratio
+        );
+    }
 
     /* setting the new old value */
     previous_pgstatdatabase->xact_commit = xact_commit;
@@ -1515,25 +1632,115 @@ print_pgstattable()
     }
 
     /* printing the diff... note that the first line will be the current value, rather than the diff */
-    (void)printf(" %6ld  %6ld   %6ld  %6ld      %6ld %6ld %6ld %6ld     %6ld %6ld %6ld  %6ld  %6ld   %6ld     %6ld  %6ld      %6ld\n",
-      seq_scan - previous_pgstattable->seq_scan,
-      seq_tup_read - previous_pgstattable->seq_tup_read,
-      idx_scan - previous_pgstattable->idx_scan,
-      idx_tup_fetch - previous_pgstattable->idx_tup_fetch,
-      n_tup_ins - previous_pgstattable->n_tup_ins,
-      n_tup_upd - previous_pgstattable->n_tup_upd,
-      n_tup_del - previous_pgstattable->n_tup_del,
-      n_tup_hot_upd - previous_pgstattable->n_tup_hot_upd,
-      n_tup_newpage_upd - previous_pgstattable->n_tup_newpage_upd,
-      n_live_tup - previous_pgstattable->n_live_tup,
-      n_dead_tup - previous_pgstattable->n_dead_tup,
-      n_mod_since_analyze - previous_pgstattable->n_mod_since_analyze,
-      n_ins_since_vacuum - previous_pgstattable->n_ins_since_vacuum,
-      vacuum_count - previous_pgstattable->vacuum_count,
-      autovacuum_count - previous_pgstattable->autovacuum_count,
-      analyze_count - previous_pgstattable->analyze_count,
-      autoanalyze_count - previous_pgstattable->autoanalyze_count
-      );
+    if (backend_minimum_version(16, 0))
+    {
+      (void)printf(" %6ld  %6ld   %6ld  %6ld   %6ld %6ld %6ld %6ld     %6ld %6ld %6ld  %6ld  %6ld   %6ld     %6ld  %6ld      %6ld\n",
+        seq_scan - previous_pgstattable->seq_scan,
+        seq_tup_read - previous_pgstattable->seq_tup_read,
+        idx_scan - previous_pgstattable->idx_scan,
+        idx_tup_fetch - previous_pgstattable->idx_tup_fetch,
+        n_tup_ins - previous_pgstattable->n_tup_ins,
+        n_tup_upd - previous_pgstattable->n_tup_upd,
+        n_tup_del - previous_pgstattable->n_tup_del,
+        n_tup_hot_upd - previous_pgstattable->n_tup_hot_upd,
+        n_tup_newpage_upd - previous_pgstattable->n_tup_newpage_upd,
+        n_live_tup - previous_pgstattable->n_live_tup,
+        n_dead_tup - previous_pgstattable->n_dead_tup,
+        n_mod_since_analyze - previous_pgstattable->n_mod_since_analyze,
+        n_ins_since_vacuum - previous_pgstattable->n_ins_since_vacuum,
+        vacuum_count - previous_pgstattable->vacuum_count,
+        autovacuum_count - previous_pgstattable->autovacuum_count,
+        analyze_count - previous_pgstattable->analyze_count,
+        autoanalyze_count - previous_pgstattable->autoanalyze_count
+        );
+    }
+    else if (backend_minimum_version(13, 0))
+    {
+      (void)printf(" %6ld  %6ld   %6ld  %6ld   %6ld %6ld %6ld %6ld %6ld %6ld  %6ld  %6ld   %6ld     %6ld  %6ld      %6ld\n",
+        seq_scan - previous_pgstattable->seq_scan,
+        seq_tup_read - previous_pgstattable->seq_tup_read,
+        idx_scan - previous_pgstattable->idx_scan,
+        idx_tup_fetch - previous_pgstattable->idx_tup_fetch,
+        n_tup_ins - previous_pgstattable->n_tup_ins,
+        n_tup_upd - previous_pgstattable->n_tup_upd,
+        n_tup_del - previous_pgstattable->n_tup_del,
+        n_tup_hot_upd - previous_pgstattable->n_tup_hot_upd,
+        n_live_tup - previous_pgstattable->n_live_tup,
+        n_dead_tup - previous_pgstattable->n_dead_tup,
+        n_mod_since_analyze - previous_pgstattable->n_mod_since_analyze,
+        n_ins_since_vacuum - previous_pgstattable->n_ins_since_vacuum,
+        vacuum_count - previous_pgstattable->vacuum_count,
+        autovacuum_count - previous_pgstattable->autovacuum_count,
+        analyze_count - previous_pgstattable->analyze_count,
+        autoanalyze_count - previous_pgstattable->autoanalyze_count
+        );
+    }
+    else if (backend_minimum_version(9, 4))
+    {
+      (void)printf(" %6ld  %6ld   %6ld  %6ld   %6ld %6ld %6ld %6ld %6ld %6ld  %6ld   %6ld     %6ld  %6ld      %6ld\n",
+        seq_scan - previous_pgstattable->seq_scan,
+        seq_tup_read - previous_pgstattable->seq_tup_read,
+        idx_scan - previous_pgstattable->idx_scan,
+        idx_tup_fetch - previous_pgstattable->idx_tup_fetch,
+        n_tup_ins - previous_pgstattable->n_tup_ins,
+        n_tup_upd - previous_pgstattable->n_tup_upd,
+        n_tup_del - previous_pgstattable->n_tup_del,
+        n_tup_hot_upd - previous_pgstattable->n_tup_hot_upd,
+        n_live_tup - previous_pgstattable->n_live_tup,
+        n_dead_tup - previous_pgstattable->n_dead_tup,
+        n_mod_since_analyze - previous_pgstattable->n_mod_since_analyze,
+        vacuum_count - previous_pgstattable->vacuum_count,
+        autovacuum_count - previous_pgstattable->autovacuum_count,
+        analyze_count - previous_pgstattable->analyze_count,
+        autoanalyze_count - previous_pgstattable->autoanalyze_count
+        );
+    }
+    else if (backend_minimum_version(9, 1))
+    {
+      (void)printf(" %6ld  %6ld   %6ld  %6ld   %6ld %6ld %6ld %6ld %6ld %6ld   %6ld     %6ld  %6ld      %6ld\n",
+        seq_scan - previous_pgstattable->seq_scan,
+        seq_tup_read - previous_pgstattable->seq_tup_read,
+        idx_scan - previous_pgstattable->idx_scan,
+        idx_tup_fetch - previous_pgstattable->idx_tup_fetch,
+        n_tup_ins - previous_pgstattable->n_tup_ins,
+        n_tup_upd - previous_pgstattable->n_tup_upd,
+        n_tup_del - previous_pgstattable->n_tup_del,
+        n_tup_hot_upd - previous_pgstattable->n_tup_hot_upd,
+        n_live_tup - previous_pgstattable->n_live_tup,
+        n_dead_tup - previous_pgstattable->n_dead_tup,
+        vacuum_count - previous_pgstattable->vacuum_count,
+        autovacuum_count - previous_pgstattable->autovacuum_count,
+        analyze_count - previous_pgstattable->analyze_count,
+        autoanalyze_count - previous_pgstattable->autoanalyze_count
+        );
+    }
+    else if (backend_minimum_version(8, 3))
+    {
+      (void)printf(" %6ld  %6ld   %6ld  %6ld   %6ld %6ld %6ld %6ld %6ld %6ld\n",
+        seq_scan - previous_pgstattable->seq_scan,
+        seq_tup_read - previous_pgstattable->seq_tup_read,
+        idx_scan - previous_pgstattable->idx_scan,
+        idx_tup_fetch - previous_pgstattable->idx_tup_fetch,
+        n_tup_ins - previous_pgstattable->n_tup_ins,
+        n_tup_upd - previous_pgstattable->n_tup_upd,
+        n_tup_del - previous_pgstattable->n_tup_del,
+        n_tup_hot_upd - previous_pgstattable->n_tup_hot_upd,
+        n_live_tup - previous_pgstattable->n_live_tup,
+        n_dead_tup - previous_pgstattable->n_dead_tup
+        );
+    }
+    else
+    {
+      (void)printf(" %6ld  %6ld   %6ld  %6ld   %6ld %6ld %6ld\n",
+        seq_scan - previous_pgstattable->seq_scan,
+        seq_tup_read - previous_pgstattable->seq_tup_read,
+        idx_scan - previous_pgstattable->idx_scan,
+        idx_tup_fetch - previous_pgstattable->idx_tup_fetch,
+        n_tup_ins - previous_pgstattable->n_tup_ins,
+        n_tup_upd - previous_pgstattable->n_tup_upd,
+        n_tup_del - previous_pgstattable->n_tup_del
+        );
+    }
 
     /* setting the new old value */
     previous_pgstattable->seq_scan = seq_scan;
@@ -1881,8 +2088,12 @@ print_pgstatstatement()
   long       local_blks_written = 0;
   long       temp_blks_read = 0;
   long       temp_blks_written = 0;
-  float      blk_read_time = 0;
-  float      blk_write_time = 0;
+  float      shared_blk_read_time = 0;
+  float      shared_blk_write_time = 0;
+  float      local_blk_read_time = 0;
+  float      local_blk_write_time = 0;
+  float      temp_blk_read_time = 0;
+  float      temp_blk_write_time = 0;
   long       wal_records = 0;
   long       wal_fpi = 0;
   long       wal_bytes = 0;
@@ -1893,12 +2104,15 @@ print_pgstatstatement()
       "SELECT %ssum(calls), sum(%s), sum(rows),"
       " sum(shared_blks_hit), sum(shared_blks_read), sum(shared_blks_dirtied), sum(shared_blks_written),"
       " sum(local_blks_hit), sum(local_blks_read), sum(local_blks_dirtied), sum(local_blks_written),"
-      " sum(temp_blks_read), sum(temp_blks_written),"
-      " sum(blk_read_time), sum(blk_write_time)"
+      " sum(temp_blks_read), sum(temp_blks_written)"
+      "%s%s%s"
       "%s"
       " FROM %s.pg_stat_statements ",
       backend_minimum_version(13, 0) ? "sum(plans), sum(total_plan_time), " : "",
       backend_minimum_version(13, 0) ? "total_exec_time" : "total_time",
+      backend_minimum_version(17, 0) ? ", sum(shared_blk_read_time), sum(shared_blk_write_time)" : ", sum(blk_read_time), sum(blk_write_time)",
+      backend_minimum_version(17, 0) ? ", sum(local_blk_read_time), sum(local_blk_write_time)" : "",
+      backend_minimum_version(16, 0) ? ", sum(temp_blk_read_time), sum(temp_blk_write_time)" : "",
       backend_minimum_version(13, 0) ? ", sum(wal_records), sum(wal_fpi), sum(wal_bytes)" : "",
       opts->namespace);
 
@@ -1911,12 +2125,15 @@ print_pgstatstatement()
       " shared_blks_hit, shared_blks_read, shared_blks_dirtied, shared_blks_written,"
       " local_blks_hit, local_blks_read, local_blks_dirtied, local_blks_written,"
       " temp_blks_read, temp_blks_written,"
-      " blk_read_time, blk_write_time"
+      "%s%s%s"
       "%s"
       " FROM %s.pg_stat_statements "
       "WHERE queryid=$1",
       backend_minimum_version(13, 0) ? "plans, total_plan_time, " : "",
       backend_minimum_version(13, 0) ? "total_exec_time" : "total_time",
+      backend_minimum_version(17, 0) ? ", shared_blk_read_time, shared_blk_write_time" : ", blk_read_time, blk_write_time",
+      backend_minimum_version(17, 0) ? ", local_blk_read_time, local_blk_write_time" : "",
+      backend_minimum_version(16, 0) ? ", temp_blk_read_time, temp_blk_write_time" : "",
       backend_minimum_version(13, 0) ? ", wal_records, wal_fpi, wal_bytes" : "",
       opts->namespace);
 
@@ -1970,8 +2187,19 @@ print_pgstatstatement()
     local_blks_written = atol(PQgetvalue(res, row, column++));
     temp_blks_read = atol(PQgetvalue(res, row, column++));
     temp_blks_written = atol(PQgetvalue(res, row, column++));
-    blk_read_time = atof(PQgetvalue(res, row, column++));
-    blk_write_time = atof(PQgetvalue(res, row, column++));
+    shared_blk_read_time = atof(PQgetvalue(res, row, column++));
+    shared_blk_write_time = atof(PQgetvalue(res, row, column++));
+    if (backend_minimum_version(17, 0))
+    {
+      local_blk_read_time = atof(PQgetvalue(res, row, column++));
+      local_blk_write_time = atof(PQgetvalue(res, row, column++));
+    }
+    if (backend_minimum_version(16, 0))
+    {
+      temp_blk_read_time = atof(PQgetvalue(res, row, column++));
+      temp_blk_write_time = atof(PQgetvalue(res, row, column++));
+    }
+
     if (backend_minimum_version(13, 0))
     {
       wal_records = atol(PQgetvalue(res, row, column++));
@@ -1981,28 +2209,107 @@ print_pgstatstatement()
 
     /* printing the diff...
      * note that the first line will be the current value, rather than the diff */
-    (void)printf(" %6ld  %6.2f   %6ld    %6.2f %6ld   %6ld %6ld %6ld  %6ld   %6ld %6ld %6ld  %6ld  %6ld  %6ld      %6.2f    %6.2f          %6ld  %6ld    %6ld\n",
-      plans - previous_pgstatstatement->plans,
-      total_plan_time - previous_pgstatstatement->total_plan_time,
-      calls - previous_pgstatstatement->calls,
-      total_exec_time - previous_pgstatstatement->total_exec_time,
-      rows - previous_pgstatstatement->rows,
-      shared_blks_hit - previous_pgstatstatement->shared_blks_hit,
-      shared_blks_read - previous_pgstatstatement->shared_blks_read,
-      shared_blks_dirtied - previous_pgstatstatement->shared_blks_dirtied,
-      shared_blks_written - previous_pgstatstatement->shared_blks_written,
-      local_blks_hit - previous_pgstatstatement->local_blks_hit,
-      local_blks_read - previous_pgstatstatement->local_blks_read,
-      local_blks_dirtied - previous_pgstatstatement->local_blks_dirtied,
-      local_blks_written - previous_pgstatstatement->local_blks_written,
-      temp_blks_read - previous_pgstatstatement->temp_blks_read,
-      temp_blks_written - previous_pgstatstatement->temp_blks_written,
-      blk_read_time - previous_pgstatstatement->blk_read_time,
-      blk_write_time - previous_pgstatstatement->blk_write_time,
-      wal_records - previous_pgstatstatement->wal_records,
-      wal_fpi - previous_pgstatstatement->wal_fpi,
-      wal_bytes - previous_pgstatstatement->wal_bytes
+    if (backend_minimum_version(17, 0))
+    {
+      (void)printf(" %6ld  %6.2f   %6ld    %6.2f %6ld   %6ld %6ld %6ld  %6ld   %6ld %6ld %6ld  %6ld  %6ld  %6ld      %6.2f       %6.2f    %6.2f      %6.2f   %6.2f      %6.2f        %6ld  %6ld    %6ld\n",
+        plans - previous_pgstatstatement->plans,
+        total_plan_time - previous_pgstatstatement->total_plan_time,
+        calls - previous_pgstatstatement->calls,
+        total_exec_time - previous_pgstatstatement->total_exec_time,
+        rows - previous_pgstatstatement->rows,
+        shared_blks_hit - previous_pgstatstatement->shared_blks_hit,
+        shared_blks_read - previous_pgstatstatement->shared_blks_read,
+        shared_blks_dirtied - previous_pgstatstatement->shared_blks_dirtied,
+        shared_blks_written - previous_pgstatstatement->shared_blks_written,
+        local_blks_hit - previous_pgstatstatement->local_blks_hit,
+        local_blks_read - previous_pgstatstatement->local_blks_read,
+        local_blks_dirtied - previous_pgstatstatement->local_blks_dirtied,
+        local_blks_written - previous_pgstatstatement->local_blks_written,
+        temp_blks_read - previous_pgstatstatement->temp_blks_read,
+        temp_blks_written - previous_pgstatstatement->temp_blks_written,
+        shared_blk_read_time - previous_pgstatstatement->shared_blk_read_time,
+        shared_blk_write_time - previous_pgstatstatement->shared_blk_write_time,
+        local_blk_read_time - previous_pgstatstatement->shared_blk_read_time,
+        local_blk_write_time - previous_pgstatstatement->shared_blk_write_time,
+        temp_blk_read_time - previous_pgstatstatement->shared_blk_read_time,
+        temp_blk_write_time - previous_pgstatstatement->shared_blk_write_time,
+        wal_records - previous_pgstatstatement->wal_records,
+        wal_fpi - previous_pgstatstatement->wal_fpi,
+        wal_bytes - previous_pgstatstatement->wal_bytes
         );
+    }
+    else if (backend_minimum_version(16, 0))
+    {
+      (void)printf(" %6ld  %6.2f   %6ld    %6.2f %6ld   %6ld %6ld %6ld  %6ld   %6ld %6ld %6ld  %6ld  %6ld  %6ld      %6.2f    %6.2f     %6.2f     %6.2f          %6ld  %6ld    %6ld\n",
+        plans - previous_pgstatstatement->plans,
+        total_plan_time - previous_pgstatstatement->total_plan_time,
+        calls - previous_pgstatstatement->calls,
+        total_exec_time - previous_pgstatstatement->total_exec_time,
+        rows - previous_pgstatstatement->rows,
+        shared_blks_hit - previous_pgstatstatement->shared_blks_hit,
+        shared_blks_read - previous_pgstatstatement->shared_blks_read,
+        shared_blks_dirtied - previous_pgstatstatement->shared_blks_dirtied,
+        shared_blks_written - previous_pgstatstatement->shared_blks_written,
+        local_blks_hit - previous_pgstatstatement->local_blks_hit,
+        local_blks_read - previous_pgstatstatement->local_blks_read,
+        local_blks_dirtied - previous_pgstatstatement->local_blks_dirtied,
+        local_blks_written - previous_pgstatstatement->local_blks_written,
+        temp_blks_read - previous_pgstatstatement->temp_blks_read,
+        temp_blks_written - previous_pgstatstatement->temp_blks_written,
+        shared_blk_read_time - previous_pgstatstatement->shared_blk_read_time,
+        shared_blk_write_time - previous_pgstatstatement->shared_blk_write_time,
+        temp_blk_read_time - previous_pgstatstatement->shared_blk_read_time,
+        temp_blk_write_time - previous_pgstatstatement->shared_blk_write_time,
+        wal_records - previous_pgstatstatement->wal_records,
+        wal_fpi - previous_pgstatstatement->wal_fpi,
+        wal_bytes - previous_pgstatstatement->wal_bytes
+        );
+    }
+    else if (backend_minimum_version(13, 0))
+    {
+      (void)printf(" %6ld  %6.2f   %6ld    %6.2f %6ld   %6ld %6ld %6ld  %6ld   %6ld %6ld %6ld  %6ld  %6ld  %6ld      %6.2f    %6.2f          %6ld  %6ld    %6ld\n",
+        plans - previous_pgstatstatement->plans,
+        total_plan_time - previous_pgstatstatement->total_plan_time,
+        calls - previous_pgstatstatement->calls,
+        total_exec_time - previous_pgstatstatement->total_exec_time,
+        rows - previous_pgstatstatement->rows,
+        shared_blks_hit - previous_pgstatstatement->shared_blks_hit,
+        shared_blks_read - previous_pgstatstatement->shared_blks_read,
+        shared_blks_dirtied - previous_pgstatstatement->shared_blks_dirtied,
+        shared_blks_written - previous_pgstatstatement->shared_blks_written,
+        local_blks_hit - previous_pgstatstatement->local_blks_hit,
+        local_blks_read - previous_pgstatstatement->local_blks_read,
+        local_blks_dirtied - previous_pgstatstatement->local_blks_dirtied,
+        local_blks_written - previous_pgstatstatement->local_blks_written,
+        temp_blks_read - previous_pgstatstatement->temp_blks_read,
+        temp_blks_written - previous_pgstatstatement->temp_blks_written,
+        shared_blk_read_time - previous_pgstatstatement->shared_blk_read_time,
+        shared_blk_write_time - previous_pgstatstatement->shared_blk_write_time,
+        wal_records - previous_pgstatstatement->wal_records,
+        wal_fpi - previous_pgstatstatement->wal_fpi,
+        wal_bytes - previous_pgstatstatement->wal_bytes
+        );
+    }
+    else
+    {
+      (void)printf(" %6ld    %6.2f %6ld   %6ld %6ld %6ld  %6ld   %6ld %6ld %6ld  %6ld  %6ld  %6ld      %6.2f    %6.2f\n",
+        calls - previous_pgstatstatement->calls,
+        total_exec_time - previous_pgstatstatement->total_exec_time,
+        rows - previous_pgstatstatement->rows,
+        shared_blks_hit - previous_pgstatstatement->shared_blks_hit,
+        shared_blks_read - previous_pgstatstatement->shared_blks_read,
+        shared_blks_dirtied - previous_pgstatstatement->shared_blks_dirtied,
+        shared_blks_written - previous_pgstatstatement->shared_blks_written,
+        local_blks_hit - previous_pgstatstatement->local_blks_hit,
+        local_blks_read - previous_pgstatstatement->local_blks_read,
+        local_blks_dirtied - previous_pgstatstatement->local_blks_dirtied,
+        local_blks_written - previous_pgstatstatement->local_blks_written,
+        temp_blks_read - previous_pgstatstatement->temp_blks_read,
+        temp_blks_written - previous_pgstatstatement->temp_blks_written,
+        shared_blk_read_time - previous_pgstatstatement->shared_blk_read_time,
+        shared_blk_write_time - previous_pgstatstatement->shared_blk_write_time
+        );
+    }
 
     /* setting the new old value */
     previous_pgstatstatement->plans = plans;
@@ -2020,8 +2327,12 @@ print_pgstatstatement()
     previous_pgstatstatement->local_blks_written = local_blks_written;
     previous_pgstatstatement->temp_blks_read = temp_blks_read;
     previous_pgstatstatement->temp_blks_written = temp_blks_written;
-    previous_pgstatstatement->blk_read_time = blk_read_time;
-    previous_pgstatstatement->blk_write_time = blk_write_time;
+    previous_pgstatstatement->shared_blk_read_time = shared_blk_read_time;
+    previous_pgstatstatement->shared_blk_write_time = shared_blk_write_time;
+    previous_pgstatstatement->local_blk_read_time = local_blk_read_time;
+    previous_pgstatstatement->local_blk_write_time = local_blk_write_time;
+    previous_pgstatstatement->temp_blk_read_time = temp_blk_read_time;
+    previous_pgstatstatement->temp_blk_write_time = temp_blk_write_time;
     previous_pgstatstatement->wal_records = wal_records;
     previous_pgstatstatement->wal_fpi = wal_fpi;
     previous_pgstatstatement->wal_bytes = wal_bytes;
@@ -3364,6 +3675,7 @@ fetch_pgstatstatements_namespace()
 bool
 backend_minimum_version(int major, int minor)
 {
+  //return 13 > major || (13 == major && 0 >= minor);
   return opts->major > major || (opts->major == major && opts->minor >= minor);
 }
 
@@ -3392,22 +3704,83 @@ print_header(void)
         (void)printf("--- checkpoints --- ------- restartpoints ------- ------ time ------ - buffers -\n");
         (void)printf("   timed requested     timed requested      done     write     sync    written\n");
       }
-      else
+      else if (backend_minimum_version(9, 2))
       {
         (void)printf("--- checkpoints --- ------ time ------ - buffers -\n");
         (void)printf("   timed requested     write     sync    written\n");
+      }
+      else
+      {
+        (void)printf("--- checkpoints --- - buffers -\n");
+        (void)printf("   timed requested    written\n");
       }
       break;
     case CONNECTION:
       (void)printf(" - total - active - lockwaiting - idle in transaction - idle -\n");
       break;
     case DATABASE:
-      (void)printf("- backends - ------ xacts ------ ---------------- blocks ---------------- -------------- tuples -------------- ------ temp ------ ---------------------------- session ---------------------------- ------------ misc -------------\n");
-      (void)printf("                commit rollback     read    hit hit ratio  read_time   write_time      ret    fet    ins    upd    del    files     bytes     all_time active_time iit_time numbers abandoned  fatal killed conflicts deadlocks checksums\n");
+      if (backend_minimum_version(14, 0))
+      {
+        (void)printf("- backends - ------ xacts ------ -------------------- blocks --------------------- -------------- tuples -------------- ------ temp ------ ---------------------------- session ---------------------------- ------------ misc -------------\n");
+        (void)printf("                commit rollback     read    hit hit ratio  read_time   write_time      ret    fet    ins    upd    del    files     bytes     all_time active_time iit_time numbers abandoned  fatal killed   conflicts deadlocks checksums\n");
+      }
+      else if (backend_minimum_version(12, 0))
+      {
+        (void)printf("- backends - ------ xacts ------ -------------------- blocks --------------------- -------------- tuples -------------- ------ temp ------ ------------ misc -------------\n");
+        (void)printf("                commit rollback     read    hit hit ratio  read_time   write_time      ret    fet    ins    upd    del    files     bytes   conflicts deadlocks checksums\n");
+      }
+      else if (backend_minimum_version(9, 2))
+      {
+        (void)printf("- backends - ------ xacts ------ -------------------- blocks --------------------- -------------- tuples -------------- ------ temp ------ --------- misc ---------\n");
+        (void)printf("                commit rollback     read    hit hit ratio  read_time   write_time      ret    fet    ins    upd    del    files     bytes     conflicts deadlocks\n");
+      }
+      else if (backend_minimum_version(9, 1))
+      {
+        (void)printf("- backends - ------ xacts ------ --------- blocks -------- -------------- tuples -------------- --- misc ---\n");
+        (void)printf("                commit rollback     read    hit hit ratio      ret    fet    ins    upd    del    conflicts\n");
+      }
+      else if (backend_minimum_version(8, 3))
+      {
+        (void)printf("- backends - ------ xacts ------ --------- blocks -------- -------------- tuples --------------\n");
+        (void)printf("                commit rollback     read    hit hit ratio      ret    fet    ins    upd    del\n");
+      }
+      else
+      {
+        (void)printf("- backends - ------ xacts ------ --------- blocks --------\n");
+        (void)printf("                commit rollback     read    hit hit ratio\n");
+      }
       break;
     case TABLE:
-      (void)printf("-- sequential -- ------ index ------ ------------------------------- tuples ------------------------------- -------------- maintenance --------------\n");
-      (void)printf("   scan  tuples     scan  tuples         ins    upd    del hotupd newpageupd   live   dead analyze ins_vac   vacuum autovacuum analyze autoanalyze\n");
+      if (backend_minimum_version(16, 0))
+      {
+        (void)printf("-- sequential -- ----- index ---- ------------------------------- tuples ------------------------------- -------------- maintenance --------------\n");
+        (void)printf("   scan  tuples     scan  tuples      ins    upd    del hotupd newpageupd   live   dead analyze ins_vac   vacuum autovacuum analyze autoanalyze\n");
+      }
+      else if (backend_minimum_version(13, 0))
+      {
+        (void)printf("-- sequential -- ----- index ----- ------------------------- tuples ------------------------- -------------- maintenance --------------\n");
+        (void)printf("   scan  tuples     scan  tuples      ins    upd    del hotupd   live   dead analyze ins_vac   vacuum autovacuum analyze autoanalyze\n");
+      }
+      else if (backend_minimum_version(9, 4))
+      {
+        (void)printf("-- sequential -- ----- index ---- ------------------------- tuples ------------------ -------------- maintenance ------------\n");
+        (void)printf("   scan  tuples     scan  tuples      ins    upd    del hotupd   live   dead analyze   vacuum autovacuum analyze autoanalyze\n");
+      }
+      else if (backend_minimum_version(9, 1))
+      {
+        (void)printf("-- sequential -- ----- index ---- ------------------------- tuples ---------- -------------- maintenance ------------\n");
+        (void)printf("   scan  tuples     scan  tuples      ins    upd    del hotupd   live   dead   vacuum autovacuum analyze autoanalyze\n");
+      }
+      else if (backend_minimum_version(8, 3))
+      {
+        (void)printf("-- sequential -- ----- index ---- ------------------------- tuples ----------\n");
+        (void)printf("   scan  tuples     scan  tuples      ins    upd    del hotupd   live   dead\n");
+      }
+      else
+      {
+        (void)printf("-- sequential -- ----- index ---- ------- tuples -------\n");
+        (void)printf("   scan  tuples     scan  tuples      ins    upd    del\n");
+      }
       break;
     case TABLEIO:
       (void)printf("--- heap table ---  --- toast table ---  --- heap indexes ---  --- toast indexes ---\n");
@@ -3422,8 +3795,26 @@ print_header(void)
       (void)printf("             total     self\n");
       break;
     case STATEMENT:
-      (void)printf("----- plan ----- --------- exec ---------- ----------- shared ----------- ----------- local ----------- ----- temp ----- -------- time -------- -------------- wal --------------\n");
-      (void)printf("  plans    time    calls      time   rows      hit   read  dirty written      hit   read  dirty written    read written        read   written     wal_records wal_fpi wal_bytes\n");
+      if (backend_minimum_version(17, 0))
+      {
+        (void)printf("----- plan ----- --------- exec ---------- ----------- shared ----------- ----------- local ----------- ----- temp ----- ------------------------------- time ------------------------------ -------------- wal --------------\n");
+        (void)printf("  plans    time    calls      time   rows      hit   read  dirty written      hit   read  dirty written    read written    shr read  shr written  loc read loc written tmp read tmp written   wal_records wal_fpi wal_bytes\n");
+      }
+      else if (backend_minimum_version(16, 0))
+      {
+        (void)printf("----- plan ----- --------- exec ---------- ----------- shared ----------- ----------- local ----------- ----- temp ----- ------------------- time -------------------- -------------- wal --------------\n");
+        (void)printf("  plans    time    calls      time   rows      hit   read  dirty written      hit   read  dirty written    read written        read   written    tmp read tmp written     wal_records wal_fpi wal_bytes\n");
+      }
+      else if (backend_minimum_version(13, 0))
+      {
+        (void)printf("----- plan ----- --------- exec ---------- ----------- shared ----------- ----------- local ----------- ----- temp ----- -------- time -------- -------------- wal --------------\n");
+        (void)printf("  plans    time    calls      time   rows      hit   read  dirty written      hit   read  dirty written    read written        read   written     wal_records wal_fpi wal_bytes\n");
+      }
+      else
+      {
+        (void)printf("--------- exec ---------- ----------- shared ----------- ----------- local ----------- ----- temp ----- -------- time --------\n");
+        (void)printf("  calls      time   rows      hit   read  dirty written      hit   read  dirty written    read written        read   written\n");
+      }
       break;
     case SLRU:
       (void)printf("  zeroed  hit     read    written  exists  flushes  truncates\n");
@@ -3708,8 +4099,8 @@ allocate_struct(void)
       previous_pgstatstatement->local_blks_written = 0;
       previous_pgstatstatement->temp_blks_read = 0;
       previous_pgstatstatement->temp_blks_written = 0;
-      previous_pgstatstatement->blk_read_time = 0;
-      previous_pgstatstatement->blk_write_time = 0;
+      previous_pgstatstatement->shared_blk_read_time = 0;
+      previous_pgstatstatement->shared_blk_write_time = 0;
       previous_pgstatstatement->wal_records = 0;
       previous_pgstatstatement->wal_fpi = 0;
       previous_pgstatstatement->wal_bytes = 0;
