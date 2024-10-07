@@ -1333,7 +1333,7 @@ print_pgstatdatabase()
 
     // calculate hit ratio
     if (blks_hit - previous_pgstatdatabase->blks_hit + blks_read - previous_pgstatdatabase->blks_read > 0)
-      hit_ratio = 100*(blks_hit - previous_pgstatdatabase->blks_hit)/(blks_hit - previous_pgstatdatabase->blks_hit + blks_read - previous_pgstatdatabase->blks_read);
+      hit_ratio = 100.*(blks_hit - previous_pgstatdatabase->blks_hit)/(blks_hit - previous_pgstatdatabase->blks_hit + blks_read - previous_pgstatdatabase->blks_read);
     else
       hit_ratio = 0;
 
