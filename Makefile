@@ -16,7 +16,7 @@ include $(PGXS)
 all: $(PROGRAMS)
 
 %: %.o $(WIN32RES)
-	   $(CC) $(CFLAGS) $^ $(libpq_pgport) $(LDFLAGS) -lpgcommon -lpgport -lm -o $@$(X)
+	   $(CC) $(CFLAGS) $^ $(libpq_pgport) $(LDFLAGS) -L $(pkglibdir) -lpgcommon -lpgport -lm -o $@$(X)
 
 pgcsvstat: pgcsvstat.o $(PGFELIBS)
 pgdisplay: pgdisplay.o $(PGFELIBS)
