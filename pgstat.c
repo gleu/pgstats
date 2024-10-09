@@ -76,6 +76,7 @@ struct options
   bool   verbose;
   bool   dontredisplayheader;
   stat_t stat;
+  char   *substat;
   char   *filter;
   bool   human_readable;
 
@@ -456,6 +457,8 @@ help(const char *progname)
        "  -H                     display human-readable values\n"
        "  -n                     do not redisplay header\n"
        "  -s STAT                stats to collect\n"
+       "  -S SUBSTAT             part of stats to display\n"
+       "                         (only works for database)\n"
        "  -v                     verbose\n"
        "  -?|--help              show this help, then exit\n"
        "  -V|--version           output version information, then exit\n"
@@ -518,6 +521,7 @@ get_opts(int argc, char **argv)
   opts->verbose = false;
   opts->dontredisplayheader = false;
   opts->stat = NONE;
+  opts->substat = NULL;
   opts->filter = NULL;
   opts->human_readable = false;
   opts->dbname = NULL;
@@ -543,7 +547,7 @@ get_opts(int argc, char **argv)
   }
 
   /* get opts */
-  while ((c = getopt(argc, argv, "h:Hp:U:d:f:ns:v")) != -1)
+  while ((c = getopt(argc, argv, "h:Hp:U:d:f:ns:S:v")) != -1)
   {
     switch (c)
     {
@@ -685,6 +689,11 @@ get_opts(int argc, char **argv)
           pg_log_info("Try \"%s --help\" for more information.\n", progname);
           exit(EXIT_FAILURE);
         }
+        break;
+
+        /* specify the substat */
+      case 'S':
+        opts->substat = pg_strdup(optarg);
         break;
 
         /* host to connect to */
@@ -1339,107 +1348,41 @@ print_pgstatdatabase()
 
     /* printing the diff...
      * note that the first line will be the current value, rather than the diff */
-    if (backend_minimum_version(14, 0))
+    if (opts->substat == NULL || strstr(opts->substat, "backends") != NULL)
     {
-      (void)printf("      %4ld      %6ld   %6ld   %6ld %6ld    %3.2f      %5.2f        %5.2f   %6ld %6ld %6ld %6ld %6ld   %6ld %9ld     %8.2f    %8.2f %8.2f  %6ld    %6ld %6ld %6ld   %9ld %9ld %9ld\n",
-        numbackends,
-        xact_commit - previous_pgstatdatabase->xact_commit,
-        xact_rollback - previous_pgstatdatabase->xact_rollback,
-        blks_read - previous_pgstatdatabase->blks_read,
-        blks_hit - previous_pgstatdatabase->blks_hit,
-        hit_ratio,
-        blk_read_time - previous_pgstatdatabase->blk_read_time,
-        blk_write_time - previous_pgstatdatabase->blk_write_time,
-        tup_returned - previous_pgstatdatabase->tup_returned,
-        tup_fetched - previous_pgstatdatabase->tup_fetched,
-        tup_inserted - previous_pgstatdatabase->tup_inserted,
-        tup_updated - previous_pgstatdatabase->tup_updated,
-        tup_deleted - previous_pgstatdatabase->tup_deleted,
-        temp_files - previous_pgstatdatabase->temp_files,
-        temp_bytes - previous_pgstatdatabase->temp_bytes,
-        session_time - previous_pgstatdatabase->session_time,
-        active_time - previous_pgstatdatabase->active_time,
-        idle_in_transaction_time - previous_pgstatdatabase->idle_in_transaction_time,
-        sessions - previous_pgstatdatabase->sessions,
-        sessions_abandoned - previous_pgstatdatabase->sessions_abandoned,
-        sessions_fatal - previous_pgstatdatabase->sessions_fatal,
-        sessions_killed - previous_pgstatdatabase->sessions_killed,
-        conflicts - previous_pgstatdatabase->conflicts,
-        deadlocks - previous_pgstatdatabase->deadlocks,
-        checksum_failures - previous_pgstatdatabase->checksum_failures
-        );
+      (void)printf("      %4ld",
+        numbackends);
     }
-    else if (backend_minimum_version(12, 0))
+    if (opts->substat == NULL || strstr(opts->substat, "xacts") != NULL)
     {
-      (void)printf("      %4ld      %6ld   %6ld   %6ld %6ld    %3.2f      %5.2f        %5.2f   %6ld %6ld %6ld %6ld %6ld   %6ld %9ld   %9ld %9ld %9ld\n",
-        numbackends,
+      (void)printf("      %6ld   %6ld",
         xact_commit - previous_pgstatdatabase->xact_commit,
-        xact_rollback - previous_pgstatdatabase->xact_rollback,
-        blks_read - previous_pgstatdatabase->blks_read,
-        blks_hit - previous_pgstatdatabase->blks_hit,
-        hit_ratio,
-        blk_read_time - previous_pgstatdatabase->blk_read_time,
-        blk_write_time - previous_pgstatdatabase->blk_write_time,
-        tup_returned - previous_pgstatdatabase->tup_returned,
-        tup_fetched - previous_pgstatdatabase->tup_fetched,
-        tup_inserted - previous_pgstatdatabase->tup_inserted,
-        tup_updated - previous_pgstatdatabase->tup_updated,
-        tup_deleted - previous_pgstatdatabase->tup_deleted,
-        temp_files - previous_pgstatdatabase->temp_files,
-        temp_bytes - previous_pgstatdatabase->temp_bytes,
-        conflicts - previous_pgstatdatabase->conflicts,
-        deadlocks - previous_pgstatdatabase->deadlocks,
-        checksum_failures - previous_pgstatdatabase->checksum_failures
-        );
+        xact_rollback - previous_pgstatdatabase->xact_rollback);
     }
-    else if (backend_minimum_version(9, 2))
+    if (opts->substat == NULL || strstr(opts->substat, "blocks") != NULL)
     {
-      (void)printf("      %4ld      %6ld   %6ld   %6ld %6ld    %3.2f      %5.2f        %5.2f   %6ld %6ld %6ld %6ld %6ld   %6ld %9ld     %9ld %9ld\n",
-        numbackends,
-        xact_commit - previous_pgstatdatabase->xact_commit,
-        xact_rollback - previous_pgstatdatabase->xact_rollback,
-        blks_read - previous_pgstatdatabase->blks_read,
-        blks_hit - previous_pgstatdatabase->blks_hit,
-        hit_ratio,
-        blk_read_time - previous_pgstatdatabase->blk_read_time,
-        blk_write_time - previous_pgstatdatabase->blk_write_time,
-        tup_returned - previous_pgstatdatabase->tup_returned,
-        tup_fetched - previous_pgstatdatabase->tup_fetched,
-        tup_inserted - previous_pgstatdatabase->tup_inserted,
-        tup_updated - previous_pgstatdatabase->tup_updated,
-        tup_deleted - previous_pgstatdatabase->tup_deleted,
-        temp_files - previous_pgstatdatabase->temp_files,
-        temp_bytes - previous_pgstatdatabase->temp_bytes,
-        conflicts - previous_pgstatdatabase->conflicts,
-        deadlocks - previous_pgstatdatabase->deadlocks
-        );
+      if (backend_minimum_version(9, 0))
+      {
+        (void)printf("   %6ld %6ld    %3.2f      %5.2f        %5.2f",
+          blks_read - previous_pgstatdatabase->blks_read,
+          blks_hit - previous_pgstatdatabase->blks_hit,
+          hit_ratio,
+          blk_read_time - previous_pgstatdatabase->blk_read_time,
+          blk_write_time - previous_pgstatdatabase->blk_write_time
+          );
+      }
+      else
+      {
+        (void)printf("   %6ld %6ld    %3.2f",
+          blks_read - previous_pgstatdatabase->blks_read,
+          blks_hit - previous_pgstatdatabase->blks_hit,
+          hit_ratio
+          );
+      }
     }
-    else if (backend_minimum_version(9, 1))
+    if ((opts->substat == NULL || strstr(opts->substat, "tuples") != NULL) && backend_minimum_version(9, 0))
     {
-      (void)printf("      %4ld      %6ld   %6ld   %6ld %6ld    %3.2f   %6ld %6ld %6ld %6ld %6ld    %9ld\n",
-        numbackends,
-        xact_commit - previous_pgstatdatabase->xact_commit,
-        xact_rollback - previous_pgstatdatabase->xact_rollback,
-        blks_read - previous_pgstatdatabase->blks_read,
-        blks_hit - previous_pgstatdatabase->blks_hit,
-        hit_ratio,
-        tup_returned - previous_pgstatdatabase->tup_returned,
-        tup_fetched - previous_pgstatdatabase->tup_fetched,
-        tup_inserted - previous_pgstatdatabase->tup_inserted,
-        tup_updated - previous_pgstatdatabase->tup_updated,
-        tup_deleted - previous_pgstatdatabase->tup_deleted,
-        conflicts - previous_pgstatdatabase->conflicts
-        );
-    }
-    else if (backend_minimum_version(8, 3))
-    {
-      (void)printf("      %4ld      %6ld   %6ld   %6ld %6ld    %3.2f   %6ld %6ld %6ld %6ld %6ld\n",
-        numbackends,
-        xact_commit - previous_pgstatdatabase->xact_commit,
-        xact_rollback - previous_pgstatdatabase->xact_rollback,
-        blks_read - previous_pgstatdatabase->blks_read,
-        blks_hit - previous_pgstatdatabase->blks_hit,
-        hit_ratio,
+      (void)printf("   %6ld %6ld %6ld %6ld %6ld",
         tup_returned - previous_pgstatdatabase->tup_returned,
         tup_fetched - previous_pgstatdatabase->tup_fetched,
         tup_inserted - previous_pgstatdatabase->tup_inserted,
@@ -1447,17 +1390,50 @@ print_pgstatdatabase()
         tup_deleted - previous_pgstatdatabase->tup_deleted
         );
     }
-    else
+    if ((opts->substat == NULL || strstr(opts->substat, "temp") != NULL) && backend_minimum_version(9, 2))
     {
-      (void)printf("      %4ld      %6ld   %6ld   %6ld %6ld    %3.2f\n",
-        numbackends,
-        xact_commit - previous_pgstatdatabase->xact_commit,
-        xact_rollback - previous_pgstatdatabase->xact_rollback,
-        blks_read - previous_pgstatdatabase->blks_read,
-        blks_hit - previous_pgstatdatabase->blks_hit,
-        hit_ratio
+      (void)printf("   %6ld %9ld",
+        temp_files - previous_pgstatdatabase->temp_files,
+        temp_bytes - previous_pgstatdatabase->temp_bytes
         );
     }
+    if ((opts->substat == NULL || strstr(opts->substat, "session") != NULL) && backend_minimum_version(14, 0))
+    {
+      (void)printf("     %8.2f    %8.2f %8.2f  %6ld    %6ld %6ld %6ld",
+        session_time - previous_pgstatdatabase->session_time,
+        active_time - previous_pgstatdatabase->active_time,
+        idle_in_transaction_time - previous_pgstatdatabase->idle_in_transaction_time,
+        sessions - previous_pgstatdatabase->sessions,
+        sessions_abandoned - previous_pgstatdatabase->sessions_abandoned,
+        sessions_fatal - previous_pgstatdatabase->sessions_fatal,
+        sessions_killed - previous_pgstatdatabase->sessions_killed
+        );
+    }
+    if ((opts->substat == NULL || strstr(opts->substat, "misc") != NULL) && backend_minimum_version(8, 4))
+    {
+      if (backend_minimum_version(9, 3))
+      {
+        (void)printf("   %9ld %9ld %9ld",
+          conflicts - previous_pgstatdatabase->conflicts,
+          deadlocks - previous_pgstatdatabase->deadlocks,
+          checksum_failures - previous_pgstatdatabase->checksum_failures
+          );
+      }
+      else if (backend_minimum_version(9, 2))
+      {
+        (void)printf("   %9ld %9ld",
+          conflicts - previous_pgstatdatabase->conflicts,
+          deadlocks - previous_pgstatdatabase->deadlocks
+          );
+      }
+      else
+      {
+        (void)printf("   %9ld",
+          conflicts - previous_pgstatdatabase->conflicts
+          );
+      }
+    }
+    (void)printf("\n");
 
     /* setting the new old value */
     previous_pgstatdatabase->xact_commit = xact_commit;
@@ -3685,6 +3661,9 @@ backend_minimum_version(int major, int minor)
 void
 print_header(void)
 {
+  char header1[1024] = "";
+  char header2[1024] = "";
+
   switch(opts->stat)
   {
     case NONE:
@@ -3719,36 +3698,63 @@ print_header(void)
       (void)printf(" - total - active - lockwaiting - idle in transaction - idle -\n");
       break;
     case DATABASE:
-      if (backend_minimum_version(14, 0))
+      if (opts->substat == NULL || strstr(opts->substat, "backends") != NULL)
       {
-        (void)printf("- backends - ------ xacts ------ -------------------- blocks --------------------- -------------- tuples -------------- ------ temp ------ ---------------------------- session ---------------------------- ------------ misc -------------\n");
-        (void)printf("                commit rollback     read    hit hit ratio  read_time   write_time      ret    fet    ins    upd    del    files     bytes     all_time active_time iit_time numbers abandoned  fatal killed   conflicts deadlocks checksums\n");
+        strcat(header1, "- backends -");
+        strcat(header2, "            ");
       }
-      else if (backend_minimum_version(12, 0))
+      if (opts->substat == NULL || strstr(opts->substat, "xacts") != NULL)
       {
-        (void)printf("- backends - ------ xacts ------ -------------------- blocks --------------------- -------------- tuples -------------- ------ temp ------ ------------ misc -------------\n");
-        (void)printf("                commit rollback     read    hit hit ratio  read_time   write_time      ret    fet    ins    upd    del    files     bytes   conflicts deadlocks checksums\n");
+        strcat(header1, " ------ xacts ------");
+        strcat(header2, "    commit rollback ");
       }
-      else if (backend_minimum_version(9, 2))
+      if (opts->substat == NULL || strstr(opts->substat, "blocks") != NULL)
       {
-        (void)printf("- backends - ------ xacts ------ -------------------- blocks --------------------- -------------- tuples -------------- ------ temp ------ --------- misc ---------\n");
-        (void)printf("                commit rollback     read    hit hit ratio  read_time   write_time      ret    fet    ins    upd    del    files     bytes     conflicts deadlocks\n");
+        if (backend_minimum_version(9, 0))
+        {
+          strcat(header1, " -------------------- blocks ---------------------");
+          strcat(header2, "    read    hit hit ratio  read_time   write_time ");
+        }
+        else
+        {
+          strcat(header1, " --------- blocks ---------");
+          strcat(header2, "    read    hit hit ratio");
+        }
       }
-      else if (backend_minimum_version(9, 1))
+      if ((opts->substat == NULL || strstr(opts->substat, "tuples") != NULL) && backend_minimum_version(9, 0))
       {
-        (void)printf("- backends - ------ xacts ------ --------- blocks -------- -------------- tuples -------------- --- misc ---\n");
-        (void)printf("                commit rollback     read    hit hit ratio      ret    fet    ins    upd    del    conflicts\n");
+        strcat(header1, " -------------- tuples --------------");
+        strcat(header2, "     ret    fet    ins    upd    del ");
       }
-      else if (backend_minimum_version(8, 3))
+      if ((opts->substat == NULL || strstr(opts->substat, "temp") != NULL) && backend_minimum_version(9, 2))
       {
-        (void)printf("- backends - ------ xacts ------ --------- blocks -------- -------------- tuples --------------\n");
-        (void)printf("                commit rollback     read    hit hit ratio      ret    fet    ins    upd    del\n");
+        strcat(header1, " ------ temp ------");
+        strcat(header2, "   files     bytes ");
       }
-      else
+      if ((opts->substat == NULL || strstr(opts->substat, "session") != NULL) && backend_minimum_version(14, 0))
       {
-        (void)printf("- backends - ------ xacts ------ --------- blocks --------\n");
-        (void)printf("                commit rollback     read    hit hit ratio\n");
+        strcat(header1, " ---------------------------- session ----------------------------");
+        strcat(header2, "    all_time active_time iit_time numbers abandoned  fatal killed ");
       }
+      if ((opts->substat == NULL || strstr(opts->substat, "misc") != NULL) && backend_minimum_version(8, 4))
+      {
+        if (backend_minimum_version(9, 3))
+        {
+          strcat(header1, " ------------ misc -------------");
+          strcat(header2, "  conflicts deadlocks checksums");
+        }
+        else if (backend_minimum_version(9, 2))
+        {
+          strcat(header1, " ------------ misc -------------");
+          strcat(header2, "  conflicts deadlocks checksums");
+        }
+        else
+        {
+          strcat(header1, " --- misc ---");
+          strcat(header2, "   conflicts");
+        }
+      }
+      (void)printf("%s\n%s\n", header1, header2);
       break;
     case TABLE:
       if (backend_minimum_version(16, 0))
