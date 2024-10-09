@@ -458,7 +458,7 @@ help(const char *progname)
        "  -n                     do not redisplay header\n"
        "  -s STAT                stats to collect\n"
        "  -S SUBSTAT             part of stats to display\n"
-       "                         (only works for database)\n"
+       "                         (only works for database and statement)\n"
        "  -v                     verbose\n"
        "  -?|--help              show this help, then exit\n"
        "  -V|--version           output version information, then exit\n"
@@ -2185,107 +2185,85 @@ print_pgstatstatement()
 
     /* printing the diff...
      * note that the first line will be the current value, rather than the diff */
-    if (backend_minimum_version(17, 0))
+    if ((opts->substat == NULL || strstr(opts->substat, "plan") != NULL) && backend_minimum_version(13, 0))
     {
-      (void)printf(" %6ld  %6.2f   %6ld    %6.2f %6ld   %6ld %6ld %6ld  %6ld   %6ld %6ld %6ld  %6ld  %6ld  %6ld      %6.2f       %6.2f    %6.2f      %6.2f   %6.2f      %6.2f        %6ld  %6ld    %6ld\n",
+      (void)printf(" %6ld  %6.2f",
         plans - previous_pgstatstatement->plans,
-        total_plan_time - previous_pgstatstatement->total_plan_time,
+        total_plan_time - previous_pgstatstatement->total_plan_time
+        );
+    }
+    if (opts->substat == NULL || strstr(opts->substat, "exec") != NULL)
+    {
+      (void)printf("   %6ld    %6.2f %6ld",
         calls - previous_pgstatstatement->calls,
         total_exec_time - previous_pgstatstatement->total_exec_time,
-        rows - previous_pgstatstatement->rows,
+        rows - previous_pgstatstatement->rows
+        );
+    }
+    if (opts->substat == NULL || strstr(opts->substat, "shared") != NULL)
+    {
+      (void)printf("   %6ld %6ld %6ld  %6ld",
         shared_blks_hit - previous_pgstatstatement->shared_blks_hit,
         shared_blks_read - previous_pgstatstatement->shared_blks_read,
         shared_blks_dirtied - previous_pgstatstatement->shared_blks_dirtied,
-        shared_blks_written - previous_pgstatstatement->shared_blks_written,
+        shared_blks_written - previous_pgstatstatement->shared_blks_written
+        );
+    }
+    if (opts->substat == NULL || strstr(opts->substat, "local") != NULL)
+    {
+      (void)printf("   %6ld %6ld %6ld  %6ld",
         local_blks_hit - previous_pgstatstatement->local_blks_hit,
         local_blks_read - previous_pgstatstatement->local_blks_read,
         local_blks_dirtied - previous_pgstatstatement->local_blks_dirtied,
-        local_blks_written - previous_pgstatstatement->local_blks_written,
+        local_blks_written - previous_pgstatstatement->local_blks_written
+        );
+    }
+    if (opts->substat == NULL || strstr(opts->substat, "temp") != NULL)
+    {
+      (void)printf("  %6ld  %6ld",
         temp_blks_read - previous_pgstatstatement->temp_blks_read,
-        temp_blks_written - previous_pgstatstatement->temp_blks_written,
-        shared_blk_read_time - previous_pgstatstatement->shared_blk_read_time,
-        shared_blk_write_time - previous_pgstatstatement->shared_blk_write_time,
-        local_blk_read_time - previous_pgstatstatement->shared_blk_read_time,
-        local_blk_write_time - previous_pgstatstatement->shared_blk_write_time,
-        temp_blk_read_time - previous_pgstatstatement->shared_blk_read_time,
-        temp_blk_write_time - previous_pgstatstatement->shared_blk_write_time,
+        temp_blks_written - previous_pgstatstatement->temp_blks_written
+        );
+    }
+    if (opts->substat == NULL || strstr(opts->substat, "time") != NULL)
+    {
+      if (backend_minimum_version(17, 0))
+      {
+        (void)printf("      %6.2f       %6.2f    %6.2f      %6.2f   %6.2f      %6.2f",
+          shared_blk_read_time - previous_pgstatstatement->shared_blk_read_time,
+          shared_blk_write_time - previous_pgstatstatement->shared_blk_write_time,
+          local_blk_read_time - previous_pgstatstatement->shared_blk_read_time,
+          local_blk_write_time - previous_pgstatstatement->shared_blk_write_time,
+          temp_blk_read_time - previous_pgstatstatement->shared_blk_read_time,
+          temp_blk_write_time - previous_pgstatstatement->shared_blk_write_time
+          );
+      }
+      else if (backend_minimum_version(16, 0))
+      {
+        (void)printf("       %6.2f    %6.2f     %6.2f     %6.2f",
+          shared_blk_read_time - previous_pgstatstatement->shared_blk_read_time,
+          shared_blk_write_time - previous_pgstatstatement->shared_blk_write_time,
+          temp_blk_read_time - previous_pgstatstatement->shared_blk_read_time,
+          temp_blk_write_time - previous_pgstatstatement->shared_blk_write_time
+          );
+      }
+      else if (backend_minimum_version(13, 0))
+      {
+        (void)printf("       %6.2f    %6.2f",
+          shared_blk_read_time - previous_pgstatstatement->shared_blk_read_time,
+          shared_blk_write_time - previous_pgstatstatement->shared_blk_write_time
+          );
+      }
+    }
+    if ((opts->substat == NULL || strstr(opts->substat, "wal") != NULL) && backend_minimum_version(13, 0))
+    {
+      (void)printf("          %6ld  %6ld    %6ld",
         wal_records - previous_pgstatstatement->wal_records,
         wal_fpi - previous_pgstatstatement->wal_fpi,
         wal_bytes - previous_pgstatstatement->wal_bytes
         );
     }
-    else if (backend_minimum_version(16, 0))
-    {
-      (void)printf(" %6ld  %6.2f   %6ld    %6.2f %6ld   %6ld %6ld %6ld  %6ld   %6ld %6ld %6ld  %6ld  %6ld  %6ld      %6.2f    %6.2f     %6.2f     %6.2f          %6ld  %6ld    %6ld\n",
-        plans - previous_pgstatstatement->plans,
-        total_plan_time - previous_pgstatstatement->total_plan_time,
-        calls - previous_pgstatstatement->calls,
-        total_exec_time - previous_pgstatstatement->total_exec_time,
-        rows - previous_pgstatstatement->rows,
-        shared_blks_hit - previous_pgstatstatement->shared_blks_hit,
-        shared_blks_read - previous_pgstatstatement->shared_blks_read,
-        shared_blks_dirtied - previous_pgstatstatement->shared_blks_dirtied,
-        shared_blks_written - previous_pgstatstatement->shared_blks_written,
-        local_blks_hit - previous_pgstatstatement->local_blks_hit,
-        local_blks_read - previous_pgstatstatement->local_blks_read,
-        local_blks_dirtied - previous_pgstatstatement->local_blks_dirtied,
-        local_blks_written - previous_pgstatstatement->local_blks_written,
-        temp_blks_read - previous_pgstatstatement->temp_blks_read,
-        temp_blks_written - previous_pgstatstatement->temp_blks_written,
-        shared_blk_read_time - previous_pgstatstatement->shared_blk_read_time,
-        shared_blk_write_time - previous_pgstatstatement->shared_blk_write_time,
-        temp_blk_read_time - previous_pgstatstatement->shared_blk_read_time,
-        temp_blk_write_time - previous_pgstatstatement->shared_blk_write_time,
-        wal_records - previous_pgstatstatement->wal_records,
-        wal_fpi - previous_pgstatstatement->wal_fpi,
-        wal_bytes - previous_pgstatstatement->wal_bytes
-        );
-    }
-    else if (backend_minimum_version(13, 0))
-    {
-      (void)printf(" %6ld  %6.2f   %6ld    %6.2f %6ld   %6ld %6ld %6ld  %6ld   %6ld %6ld %6ld  %6ld  %6ld  %6ld      %6.2f    %6.2f          %6ld  %6ld    %6ld\n",
-        plans - previous_pgstatstatement->plans,
-        total_plan_time - previous_pgstatstatement->total_plan_time,
-        calls - previous_pgstatstatement->calls,
-        total_exec_time - previous_pgstatstatement->total_exec_time,
-        rows - previous_pgstatstatement->rows,
-        shared_blks_hit - previous_pgstatstatement->shared_blks_hit,
-        shared_blks_read - previous_pgstatstatement->shared_blks_read,
-        shared_blks_dirtied - previous_pgstatstatement->shared_blks_dirtied,
-        shared_blks_written - previous_pgstatstatement->shared_blks_written,
-        local_blks_hit - previous_pgstatstatement->local_blks_hit,
-        local_blks_read - previous_pgstatstatement->local_blks_read,
-        local_blks_dirtied - previous_pgstatstatement->local_blks_dirtied,
-        local_blks_written - previous_pgstatstatement->local_blks_written,
-        temp_blks_read - previous_pgstatstatement->temp_blks_read,
-        temp_blks_written - previous_pgstatstatement->temp_blks_written,
-        shared_blk_read_time - previous_pgstatstatement->shared_blk_read_time,
-        shared_blk_write_time - previous_pgstatstatement->shared_blk_write_time,
-        wal_records - previous_pgstatstatement->wal_records,
-        wal_fpi - previous_pgstatstatement->wal_fpi,
-        wal_bytes - previous_pgstatstatement->wal_bytes
-        );
-    }
-    else
-    {
-      (void)printf(" %6ld    %6.2f %6ld   %6ld %6ld %6ld  %6ld   %6ld %6ld %6ld  %6ld  %6ld  %6ld      %6.2f    %6.2f\n",
-        calls - previous_pgstatstatement->calls,
-        total_exec_time - previous_pgstatstatement->total_exec_time,
-        rows - previous_pgstatstatement->rows,
-        shared_blks_hit - previous_pgstatstatement->shared_blks_hit,
-        shared_blks_read - previous_pgstatstatement->shared_blks_read,
-        shared_blks_dirtied - previous_pgstatstatement->shared_blks_dirtied,
-        shared_blks_written - previous_pgstatstatement->shared_blks_written,
-        local_blks_hit - previous_pgstatstatement->local_blks_hit,
-        local_blks_read - previous_pgstatstatement->local_blks_read,
-        local_blks_dirtied - previous_pgstatstatement->local_blks_dirtied,
-        local_blks_written - previous_pgstatstatement->local_blks_written,
-        temp_blks_read - previous_pgstatstatement->temp_blks_read,
-        temp_blks_written - previous_pgstatstatement->temp_blks_written,
-        shared_blk_read_time - previous_pgstatstatement->shared_blk_read_time,
-        shared_blk_write_time - previous_pgstatstatement->shared_blk_write_time
-        );
-    }
+    (void)printf("\n");
 
     /* setting the new old value */
     previous_pgstatstatement->plans = plans;
@@ -3661,8 +3639,8 @@ backend_minimum_version(int major, int minor)
 void
 print_header(void)
 {
-  char header1[1024] = "";
-  char header2[1024] = "";
+  char header1[PGSTAT_DEFAULT_STRING_SIZE] = "";
+  char header2[PGSTAT_DEFAULT_STRING_SIZE] = "";
 
   switch(opts->stat)
   {
@@ -3745,8 +3723,8 @@ print_header(void)
         }
         else if (backend_minimum_version(9, 2))
         {
-          strcat(header1, " ------------ misc -------------");
-          strcat(header2, "  conflicts deadlocks checksums");
+          strcat(header1, " ------- misc --------");
+          strcat(header2, "  conflicts deadlocks");
         }
         else
         {
@@ -3801,26 +3779,55 @@ print_header(void)
       (void)printf("             total     self\n");
       break;
     case STATEMENT:
-      if (backend_minimum_version(17, 0))
+      if ((opts->substat == NULL || strstr(opts->substat, "plan") != NULL) && backend_minimum_version(13, 0))
       {
-        (void)printf("----- plan ----- --------- exec ---------- ----------- shared ----------- ----------- local ----------- ----- temp ----- ------------------------------- time ------------------------------ -------------- wal --------------\n");
-        (void)printf("  plans    time    calls      time   rows      hit   read  dirty written      hit   read  dirty written    read written    shr read  shr written  loc read loc written tmp read tmp written   wal_records wal_fpi wal_bytes\n");
+        strcat(header1, "----- plan -----");
+        strcat(header2, "  plans    time ");
       }
-      else if (backend_minimum_version(16, 0))
+      if (opts->substat == NULL || strstr(opts->substat, "exec") != NULL)
       {
-        (void)printf("----- plan ----- --------- exec ---------- ----------- shared ----------- ----------- local ----------- ----- temp ----- ------------------- time -------------------- -------------- wal --------------\n");
-        (void)printf("  plans    time    calls      time   rows      hit   read  dirty written      hit   read  dirty written    read written        read   written    tmp read tmp written     wal_records wal_fpi wal_bytes\n");
+        strcat(header1, " --------- exec ----------");
+        strcat(header2, "   calls      time   rows ");
       }
-      else if (backend_minimum_version(13, 0))
+      if (opts->substat == NULL || strstr(opts->substat, "shared") != NULL)
       {
-        (void)printf("----- plan ----- --------- exec ---------- ----------- shared ----------- ----------- local ----------- ----- temp ----- -------- time -------- -------------- wal --------------\n");
-        (void)printf("  plans    time    calls      time   rows      hit   read  dirty written      hit   read  dirty written    read written        read   written     wal_records wal_fpi wal_bytes\n");
+        strcat(header1, " ----------- shared -----------");
+        strcat(header2, "     hit   read  dirty written ");
       }
-      else
+      if (opts->substat == NULL || strstr(opts->substat, "local") != NULL)
       {
-        (void)printf("--------- exec ---------- ----------- shared ----------- ----------- local ----------- ----- temp ----- -------- time --------\n");
-        (void)printf("  calls      time   rows      hit   read  dirty written      hit   read  dirty written    read written        read   written\n");
+        strcat(header1, "  ----------- local -----------");
+        strcat(header2, "     hit   read  dirty written ");
       }
+      if (opts->substat == NULL || strstr(opts->substat, "temp") != NULL)
+      {
+        strcat(header1, " ----- temp -----");
+        strcat(header2, "   read written  ");
+      }
+      if (opts->substat == NULL || strstr(opts->substat, "time") != NULL)
+      {
+        if (backend_minimum_version(17, 0))
+        {
+          strcat(header1, " ------------------------------- time ------------------------------");
+          strcat(header2, "  shr read  shr written  loc read loc written tmp read tmp written  ");
+        }
+        else if (backend_minimum_version(16, 0))
+        {
+          strcat(header1, " ------------------- time --------------------");
+          strcat(header2, "       read   written    tmp read tmp written ");
+        }
+        else if (backend_minimum_version(13, 0))
+        {
+          strcat(header1, " -------- time --------");
+          strcat(header2, "       read   written  ");
+        }
+      }
+      if ((opts->substat == NULL || strstr(opts->substat, "wal") != NULL) && backend_minimum_version(13, 0))
+      {
+        strcat(header1, " -------------- wal --------------");
+        strcat(header2, "   wal_records wal_fpi wal_bytes");
+      }
+      (void)printf("%s\n%s\n", header1, header2);
       break;
     case SLRU:
       (void)printf("  zeroed  hit     read    written  exists  flushes  truncates\n");
