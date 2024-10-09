@@ -232,6 +232,28 @@ $ pgstat -s statement -d b2
 pgstat: Cannot find the pg_stat_statements extension.
 ```
 
+You can filter by group of columns. That only works for the biggest stats, meaning database and statement. For example :
+
+```
+$ ./pgstat -s database -S backends,tuples
+- backends - -------------- tuples --------------
+                 ret    fet    ins    upd    del
+         1   32167008 7201488 24524575    433   1357
+         1         0      0      0      0      0
+         1       162    154      0      0      0
+         1         4      0      0      0      0
+         1       897     18      0      0      0
+         1         4      0      0      0      0
+
+$ ./pgstat -s statement -S exec,wal
+ --------- exec ---------- -------------- wal --------------
+   calls      time   rows    wal_records wal_fpi wal_bytes
+      96     11.37     96              2       2      6882
+       1      0.20      1              0       0         0
+       1      0.16      1              0       0         0
+       1      0.28      1              0       0         0
+```
+
 One of my customers had a lot of writes on their databases, and I wanted to
 know how much writes occured in the WAL files. vmstat would only tell me how
 much writes on all files, but I was only interested in WAL writes. So I added
