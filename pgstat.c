@@ -1361,26 +1361,20 @@ print_pgstatdatabase()
     }
     if (opts->substat == NULL || strstr(opts->substat, "blocks") != NULL)
     {
-      if (backend_minimum_version(9, 0))
+      (void)printf("   %6ld %6ld    %3.2f",
+        blks_read - previous_pgstatdatabase->blks_read,
+        blks_hit - previous_pgstatdatabase->blks_hit,
+        hit_ratio
+        );
+      if (backend_minimum_version(9, 2))
       {
-        (void)printf("   %6ld %6ld    %3.2f      %5.2f        %5.2f",
-          blks_read - previous_pgstatdatabase->blks_read,
-          blks_hit - previous_pgstatdatabase->blks_hit,
-          hit_ratio,
+        (void)printf("      %5.2f        %5.2f",
           blk_read_time - previous_pgstatdatabase->blk_read_time,
           blk_write_time - previous_pgstatdatabase->blk_write_time
           );
       }
-      else
-      {
-        (void)printf("   %6ld %6ld    %3.2f",
-          blks_read - previous_pgstatdatabase->blks_read,
-          blks_hit - previous_pgstatdatabase->blks_hit,
-          hit_ratio
-          );
-      }
     }
-    if ((opts->substat == NULL || strstr(opts->substat, "tuples") != NULL) && backend_minimum_version(9, 0))
+    if ((opts->substat == NULL || strstr(opts->substat, "tuples") != NULL) && backend_minimum_version(8, 3))
     {
       (void)printf("   %6ld %6ld %6ld %6ld %6ld",
         tup_returned - previous_pgstatdatabase->tup_returned,
@@ -1409,27 +1403,24 @@ print_pgstatdatabase()
         sessions_killed - previous_pgstatdatabase->sessions_killed
         );
     }
-    if ((opts->substat == NULL || strstr(opts->substat, "misc") != NULL) && backend_minimum_version(8, 4))
+    if ((opts->substat == NULL || strstr(opts->substat, "misc") != NULL) && backend_minimum_version(9, 1))
     {
-      if (backend_minimum_version(9, 3))
-      {
-        (void)printf("   %9ld %9ld %9ld",
-          conflicts - previous_pgstatdatabase->conflicts,
-          deadlocks - previous_pgstatdatabase->deadlocks,
-          checksum_failures - previous_pgstatdatabase->checksum_failures
-          );
-      }
-      else if (backend_minimum_version(9, 2))
-      {
-        (void)printf("   %9ld %9ld",
-          conflicts - previous_pgstatdatabase->conflicts,
-          deadlocks - previous_pgstatdatabase->deadlocks
-          );
-      }
-      else
+      if (backend_minimum_version(9, 1))
       {
         (void)printf("   %9ld",
           conflicts - previous_pgstatdatabase->conflicts
+          );
+      }
+      if (backend_minimum_version(9, 2))
+      {
+        (void)printf(" %9ld",
+          deadlocks - previous_pgstatdatabase->deadlocks
+          );
+      }
+      if (backend_minimum_version(12, 0))
+      {
+        (void)printf(" %9ld",
+          checksum_failures - previous_pgstatdatabase->checksum_failures
           );
       }
     }
@@ -3699,7 +3690,7 @@ print_header(void)
           strcat(header2, "    read    hit hit ratio");
         }
       }
-      if ((opts->substat == NULL || strstr(opts->substat, "tuples") != NULL) && backend_minimum_version(9, 0))
+      if ((opts->substat == NULL || strstr(opts->substat, "tuples") != NULL) && backend_minimum_version(8, 3))
       {
         strcat(header1, " -------------- tuples --------------");
         strcat(header2, "     ret    fet    ins    upd    del ");
@@ -3716,7 +3707,7 @@ print_header(void)
       }
       if ((opts->substat == NULL || strstr(opts->substat, "misc") != NULL) && backend_minimum_version(8, 4))
       {
-        if (backend_minimum_version(9, 3))
+        if (backend_minimum_version(12, 0))
         {
           strcat(header1, " ------------ misc -------------");
           strcat(header2, "  conflicts deadlocks checksums");
