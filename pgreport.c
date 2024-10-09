@@ -16,7 +16,7 @@
 #include "postgres_fe.h"
 #include "common/logging.h"
 #include "fe_utils/connect_utils.h"
-#include "fe_utils/print.h"
+#include "libpq/pqsignal.h"
 
 
 /*
@@ -44,12 +44,6 @@ struct options
   char *script;
   bool verbose;
 
-  /* connection parameters */
-  char *dbname;
-  char *hostname;
-  char *port;
-  char *username;
-
   /* version number */
   int  major;
   int  minor;
@@ -59,15 +53,15 @@ struct options
 /*
  * Global variables
  */
-PGconn         *conn;
 struct options *opts;
 extern char    *optarg;
+const char *progname;
 
 
 /*
  * Function prototypes
  */
-static void help(const char *progname);
+static void help();
 void        get_opts(int, char **);
 #ifndef FE_MEMUTILS_H
 void        *pg_malloc(size_t size);
@@ -90,7 +84,7 @@ static void quit_properly(SIGNAL_ARGS);
  * Print help message
  */
 static void
-help(const char *progname)
+help()
 {
   printf("%s gets lots of informations from PostgreSQL metadata and statistics.\n\n"
        "Usage:\n"
@@ -100,11 +94,6 @@ help(const char *progname)
        "  -v            verbose\n"
        "  -?|--help     show this help, then exit\n"
        "  -V|--version  output version information, then exit\n"
-       "\nConnection options:\n"
-       "  -h HOSTNAME   database server host or socket directory\n"
-       "  -p PORT       database server port number\n"
-       "  -U USER       connect as specified database user\n"
-       "  -d DBNAME     database to connect to\n\n"
        "Report bugs to <guillaume@lelarge.info>.\n",
        progname, progname);
 }
@@ -117,24 +106,17 @@ void
 get_opts(int argc, char **argv)
 {
   int        c;
-  const char *progname;
-
-  progname = get_progname(argv[0]);
 
   /* set the defaults */
   opts->script = NULL;
   opts->verbose = false;
-  opts->dbname = NULL;
-  opts->hostname = NULL;
-  opts->port = NULL;
-  opts->username = NULL;
 
   /* we should deal quickly with help and version */
   if (argc > 1)
   {
     if (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-?") == 0)
     {
-      help(progname);
+      help();
       exit(0);
     }
     if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0)
@@ -145,34 +127,14 @@ get_opts(int argc, char **argv)
   }
 
   /* get options */
-  while ((c = getopt(argc, argv, "h:p:U:d:vs:")) != -1)
+  while ((c = getopt(argc, argv, "vs:")) != -1)
   {
     switch (c)
     {
-        /* specify the database */
-      case 'd':
-        opts->dbname = pg_strdup(optarg);
-        break;
-
-        /* host to connect to */
-      case 'h':
-        opts->hostname = pg_strdup(optarg);
-        break;
-
-        /* port to connect to on remote host */
-      case 'p':
-        opts->port = pg_strdup(optarg);
-        break;
-
         /* get script */
       case 's':
         opts->script = pg_strdup(optarg);
         sscanf(opts->script, "%d.%d", &(opts->major), &(opts->minor));
-        break;
-
-        /* username */
-      case 'U':
-        opts->username = pg_strdup(optarg);
         break;
 
         /* get verbose */
@@ -186,18 +148,9 @@ get_opts(int argc, char **argv)
     }
   }
 
-  /* set dbname if unset */
-  if (opts->dbname == NULL)
+  if (opts->script == NULL)
   {
-    /*
-     * We want to use dbname for possible error reports later,
-     * and in case someone has set and is using PGDATABASE
-     * in its environment, preserve that name for later usage
-     */
-    if (!getenv("PGDATABASE"))
-      opts->dbname = "postgres";
-    else
-      opts->dbname = getenv("PGDATABASE");
+    opts->script = "17";
   }
 }
 
@@ -263,32 +216,8 @@ backend_minimum_version(int major, int minor)
 void
 execute(char *query)
 {
-  PGresult *results;
-
-  if (opts->script)
-  {
     printf("%s;\n", query);
-  }
-  else
-  {
-    /* make the call */
-    results = PQexec(conn, query);
-
-    /* check and deal with errors */
-    if (!results)
-    {
-      pg_log_error("query failed: %s", PQerrorMessage(conn));
-      pg_log_info("query was: %s", query);
-      PQclear(results);
-      PQfinish(conn);
-      exit(EXIT_FAILURE);
-    }
-
-    /* cleanup */
-    PQclear(results);
-  }
 }
-
 
 /*
  * Install extension
@@ -296,63 +225,7 @@ execute(char *query)
 void
 install_extension(char *extension)
 {
-  char     check_sql[PGREPORT_DEFAULT_STRING_SIZE],
-           install_sql[PGREPORT_DEFAULT_STRING_SIZE];
-  PGresult *check_res, *install_res;
-
-  if (opts->script)
-  {
-    printf("CREATE EXTENSION IF NOT EXISTS %s;\n", extension);
-  }
-  else
-  {
-    /* check if extension is already installed */
-    snprintf(check_sql, sizeof(check_sql),
-      "SELECT 1 "
-      "FROM pg_available_extensions "
-      "WHERE name='%s' "
-      "  AND installed_version IS NOT NULL",
-      extension);
-
-    /* make the call */
-    check_res = PQexec(conn, check_sql);
-
-    /* check and deal with errors */
-    if (!check_res || PQresultStatus(check_res) > 2)
-    {
-      pg_log_error("query failed: %s", PQerrorMessage(conn));
-      pg_log_info("query was: %s", check_sql);
-      PQclear(check_res);
-      PQfinish(conn);
-      exit(EXIT_FAILURE);
-    }
-
-    if (PQntuples(check_res) == 0)
-    {
-      /* check if extension is already installed */
-      snprintf(install_sql, sizeof(install_sql),
-          "create extension %s",
-           extension);
-
-      /* make the call */
-      install_res = PQexec(conn, install_sql);
-
-      /* install and deal with errors */
-      if (!install_res || PQresultStatus(install_res) > 2)
-      {
-        pg_log_error("query failed: %s", PQerrorMessage(conn));
-        pg_log_info("query was: %s", install_sql);
-        PQclear(install_res);
-        PQfinish(conn);
-        exit(EXIT_FAILURE);
-      }
-      /* cleanup */
-      PQclear(install_res);
-    }
-
-    /* cleanup */
-    PQclear(check_res);
-  }
+  printf("CREATE EXTENSION IF NOT EXISTS %s;\n", extension);
 }
 
 
@@ -362,44 +235,8 @@ install_extension(char *extension)
 void
 fetch_version()
 {
-  char     sql[PGREPORT_DEFAULT_STRING_SIZE];
-  PGresult *res;
-
-  if (opts->script)
-  {
-    printf("\\echo PostgreSQL version\n");
-    printf("SELECT version();\n");
-  }
-  else
-  {
-    /* get the cluster version */
-    snprintf(sql, sizeof(sql), "SELECT version()");
-
-    /* make the call */
-    res = PQexec(conn, sql);
-
-    /* check and deal with errors */
-    if (!res || PQresultStatus(res) > 2)
-    {
-      pg_log_error("query failed: %s", PQerrorMessage(conn));
-      pg_log_info("query was: %s", sql);
-      PQclear(res);
-      PQfinish(conn);
-      exit(EXIT_FAILURE);
-    }
-
-    /* get the only row, and parse it to get major and minor numbers */
-    sscanf(PQgetvalue(res, 0, 0), "%*s %d.%d", &(opts->major), &(opts->minor));
-
-    /* print version */
-    if (opts->verbose)
-      printf("Detected release: %d.%d\n", opts->major, opts->minor);
-
-    printf("PostgreSQL version: %s\n", PQgetvalue(res, 0, 0));
-
-    /* cleanup */
-    PQclear(res);
-  }
+  printf("\\echo PostgreSQL version\n");
+  printf("SELECT version();\n");
 }
 
 
@@ -409,37 +246,8 @@ fetch_version()
 void
 fetch_postmaster_reloadconftime()
 {
-  char     sql[PGREPORT_DEFAULT_STRING_SIZE];
-  PGresult *res;
-
-  if (opts->script)
-  {
-    printf("\\echo PostgreSQL reload conf time\n");
-    printf("SELECT pg_conf_load_time();\n");
-  }
-  else
-  {
-    /* get the cluster version */
-    snprintf(sql, sizeof(sql), "SELECT pg_conf_load_time()");
-
-    /* make the call */
-    res = PQexec(conn, sql);
-
-    /* check and deal with errors */
-    if (!res || PQresultStatus(res) > 2)
-    {
-      pg_log_error("query failed: %s", PQerrorMessage(conn));
-      pg_log_info("query was: %s", sql);
-      PQclear(res);
-      PQfinish(conn);
-      exit(EXIT_FAILURE);
-    }
-
-    printf("PostgreSQL reload conf time: %s\n", PQgetvalue(res, 0, 0));
-
-    /* cleanup */
-    PQclear(res);
-  }
+  printf("\\echo PostgreSQL reload conf time\n");
+  printf("SELECT pg_conf_load_time();\n");
 }
 
 
@@ -449,37 +257,8 @@ fetch_postmaster_reloadconftime()
 void
 fetch_postmaster_starttime()
 {
-  char     sql[PGREPORT_DEFAULT_STRING_SIZE];
-  PGresult *res;
-
-  if (opts->script)
-  {
-    printf("\\echo PostgreSQL start time\n");
-    printf("SELECT pg_postmaster_start_time();\n");
-  }
-  else
-  {
-    /* get the cluster version */
-    snprintf(sql, sizeof(sql), "SELECT pg_postmaster_start_time()");
-
-    /* make the call */
-    res = PQexec(conn, sql);
-
-    /* check and deal with errors */
-    if (!res || PQresultStatus(res) > 2)
-    {
-      pg_log_error("query failed: %s", PQerrorMessage(conn));
-      pg_log_info("query was: %s", sql);
-      PQclear(res);
-      PQfinish(conn);
-      exit(EXIT_FAILURE);
-    }
-
-    printf ("PostgreSQL start time: %s\n", PQgetvalue(res, 0, 0));
-
-    /* cleanup */
-    PQclear(res);
-  }
+  printf("\\echo PostgreSQL start time\n");
+  printf("SELECT pg_postmaster_start_time();\n");
 }
 
 
@@ -489,161 +268,8 @@ fetch_postmaster_starttime()
 void
 fetch_table(char *label, char *query)
 {
-  PGresult      *res;
-  printQueryOpt myopt;
-
-  if (opts->script)
-  {
-    printf("\\echo %s\n",label);
-    printf("%s;\n",query);
-  }
-  else
-  {
-    myopt.nullPrint = NULL;
-    myopt.title = pstrdup(label);
-    myopt.translate_header = false;
-    myopt.n_translate_columns = 0;
-    myopt.translate_columns = NULL;
-    myopt.footers = NULL;
-    myopt.topt.format = PRINT_ALIGNED;
-    myopt.topt.expanded = 0;
-    myopt.topt.border = 2;
-    myopt.topt.pager = 0;
-    myopt.topt.tuples_only = false;
-    myopt.topt.start_table = true;
-    myopt.topt.stop_table = true;
-    myopt.topt.default_footer = false;
-    myopt.topt.line_style = NULL;
-    //myopt.topt.fieldSep = NULL;
-    //myopt.topt.recordSep = NULL;
-    myopt.topt.numericLocale = false;
-    myopt.topt.tableAttr = NULL;
-    myopt.topt.encoding = PQenv2encoding();
-    myopt.topt.env_columns = 0;
-    //myopt.topt.columns = 3;
-    myopt.topt.unicode_border_linestyle = UNICODE_LINESTYLE_SINGLE;
-    myopt.topt.unicode_column_linestyle = UNICODE_LINESTYLE_SINGLE;
-    myopt.topt.unicode_header_linestyle = UNICODE_LINESTYLE_SINGLE;
-
-    /* execute it */
-    res = PQexec(conn, query);
-
-    /* check and deal with errors */
-    if (!res || PQresultStatus(res) > 2)
-    {
-      pg_log_error("query failed: %s", PQerrorMessage(conn));
-      pg_log_info("query was: %s", query);
-      PQclear(res);
-      PQfinish(conn);
-      exit(EXIT_FAILURE);
-    }
-
-    /* print results */
-    printQuery(res, &myopt, stdout, false, NULL);
-
-    /* cleanup */
-    PQclear(res);
-  }
-}
-
-
-void
-fetch_kernelconfig(char *cfg)
-{
-  char *filename;
-
-  filename = pg_malloc(strlen("/proc/sys/vm/")+strlen(cfg));
-  sprintf(filename, "/proc/sys/vm/%s", cfg);
-  printf("%s : ", cfg);
-  fetch_file(filename);
-  printf("\n");
-  pg_free(filename);
-}
-
-
-void
-fetch_file(char *filename)
-{
-  FILE *fp;
-  char ch;
-
-  fp = fopen(filename, "r"); // read mode
-
-  if (fp == NULL)
-  {
-    perror("Error while opening the file.\n");
-    exit(EXIT_FAILURE);
-  }
-
-  while((ch = fgetc(fp)) != EOF)
-  {
-    printf("%c", ch);
-  }
-
-  fclose(fp);
-}
-
-
-void
-exec_command(char *cmd)
-{
-  int     filedes[2];
-  pid_t   pid;
-  char    *buffer;
-  ssize_t count;
-
-  if (pipe(filedes) == -1)
-  {
-    perror("pipe");
-    exit(EXIT_FAILURE);
-  }
-
-  pid = fork();
-  if (pid == -1)
-  {
-    perror("fork");
-    exit(EXIT_FAILURE);
-  }
-  else if (pid == 0)
-  {
-    while ((dup2(filedes[1], STDOUT_FILENO) == -1) && (errno == EINTR)) {}
-    close(filedes[1]);
-    close(filedes[0]);
-    execl(cmd, cmd, (char*)0);
-    perror("execl");
-    _exit(EXIT_FAILURE);
-  }
-  close(filedes[1]);
-
-  buffer = (char *) pg_malloc(1);
-
-  while (1)
-  {
-    count = read(filedes[0], buffer, sizeof(buffer));
-    if (count == -1)
-    {
-      if (errno == EINTR)
-      {
-        continue;
-      }
-      else
-      {
-        perror("read");
-        exit(EXIT_FAILURE);
-      }
-    }
-    else if (count == 0)
-    {
-      break;
-    }
-    else
-    {
-      printf("%s", buffer);
-    }
-  }
-  close(filedes[0]);
-
-  pg_free(buffer);
+  printf("\\echo %s\n",label);
+  printf("%s;\n",query);
 }
 
 
@@ -653,7 +279,6 @@ exec_command(char *cmd)
 static void
 quit_properly(SIGNAL_ARGS)
 {
-  PQfinish(conn);
   exit(EXIT_FAILURE);
 }
 
@@ -664,8 +289,6 @@ quit_properly(SIGNAL_ARGS)
 int
 main(int argc, char **argv)
 {
-  const char *progname;
-  ConnParams cparams;
   char       sql[10240];
 
   /*
@@ -686,29 +309,13 @@ main(int argc, char **argv)
   /* Parse the options */
   get_opts(argc, argv);
 
-  if (opts->script)
-  {
-    printf("\\echo =================================================================================\n");
-    printf("\\echo == pgreport SQL script for a %s release =========================================\n", opts->script);
-    printf("\\echo =================================================================================\n");
-    printf("SET application_name to 'pgreport';\n");
-  }
-  else
-  {
-    /* Set the connection struct */
-    cparams.pghost = opts->hostname;
-    cparams.pgport = opts->port;
-    cparams.pguser = opts->username;
-    cparams.dbname = opts->dbname;
-    cparams.prompt_password = TRI_DEFAULT;
-    cparams.override_dbname = NULL;
-
-    /* Connect to the database */
-    conn = connectDatabase(&cparams, progname, false, false, false);
-  }
+  printf("\\echo =================================================================================\n");
+  printf("\\echo == pgreport SQL script for a %s release =========================================\n", opts->script);
+  printf("\\echo =================================================================================\n");
+  printf("SET application_name to 'pgreport';\n");
 
   /* Fetch version */
-  printf("%s# PostgreSQL Version\n\n", opts->script ? "\\echo " : "");
+  printf("\\echo # PostgreSQL Version\n\n");
   fetch_version();
   printf("\n");
 
@@ -734,17 +341,17 @@ main(int argc, char **argv)
   }
 
   /* Fetch postmaster start time */
-  printf("%s# PostgreSQL Start time\n\n", opts->script ? "\\echo " : "");
+  printf("\\echo # PostgreSQL Start time\n\n");
   fetch_postmaster_starttime();
   printf("\n");
 
   /* Fetch reload conf time */
-  printf("%s# PostgreSQL Reload conf time\n\n", opts->script ? "\\echo " : "");
+  printf("\\echo # PostgreSQL Reload conf time\n\n");
   fetch_postmaster_reloadconftime();
   printf("\n");
 
   /* Fetch settings by various ways */
-  printf("%s# PostgreSQL Configuration\n\n", opts->script ? "\\echo " : "");
+  printf("\\echo # PostgreSQL Configuration\n\n");
   fetch_table(SETTINGS_BY_SOURCEFILE_TITLE, SETTINGS_BY_SOURCEFILE_SQL);
   fetch_table(SETTINGS_NOTCONFIGFILE_NOTDEFAULTVALUE_TITLE,
         SETTINGS_NOTCONFIGFILE_NOTDEFAULTVALUE_SQL);
@@ -763,7 +370,7 @@ main(int argc, char **argv)
   fetch_table(PGSETTINGS_TITLE, PGSETTINGS_SQL);
 
   /* Fetch global objects */
-  printf("%s# Global objects\n\n", opts->script ? "\\echo " : "");
+  printf("\\echo # Global objects\n\n");
   fetch_table(CLUSTER_HITRATIO_TITLE, CLUSTER_HITRATIO_SQL);
   fetch_table(CLUSTER_BUFFERSUSAGE_TITLE, CLUSTER_BUFFERSUSAGE_SQL);
   fetch_table(CLUSTER_BUFFERSUSAGEDIRTY_TITLE, CLUSTER_BUFFERSUSAGEDIRTY_SQL);
@@ -775,7 +382,15 @@ main(int argc, char **argv)
   fetch_table(DATABASEUSER_CONFIG_TITLE, DATABASEUSER_CONFIG_SQL);
 
   /* Fetch local objects of the current database */
-  printf("%s# Local objects in database %s\n\n", opts->script ? "\\echo " : "", opts->dbname);
+  if (backend_minimum_version(9,3))
+  {
+    printf("SELECT current_database() AS db \\gset");
+    printf("\\echo # Local objects in database :'db'\n\n");
+  }
+  else
+  {
+    printf("\\echo # Local objects in current database\n\n");
+  }
   fetch_table(SCHEMAS_TITLE, SCHEMAS_SQL);
   fetch_table(NBRELS_IN_SCHEMA_TITLE, NBRELS_IN_SCHEMA_SQL);
   if (backend_minimum_version(11,0))
@@ -836,12 +451,6 @@ main(int argc, char **argv)
    * Actually, it drops our schema, which should get rid of all our stuff
    */
   execute(DROP_ALL);
-
-  if (opts->script)
-  {
-    /* Drop the function */
-    PQfinish(conn);
-  }
 
   pg_free(opts);
 

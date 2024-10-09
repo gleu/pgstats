@@ -25,7 +25,7 @@ Requirements
 ------------
 
 To compile these tools, you will need the libpq library (.so), the libpgcommon,
-libpgport, and libpgfeutils libraries (.a), the PostgreSQL 14+ header files, and
+and libpgport libraries (.a), the PostgreSQL 14+ header files, and
 the pg_config tool. The header files and the tool are usually available in a
 -dev package.
 
