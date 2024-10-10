@@ -32,11 +32,22 @@
 #define PGSTAT_DEFAULT_LINES 20
 #define PGSTAT_DEFAULT_STRING_SIZE 1024
 #define PGSTAT_OLDEST_STAT_RESET "0001-01-01"
+#define half_rounded(x)   (((x) + ((x) < 0 ? -1 : 1)) / 2)
 
 
 /*
  * Structs and enums
  */
+
+/* units enum */
+typedef enum
+{
+  NO_UNIT = 0,
+  ALL_UNIT,
+  SIZE_UNIT
+} unit_t;
+
+/* stats enum */
 typedef enum
 {
   NONE = 0,
@@ -96,6 +107,23 @@ struct options
   /* frequency */
   int    interval;
   int    count;
+};
+
+/* structs for pretty printing */
+struct size_pretty_unit
+{
+  const char *name;
+  long        limit;
+  bool        round;
+  long        unitbits;
+};
+
+struct nosize_pretty_unit
+{
+  const char *name;
+  long        limit;
+  bool        round;
+  long        divider;
 };
 
 /* pg_stat_archiver struct */
@@ -329,6 +357,13 @@ struct pgstatwal
   char  *stats_reset;
 };
 
+/* deadlivestats struct */
+struct deadlivestats
+{
+  long live;
+  long dead;
+};
+
 /* repslots struct */
 /* TODO : there is a lot of other informations, might want to check them */
 struct repslots
@@ -343,13 +378,6 @@ struct xlogstats
 {
   char *location;
   long locationdiff;
-};
-
-/* deadlivestats struct */
-struct deadlivestats
-{
-  long live;
-  long dead;
 };
 
 /* pgBouncer stats struct */
@@ -391,6 +419,25 @@ struct pgbouncerstats      *previous_pgbouncerstats;
 int                        hdrcnt = 0;
 volatile sig_atomic_t      wresized;
 static int                 winlines = PGSTAT_DEFAULT_LINES;
+static const struct        size_pretty_unit size_pretty_units[] = {
+  {" b", 10 * 1024, false, 0},
+  {"kB", 20 * 1024 - 1, true, 10},
+  {"MB", 20 * 1024 - 1, true, 20},
+  {"GB", 20 * 1024 - 1, true, 30},
+  {"TB", 20 * 1024 - 1, true, 40},
+  {"PB", 20 * 1024 - 1, true, 50},
+  {NULL, 0, false, 0}
+};
+static const struct        nosize_pretty_unit nosize_pretty_units[] = {
+  {" ", 10 * 1000, false, 1000},
+  {"k", 20 * 1000 - 1, true, 1000},
+  {"M", 20 * 1000 - 1, true, 1000},
+  {"G", 20 * 1000 - 1, true, 1000},
+  {"T", 20 * 1000 - 1, true, 1000},
+  {"P", 20 * 1000 - 1, true, 1000},
+  {NULL, 0, false, 0}
+};
+
 
 /*
  * Function prototypes
@@ -401,6 +448,10 @@ void        get_opts(int, char **);
 void        *pg_malloc(size_t size);
 char        *pg_strdup(const char *in);
 #endif
+char        *pg_size_pretty(long long size);
+char        *pg_nosize_pretty(long long size);
+void        format(char *r, long long value, long length, unit_t SIZE_UNIT);
+void        format_time(char *r, float value, long length);
 void        print_pgstatarchiver(void);
 void        print_pgstatbgwriter(void);
 void        print_pgstatcheckpointer(void);
@@ -419,12 +470,12 @@ void        print_pgstatprogresscluster(void);
 void        print_pgstatprogresscopy(void);
 void        print_pgstatprogresscreateindex(void);
 void        print_pgstatprogressvacuum(void);
+void        print_pgstatwaitevent(void);
 void        print_buffercache(void);
-void        print_xlogstats(void);
 void        print_deadlivestats(void);
 void        print_repslotsstats(void);
 void        print_tempfilestats(void);
-void        print_pgstatwaitevent(void);
+void        print_xlogstats(void);
 void        print_pgbouncerpools(void);
 void        print_pgbouncerstats(void);
 void        fetch_version(void);
@@ -814,6 +865,131 @@ pg_strdup(const char *in)
 #endif
 
 /*
+ * Display metrics with a size unit
+ */
+char *pg_size_pretty(long long size)
+{
+  char    *buf;
+  const struct size_pretty_unit *SIZE_UNIT;
+
+  buf = malloc( sizeof(char) * (64+1));
+
+  for (SIZE_UNIT = size_pretty_units; SIZE_UNIT->name != NULL; SIZE_UNIT++)
+  {
+    long      bits;
+    long long abs_size = size < 0 ? 0 - size : size;
+
+    if (SIZE_UNIT[1].name == NULL || abs_size < SIZE_UNIT->limit)
+    {
+      if (SIZE_UNIT->round)
+        size = half_rounded(size);
+
+      snprintf(buf, sizeof(buf), "%lld %s", size, SIZE_UNIT->name);
+      break;
+    }
+
+    bits = (SIZE_UNIT[1].unitbits - SIZE_UNIT->unitbits - (SIZE_UNIT[1].round == true)
+        + (SIZE_UNIT->round == true));
+    size /= 1 << bits;
+  }
+
+  return(buf);
+}
+
+/*
+ * Display metrics with a unit
+ */
+char *pg_nosize_pretty(long long size)
+{
+  char    *buf;
+  const struct nosize_pretty_unit *SIZE_UNIT;
+
+
+  buf = malloc( sizeof(char) * (64+1));
+
+  for (SIZE_UNIT = nosize_pretty_units; SIZE_UNIT->name != NULL; SIZE_UNIT++)
+  {
+    if (SIZE_UNIT[1].name == NULL || size < SIZE_UNIT->limit)
+    {
+      snprintf(buf, sizeof(buf), "%lld %s", size, SIZE_UNIT->name);
+      break;
+    }
+    size = size / SIZE_UNIT->divider;
+  }
+
+  return(buf);
+}
+
+/*
+ * Format a long long value as a string
+ */
+void format(char *r, long long value, long length, unit_t unit)
+{
+  char v[64] = "";
+
+  // check if pretty print
+  if (unit == NO_UNIT)
+  {
+    sprintf(v, "%lld", value);
+  }
+  else
+  {
+    long long abs_value = value < 0 ? 0 - value : value;
+    sprintf(v, "%s%s",
+      value < 0    ? "-":"",
+      unit == SIZE_UNIT ? pg_size_pretty(abs_value) : pg_nosize_pretty(abs_value)
+      );
+  }
+
+  // check for overflow
+  if (length < strlen(v))
+  {
+    // Overflow!
+    sprintf(v, "!OF!");
+  }
+
+  // initialize with empty string
+  strcpy(r, "");
+
+  // add spaces
+  for(long i=0; i<length-strlen(v); i++)
+    strcat(r, " ");
+
+  // add value
+  strcat(r, v);
+}
+
+/*
+ * Format a duration value as a string
+ */
+void format_time(char *r, float value, long length)
+{
+  long value_int;
+  char v[64] = "";
+
+  // format the value
+  value_int = value*100;
+  sprintf(v, "%ld.%d", value_int/100, abs(value_int)%100);
+
+  // check for overflow
+  if (length < strlen(v))
+  {
+    // Overflow!
+    sprintf(v, "!OF!");
+  }
+
+  // allocate the string
+  strcpy(r, "");
+
+  // add spaces
+  for(long i=0; i<length-strlen(v); i++)
+    strcat(r, " ");
+
+  // add value
+  strcat(r, v);
+}
+
+/*
  * Dump all archiver stats.
  */
 void
@@ -828,6 +1004,9 @@ print_pgstatarchiver()
   long     failed_count;
   char     *stats_reset;
   bool     has_been_reset;
+
+  char *r_archived_count = (char *)malloc(sizeof(char) * (8 + 1));
+  char *r_failed_count = (char *)malloc(sizeof(char) * (8 + 1));
 
   /* grab the stats (this is the only stats on one line) */
   snprintf(sql, sizeof(sql),
@@ -870,10 +1049,9 @@ print_pgstatarchiver()
 
     /* printing the diff...
      * note that the first line will be the current value, rather than the diff */
-    (void)printf("   %6ld   %6ld\n",
-      archived_count - previous_pgstatarchiver->archived_count,
-      failed_count - previous_pgstatarchiver->failed_count
-      );
+    format(r_archived_count, archived_count - previous_pgstatarchiver->archived_count, 8, NO_UNIT);
+    format(r_failed_count, failed_count - previous_pgstatarchiver->failed_count, 8, NO_UNIT);
+    (void)printf(" %s %s\n", r_archived_count, r_failed_count);
 
     /* setting the new old value */
     previous_pgstatarchiver->archived_count = archived_count;
@@ -882,6 +1060,8 @@ print_pgstatarchiver()
   }
 
   /* cleanup */
+  free(r_archived_count);
+  free(r_failed_count);
   PQclear(res);
 }
 
@@ -901,6 +1081,10 @@ print_pgstatbgwriter()
   long     buffers_alloc = 0;
   char     *stats_reset;
   bool     has_been_reset;
+
+  char *r_buffers_clean = (char *)malloc(sizeof(char) * (10 + 1));
+  char *r_maxwritten_clean = (char *)malloc(sizeof(char) * (10 + 1));
+  char *r_buffers_alloc = (char *)malloc(sizeof(char) * (10 + 1));
 
   /* grab the stats (this is the only stats on one line) */
   snprintf(sql, sizeof(sql),
@@ -944,11 +1128,10 @@ print_pgstatbgwriter()
 
     /* printing the diff...
      * note that the first line will be the current value, rather than the diff */
-    (void)printf(" %6ld  %6ld         %4ld\n",
-      buffers_clean - previous_pgstatbgwriter->buffers_clean,
-      buffers_alloc - previous_pgstatbgwriter->buffers_alloc,
-      maxwritten_clean - previous_pgstatbgwriter->maxwritten_clean
-      );
+    format(r_buffers_clean, buffers_clean - previous_pgstatbgwriter->buffers_clean, 10, opts->human_readable ? ALL_UNIT : NO_UNIT);
+    format(r_maxwritten_clean, buffers_alloc - previous_pgstatbgwriter->buffers_alloc, 10, opts->human_readable ? ALL_UNIT : NO_UNIT);
+    format(r_buffers_alloc, maxwritten_clean - previous_pgstatbgwriter->maxwritten_clean, 10, opts->human_readable ? ALL_UNIT : NO_UNIT);
+    (void)printf(" %s  %s  %s\n", r_buffers_clean, r_maxwritten_clean, r_buffers_alloc);
 
     /* setting the new old value */
     previous_pgstatbgwriter->buffers_clean = buffers_clean;
@@ -958,6 +1141,9 @@ print_pgstatbgwriter()
   }
 
   /* cleanup */
+  free(r_buffers_clean);
+  free(r_maxwritten_clean);
+  free(r_buffers_alloc);
   PQclear(res);
 }
 
@@ -982,6 +1168,15 @@ print_pgstatcheckpointer()
   long     buffers_written = 0;
   char     *stats_reset;
   bool     has_been_reset;
+
+  char *r_checkpoints_timed = (char *)malloc(sizeof(char) * (9 + 1));
+  char *r_checkpoints_requested = (char *)malloc(sizeof(char) * (9 + 1));
+  char *r_restartpoints_timed = (char *)malloc(sizeof(char) * (9 + 1));
+  char *r_restartpoints_requested = (char *)malloc(sizeof(char) * (9 + 1));
+  char *r_restartpoints_done = (char *)malloc(sizeof(char) * (9 + 1));
+  char *r_write_time = (char *)malloc(sizeof(char) * (6 + 1));
+  char *r_sync_time = (char *)malloc(sizeof(char) * (6 + 1));
+  char *r_buffers_written = (char *)malloc(sizeof(char) * (7 + 1));
 
   /* grab the stats (this is the only stats on one line) */
   if (backend_minimum_version(17, 0))
@@ -1051,37 +1246,36 @@ print_pgstatcheckpointer()
 
     /* printing the diff...
      * note that the first line will be the current value, rather than the diff */
+    format(r_checkpoints_timed, checkpoints_timed - previous_pgstatcheckpointer->checkpoints_timed, 9, opts->human_readable ? ALL_UNIT : NO_UNIT);
+    format(r_checkpoints_requested, checkpoints_requested - previous_pgstatcheckpointer->checkpoints_requested, 9, opts->human_readable ? ALL_UNIT : NO_UNIT);
+    format(r_restartpoints_timed, restartpoints_timed - previous_pgstatcheckpointer->restartpoints_timed, 9, opts->human_readable ? ALL_UNIT : NO_UNIT);
+    format(r_restartpoints_requested, restartpoints_requested - previous_pgstatcheckpointer->restartpoints_requested, 9, opts->human_readable ? ALL_UNIT : NO_UNIT);
+    format(r_restartpoints_done, restartpoints_done - previous_pgstatcheckpointer->restartpoints_done, 9, opts->human_readable ? ALL_UNIT : NO_UNIT);
+    format_time(r_write_time, write_time - previous_pgstatcheckpointer->write_time, 6);
+    format_time(r_sync_time, sync_time - previous_pgstatcheckpointer->sync_time, 6);
+    format(r_buffers_written, buffers_written - previous_pgstatcheckpointer->buffers_written, 7, opts->human_readable ? ALL_UNIT : NO_UNIT);
+
+    (void)printf(" %s   %s",
+      r_checkpoints_timed,
+      r_checkpoints_requested);
     if (backend_minimum_version(17, 0))
     {
-      (void)printf("  %6ld    %6ld    %6ld    %6ld    %6ld    %6ld    %6ld    %6ld\n",
-        checkpoints_timed - previous_pgstatcheckpointer->checkpoints_timed,
-        checkpoints_requested - previous_pgstatcheckpointer->checkpoints_requested,
-        restartpoints_timed - previous_pgstatcheckpointer->restartpoints_timed,
-        restartpoints_requested - previous_pgstatcheckpointer->restartpoints_requested,
-        restartpoints_done - previous_pgstatcheckpointer->restartpoints_done,
-        write_time - previous_pgstatcheckpointer->write_time,
-        sync_time - previous_pgstatcheckpointer->sync_time,
-        buffers_written - previous_pgstatcheckpointer->buffers_written
+      (void)printf("   %s  %s  %s",
+        r_restartpoints_timed,
+        r_restartpoints_requested,
+        r_restartpoints_done
       );
     }
-    else if (backend_minimum_version(9, 2))
+    if (backend_minimum_version(9, 2))
     {
-      (void)printf("  %6ld    %6ld    %6ld    %6ld    %6ld\n",
-        checkpoints_timed - previous_pgstatcheckpointer->checkpoints_timed,
-        checkpoints_requested - previous_pgstatcheckpointer->checkpoints_requested,
-        write_time - previous_pgstatcheckpointer->write_time,
-        sync_time - previous_pgstatcheckpointer->sync_time,
-        buffers_written - previous_pgstatcheckpointer->buffers_written
+      (void)printf("   %s  %s",
+        r_write_time,
+        r_sync_time
       );
     }
-   else
-    {
-      (void)printf("  %6ld    %6ld    %6ld\n",
-        checkpoints_timed - previous_pgstatcheckpointer->checkpoints_timed,
-        checkpoints_requested - previous_pgstatcheckpointer->checkpoints_requested,
-        buffers_written - previous_pgstatcheckpointer->buffers_written
-      );
-    }
+    (void)printf("   %s\n",
+      r_buffers_written
+    );
 
     /* setting the new old value */
     previous_pgstatcheckpointer->checkpoints_timed = checkpoints_timed;
@@ -1096,6 +1290,14 @@ print_pgstatcheckpointer()
   }
 
   /* cleanup */
+  free(r_checkpoints_timed);
+  free(r_checkpoints_requested);
+  free(r_restartpoints_timed);
+  free(r_restartpoints_requested);
+  free(r_restartpoints_done);
+  free(r_write_time);
+  free(r_sync_time);
+  free(r_buffers_written);
   PQclear(res);
 }
 
@@ -1115,6 +1317,12 @@ print_pgstatconnection()
   long     lockwaiting = 0;
   long     idleintransaction = 0;
   long     idle = 0;
+
+  char     *r_total = (char *)malloc(sizeof(char) * (5 + 1));
+  char     *r_active = (char *)malloc(sizeof(char) * (5 + 1));
+  char     *r_lockwaiting = (char *)malloc(sizeof(char) * (5 + 1));
+  char     *r_idleintransaction = (char *)malloc(sizeof(char) * (5 + 1));
+  char     *r_idle = (char *)malloc(sizeof(char) * (5 + 1));
 
   if (backend_minimum_version(10, 0))
   {
@@ -1178,11 +1386,21 @@ print_pgstatconnection()
     idle = atol(PQgetvalue(res, row, column++));
 
     /* printing the actual values for once */
-    (void)printf("    %4ld     %4ld          %4ld                  %4ld   %4ld  \n",
-        total, active, lockwaiting, idleintransaction, idle);
+    format(r_total, total, 5, NO_UNIT);
+    format(r_active, active, 5, NO_UNIT);
+    format(r_lockwaiting, lockwaiting, 5, NO_UNIT);
+    format(r_idleintransaction, idleintransaction, 5, NO_UNIT);
+    format(r_idle, idle, 5, NO_UNIT);
+    (void)printf("   %s    %s         %s                 %s   %s\n",
+        r_total, r_active, r_lockwaiting, r_idleintransaction, r_idle);
   }
 
   /* cleanup */
+  free(r_total);
+  free(r_active);
+  free(r_lockwaiting);
+  free(r_idleintransaction);
+  free(r_idle);
   PQclear(res);
 }
 
@@ -1225,6 +1443,14 @@ print_pgstatdatabase()
   char       *stats_reset;
   bool       has_been_reset;
   float      hit_ratio;
+
+  char       *r1 = (char *)malloc(sizeof(char) * (12 + 1));
+  char       *r2 = (char *)malloc(sizeof(char) * (12 + 1));
+  char       *r3 = (char *)malloc(sizeof(char) * (12 + 1));
+  char       *r4 = (char *)malloc(sizeof(char) * (12 + 1));
+  char       *r5 = (char *)malloc(sizeof(char) * (12 + 1));
+  char       *r6 = (char *)malloc(sizeof(char) * (12 + 1));
+  char       *r7 = (char *)malloc(sizeof(char) * (12 + 1));
 
   /*
    * With a filter, we assume we'll get only one row.
@@ -1350,78 +1576,70 @@ print_pgstatdatabase()
      * note that the first line will be the current value, rather than the diff */
     if (opts->substat == NULL || strstr(opts->substat, "backends") != NULL)
     {
-      (void)printf("      %4ld",
-        numbackends);
+      format(r1, numbackends, 8, NO_UNIT);
+      (void)printf("  %s", r1);
     }
     if (opts->substat == NULL || strstr(opts->substat, "xacts") != NULL)
     {
-      (void)printf("      %6ld   %6ld",
-        xact_commit - previous_pgstatdatabase->xact_commit,
-        xact_rollback - previous_pgstatdatabase->xact_rollback);
+      format(r1, xact_commit - previous_pgstatdatabase->xact_commit, 8, opts->human_readable ? ALL_UNIT : NO_UNIT);
+      format(r2, xact_rollback - previous_pgstatdatabase->xact_rollback, 8, opts->human_readable ? ALL_UNIT : NO_UNIT);
+      (void)printf("    %s %s", r1, r2);
     }
     if (opts->substat == NULL || strstr(opts->substat, "blocks") != NULL)
     {
-      (void)printf("   %6ld %6ld    %3.2f",
-        blks_read - previous_pgstatdatabase->blks_read,
-        blks_hit - previous_pgstatdatabase->blks_hit,
-        hit_ratio
-        );
+      format(r1, blks_read - previous_pgstatdatabase->blks_read, 10, opts->human_readable ? ALL_UNIT : NO_UNIT);
+      format(r2, blks_hit - previous_pgstatdatabase->blks_hit, 10, opts->human_readable ? ALL_UNIT : NO_UNIT);
+      format(r3, hit_ratio, 5, NO_UNIT);
+      (void)printf("   %s %s    %s", r1, r2, r3);
       if (backend_minimum_version(9, 2))
       {
-        (void)printf("      %5.2f        %5.2f",
-          blk_read_time - previous_pgstatdatabase->blk_read_time,
-          blk_write_time - previous_pgstatdatabase->blk_write_time
-          );
+        format_time(r4, blk_read_time - previous_pgstatdatabase->blk_read_time, 9);
+        format_time(r5, blk_write_time - previous_pgstatdatabase->blk_write_time, 9);
+        (void)printf(" %s  %s", r4, r5);
       }
     }
     if ((opts->substat == NULL || strstr(opts->substat, "tuples") != NULL) && backend_minimum_version(8, 3))
     {
-      (void)printf("   %6ld %6ld %6ld %6ld %6ld",
-        tup_returned - previous_pgstatdatabase->tup_returned,
-        tup_fetched - previous_pgstatdatabase->tup_fetched,
-        tup_inserted - previous_pgstatdatabase->tup_inserted,
-        tup_updated - previous_pgstatdatabase->tup_updated,
-        tup_deleted - previous_pgstatdatabase->tup_deleted
-        );
+      format(r1, tup_returned - previous_pgstatdatabase->tup_returned, 6, opts->human_readable ? ALL_UNIT : NO_UNIT);
+      format(r2, tup_fetched - previous_pgstatdatabase->tup_fetched, 6, opts->human_readable ? ALL_UNIT : NO_UNIT);
+      format(r3, tup_inserted - previous_pgstatdatabase->tup_inserted, 6, opts->human_readable ? ALL_UNIT : NO_UNIT);
+      format(r4, tup_updated - previous_pgstatdatabase->tup_updated, 6, opts->human_readable ? ALL_UNIT : NO_UNIT);
+      format(r5, tup_deleted - previous_pgstatdatabase->tup_deleted, 6, opts->human_readable ? ALL_UNIT : NO_UNIT);
+      (void)printf("   %s %s %s %s %s", r1, r2, r3, r4, r5);
     }
     if ((opts->substat == NULL || strstr(opts->substat, "temp") != NULL) && backend_minimum_version(9, 2))
     {
-      (void)printf("   %6ld %9ld",
-        temp_files - previous_pgstatdatabase->temp_files,
-        temp_bytes - previous_pgstatdatabase->temp_bytes
-        );
+      format(r1, temp_files - previous_pgstatdatabase->temp_files, 6, opts->human_readable ? ALL_UNIT : NO_UNIT);
+      format(r2, temp_bytes - previous_pgstatdatabase->temp_bytes, 6, opts->human_readable ? ALL_UNIT : NO_UNIT);
+      (void)printf("   %s  %s", r1, r2);
     }
     if ((opts->substat == NULL || strstr(opts->substat, "session") != NULL) && backend_minimum_version(14, 0))
     {
-      (void)printf("     %8.2f    %8.2f %8.2f  %6ld    %6ld %6ld %6ld",
-        session_time - previous_pgstatdatabase->session_time,
-        active_time - previous_pgstatdatabase->active_time,
-        idle_in_transaction_time - previous_pgstatdatabase->idle_in_transaction_time,
-        sessions - previous_pgstatdatabase->sessions,
-        sessions_abandoned - previous_pgstatdatabase->sessions_abandoned,
-        sessions_fatal - previous_pgstatdatabase->sessions_fatal,
-        sessions_killed - previous_pgstatdatabase->sessions_killed
-        );
+      format_time(r1, session_time - previous_pgstatdatabase->session_time, 11);
+      format_time(r2, active_time - previous_pgstatdatabase->active_time, 11);
+      format_time(r3, idle_in_transaction_time - previous_pgstatdatabase->idle_in_transaction_time, 11);
+      format(r4, sessions - previous_pgstatdatabase->sessions, 7, opts->human_readable ? ALL_UNIT : NO_UNIT);
+      format(r5, sessions_abandoned - previous_pgstatdatabase->sessions_abandoned, 6, opts->human_readable ? ALL_UNIT : NO_UNIT);
+      format(r6, sessions_fatal - previous_pgstatdatabase->sessions_fatal, 6, opts->human_readable ? ALL_UNIT : NO_UNIT);
+      format(r7, sessions_killed - previous_pgstatdatabase->sessions_killed, 6, opts->human_readable ? ALL_UNIT : NO_UNIT);
+      (void)printf("   %s %s %s %s    %s  %s  %s  ", r1, r2, r3, r4, r5, r6, r7);
     }
     if ((opts->substat == NULL || strstr(opts->substat, "misc") != NULL) && backend_minimum_version(9, 1))
     {
       if (backend_minimum_version(9, 1))
       {
-        (void)printf("   %9ld",
-          conflicts - previous_pgstatdatabase->conflicts
-          );
+        format(r1, conflicts - previous_pgstatdatabase->conflicts, 9, opts->human_readable ? ALL_UNIT : NO_UNIT);
+        (void)printf(" %s", r1);
       }
       if (backend_minimum_version(9, 2))
       {
-        (void)printf(" %9ld",
-          deadlocks - previous_pgstatdatabase->deadlocks
-          );
+        format(r2, deadlocks - previous_pgstatdatabase->deadlocks, 9, opts->human_readable ? ALL_UNIT : NO_UNIT);
+        (void)printf(" %s", r2);
       }
       if (backend_minimum_version(12, 0))
       {
-        (void)printf(" %9ld",
-          checksum_failures - previous_pgstatdatabase->checksum_failures
-          );
+        format(r3, checksum_failures - previous_pgstatdatabase->checksum_failures, 9, opts->human_readable ? ALL_UNIT : NO_UNIT);
+        (void)printf(" %s", r3);
       }
     }
     (void)printf("\n");
@@ -1457,6 +1675,13 @@ print_pgstatdatabase()
   }
 
   /* cleanup */
+  free(r1);
+  free(r2);
+  free(r3);
+  free(r4);
+  free(r5);
+  free(r6);
+  free(r7);
   PQclear(res);
 }
 
@@ -1489,6 +1714,24 @@ print_pgstattable()
   long       autovacuum_count = 0;
   long       analyze_count = 0;
   long       autoanalyze_count = 0;
+
+  char       *r_seq_scan = (char *)malloc(sizeof(char) * (6 + 1));
+  char       *r_seq_tup_read = (char *)malloc(sizeof(char) * (6 + 1));
+  char       *r_idx_scan = (char *)malloc(sizeof(char) * (6 + 1));
+  char       *r_idx_tup_fetch = (char *)malloc(sizeof(char) * (6 + 1));
+  char       *r_n_tup_ins = (char *)malloc(sizeof(char) * (6 + 1));
+  char       *r_n_tup_upd = (char *)malloc(sizeof(char) * (6 + 1));
+  char       *r_n_tup_del = (char *)malloc(sizeof(char) * (6 + 1));
+  char       *r_n_tup_hot_upd = (char *)malloc(sizeof(char) * (6 + 1));
+  char       *r_n_tup_newpage_upd = (char *)malloc(sizeof(char) * (6 + 1));
+  char       *r_n_live_tup = (char *)malloc(sizeof(char) * (6 + 1));
+  char       *r_n_dead_tup = (char *)malloc(sizeof(char) * (6 + 1));
+  char       *r_n_mod_since_analyze = (char *)malloc(sizeof(char) * (6 + 1));
+  char       *r_n_ins_since_vacuum = (char *)malloc(sizeof(char) * (6 + 1));
+  char       *r_vacuum_count = (char *)malloc(sizeof(char) * (6 + 1));
+  char       *r_autovacuum_count = (char *)malloc(sizeof(char) * (6 + 1));
+  char       *r_analyze_count = (char *)malloc(sizeof(char) * (6 + 1));
+  char       *r_autoanalyze_count = (char *)malloc(sizeof(char) * (6 + 1));
 
   /*
    * With a filter, we assume we'll get only one row.
@@ -1599,115 +1842,74 @@ print_pgstattable()
     }
 
     /* printing the diff... note that the first line will be the current value, rather than the diff */
+    format(r_seq_scan, seq_scan - previous_pgstattable->seq_scan, 6, opts->human_readable ? ALL_UNIT : NO_UNIT);
+    format(r_seq_tup_read, seq_tup_read - previous_pgstattable->seq_tup_read, 6, opts->human_readable ? ALL_UNIT : NO_UNIT);
+    format(r_idx_scan, idx_scan - previous_pgstattable->idx_scan, 6, opts->human_readable ? ALL_UNIT : NO_UNIT);
+    format(r_idx_tup_fetch, idx_tup_fetch - previous_pgstattable->idx_tup_fetch, 6, opts->human_readable ? ALL_UNIT : NO_UNIT);
+    format(r_n_tup_ins, n_tup_ins - previous_pgstattable->n_tup_ins, 6, opts->human_readable ? ALL_UNIT : NO_UNIT);
+    format(r_n_tup_upd, n_tup_upd - previous_pgstattable->n_tup_upd, 6, opts->human_readable ? ALL_UNIT : NO_UNIT);
+    format(r_n_tup_del, n_tup_del - previous_pgstattable->n_tup_del, 6, opts->human_readable ? ALL_UNIT : NO_UNIT);
+    format(r_n_tup_hot_upd, n_tup_hot_upd - previous_pgstattable->n_tup_hot_upd, 6, opts->human_readable ? ALL_UNIT : NO_UNIT);
+    format(r_n_tup_newpage_upd, n_tup_newpage_upd - previous_pgstattable->n_tup_newpage_upd, 6, opts->human_readable ? ALL_UNIT : NO_UNIT);
+    format(r_n_live_tup, n_live_tup - previous_pgstattable->n_live_tup, 6, opts->human_readable ? ALL_UNIT : NO_UNIT);
+    format(r_n_dead_tup, n_dead_tup - previous_pgstattable->n_dead_tup, 6, opts->human_readable ? ALL_UNIT : NO_UNIT);
+    format(r_n_mod_since_analyze, n_mod_since_analyze - previous_pgstattable->n_mod_since_analyze, 6, opts->human_readable ? ALL_UNIT : NO_UNIT);
+    format(r_n_ins_since_vacuum, n_ins_since_vacuum - previous_pgstattable->n_ins_since_vacuum, 6, opts->human_readable ? ALL_UNIT : NO_UNIT);
+    format(r_vacuum_count, vacuum_count - previous_pgstattable->vacuum_count, 6, opts->human_readable ? ALL_UNIT : NO_UNIT);
+    format(r_autovacuum_count, autovacuum_count - previous_pgstattable->autovacuum_count, 6, opts->human_readable ? ALL_UNIT : NO_UNIT);
+    format(r_analyze_count, analyze_count - previous_pgstattable->analyze_count, 6, opts->human_readable ? ALL_UNIT : NO_UNIT);
+    format(r_autoanalyze_count, autoanalyze_count - previous_pgstattable->autoanalyze_count, 6, opts->human_readable ? ALL_UNIT : NO_UNIT);
+
+    (void)printf(" %s  %s   %s  %s   %s %s %s",
+      r_seq_scan,
+      r_seq_tup_read,
+      r_idx_scan,
+      r_idx_tup_fetch,
+      r_n_tup_ins,
+      r_n_tup_upd,
+      r_n_tup_del
+      );
+    if (backend_minimum_version(8, 3))
+    {
+      (void)printf(" %s",
+        r_n_tup_hot_upd
+        );
+    }
     if (backend_minimum_version(16, 0))
     {
-      (void)printf(" %6ld  %6ld   %6ld  %6ld   %6ld %6ld %6ld %6ld     %6ld %6ld %6ld  %6ld  %6ld   %6ld     %6ld  %6ld      %6ld\n",
-        seq_scan - previous_pgstattable->seq_scan,
-        seq_tup_read - previous_pgstattable->seq_tup_read,
-        idx_scan - previous_pgstattable->idx_scan,
-        idx_tup_fetch - previous_pgstattable->idx_tup_fetch,
-        n_tup_ins - previous_pgstattable->n_tup_ins,
-        n_tup_upd - previous_pgstattable->n_tup_upd,
-        n_tup_del - previous_pgstattable->n_tup_del,
-        n_tup_hot_upd - previous_pgstattable->n_tup_hot_upd,
-        n_tup_newpage_upd - previous_pgstattable->n_tup_newpage_upd,
-        n_live_tup - previous_pgstattable->n_live_tup,
-        n_dead_tup - previous_pgstattable->n_dead_tup,
-        n_mod_since_analyze - previous_pgstattable->n_mod_since_analyze,
-        n_ins_since_vacuum - previous_pgstattable->n_ins_since_vacuum,
-        vacuum_count - previous_pgstattable->vacuum_count,
-        autovacuum_count - previous_pgstattable->autovacuum_count,
-        analyze_count - previous_pgstattable->analyze_count,
-        autoanalyze_count - previous_pgstattable->autoanalyze_count
+      (void)printf("     %s",
+        r_n_tup_newpage_upd
         );
     }
-    else if (backend_minimum_version(13, 0))
+    if (backend_minimum_version(8, 3))
     {
-      (void)printf(" %6ld  %6ld   %6ld  %6ld   %6ld %6ld %6ld %6ld %6ld %6ld  %6ld  %6ld   %6ld     %6ld  %6ld      %6ld\n",
-        seq_scan - previous_pgstattable->seq_scan,
-        seq_tup_read - previous_pgstattable->seq_tup_read,
-        idx_scan - previous_pgstattable->idx_scan,
-        idx_tup_fetch - previous_pgstattable->idx_tup_fetch,
-        n_tup_ins - previous_pgstattable->n_tup_ins,
-        n_tup_upd - previous_pgstattable->n_tup_upd,
-        n_tup_del - previous_pgstattable->n_tup_del,
-        n_tup_hot_upd - previous_pgstattable->n_tup_hot_upd,
-        n_live_tup - previous_pgstattable->n_live_tup,
-        n_dead_tup - previous_pgstattable->n_dead_tup,
-        n_mod_since_analyze - previous_pgstattable->n_mod_since_analyze,
-        n_ins_since_vacuum - previous_pgstattable->n_ins_since_vacuum,
-        vacuum_count - previous_pgstattable->vacuum_count,
-        autovacuum_count - previous_pgstattable->autovacuum_count,
-        analyze_count - previous_pgstattable->analyze_count,
-        autoanalyze_count - previous_pgstattable->autoanalyze_count
+      (void)printf(" %s %s",
+        r_n_live_tup,
+        r_n_dead_tup
         );
     }
-    else if (backend_minimum_version(9, 4))
+    if (backend_minimum_version(9, 4))
     {
-      (void)printf(" %6ld  %6ld   %6ld  %6ld   %6ld %6ld %6ld %6ld %6ld %6ld  %6ld   %6ld     %6ld  %6ld      %6ld\n",
-        seq_scan - previous_pgstattable->seq_scan,
-        seq_tup_read - previous_pgstattable->seq_tup_read,
-        idx_scan - previous_pgstattable->idx_scan,
-        idx_tup_fetch - previous_pgstattable->idx_tup_fetch,
-        n_tup_ins - previous_pgstattable->n_tup_ins,
-        n_tup_upd - previous_pgstattable->n_tup_upd,
-        n_tup_del - previous_pgstattable->n_tup_del,
-        n_tup_hot_upd - previous_pgstattable->n_tup_hot_upd,
-        n_live_tup - previous_pgstattable->n_live_tup,
-        n_dead_tup - previous_pgstattable->n_dead_tup,
-        n_mod_since_analyze - previous_pgstattable->n_mod_since_analyze,
-        vacuum_count - previous_pgstattable->vacuum_count,
-        autovacuum_count - previous_pgstattable->autovacuum_count,
-        analyze_count - previous_pgstattable->analyze_count,
-        autoanalyze_count - previous_pgstattable->autoanalyze_count
+      (void)printf("  %s",
+        r_n_mod_since_analyze
         );
     }
-    else if (backend_minimum_version(9, 1))
+    if (backend_minimum_version(13, 0))
     {
-      (void)printf(" %6ld  %6ld   %6ld  %6ld   %6ld %6ld %6ld %6ld %6ld %6ld   %6ld     %6ld  %6ld      %6ld\n",
-        seq_scan - previous_pgstattable->seq_scan,
-        seq_tup_read - previous_pgstattable->seq_tup_read,
-        idx_scan - previous_pgstattable->idx_scan,
-        idx_tup_fetch - previous_pgstattable->idx_tup_fetch,
-        n_tup_ins - previous_pgstattable->n_tup_ins,
-        n_tup_upd - previous_pgstattable->n_tup_upd,
-        n_tup_del - previous_pgstattable->n_tup_del,
-        n_tup_hot_upd - previous_pgstattable->n_tup_hot_upd,
-        n_live_tup - previous_pgstattable->n_live_tup,
-        n_dead_tup - previous_pgstattable->n_dead_tup,
-        vacuum_count - previous_pgstattable->vacuum_count,
-        autovacuum_count - previous_pgstattable->autovacuum_count,
-        analyze_count - previous_pgstattable->analyze_count,
-        autoanalyze_count - previous_pgstattable->autoanalyze_count
+      (void)printf("  %s",
+        r_n_ins_since_vacuum
         );
     }
-    else if (backend_minimum_version(8, 3))
+    if (backend_minimum_version(9, 1))
     {
-      (void)printf(" %6ld  %6ld   %6ld  %6ld   %6ld %6ld %6ld %6ld %6ld %6ld\n",
-        seq_scan - previous_pgstattable->seq_scan,
-        seq_tup_read - previous_pgstattable->seq_tup_read,
-        idx_scan - previous_pgstattable->idx_scan,
-        idx_tup_fetch - previous_pgstattable->idx_tup_fetch,
-        n_tup_ins - previous_pgstattable->n_tup_ins,
-        n_tup_upd - previous_pgstattable->n_tup_upd,
-        n_tup_del - previous_pgstattable->n_tup_del,
-        n_tup_hot_upd - previous_pgstattable->n_tup_hot_upd,
-        n_live_tup - previous_pgstattable->n_live_tup,
-        n_dead_tup - previous_pgstattable->n_dead_tup
+      (void)printf("   %s     %s  %s      %s",
+        r_vacuum_count,
+        r_autovacuum_count,
+        r_analyze_count,
+        r_autoanalyze_count
         );
     }
-    else
-    {
-      (void)printf(" %6ld  %6ld   %6ld  %6ld   %6ld %6ld %6ld\n",
-        seq_scan - previous_pgstattable->seq_scan,
-        seq_tup_read - previous_pgstattable->seq_tup_read,
-        idx_scan - previous_pgstattable->idx_scan,
-        idx_tup_fetch - previous_pgstattable->idx_tup_fetch,
-        n_tup_ins - previous_pgstattable->n_tup_ins,
-        n_tup_upd - previous_pgstattable->n_tup_upd,
-        n_tup_del - previous_pgstattable->n_tup_del
-        );
-    }
+    (void)printf("\n");
 
     /* setting the new old value */
     previous_pgstattable->seq_scan = seq_scan;
@@ -1730,6 +1932,23 @@ print_pgstattable()
   }
 
   /* cleanup */
+  free(r_seq_scan);
+  free(r_seq_tup_read);
+  free(r_idx_scan);
+  free(r_idx_tup_fetch);
+  free(r_n_tup_ins);
+  free(r_n_tup_upd);
+  free(r_n_tup_del);
+  free(r_n_tup_hot_upd);
+  free(r_n_tup_newpage_upd);
+  free(r_n_live_tup);
+  free(r_n_dead_tup);
+  free(r_n_mod_since_analyze);
+  free(r_n_ins_since_vacuum);
+  free(r_vacuum_count);
+  free(r_autovacuum_count);
+  free(r_analyze_count);
+  free(r_autoanalyze_count);
   PQclear(res);
 }
 
@@ -1753,6 +1972,15 @@ print_pgstattableio()
   long       toast_blks_hit = 0;
   long       tidx_blks_read = 0;
   long       tidx_blks_hit = 0;
+
+  char       *r_heap_blks_read = (char *)malloc(sizeof(char) * (8 + 1));
+  char       *r_heap_blks_hit = (char *)malloc(sizeof(char) * (8 + 1));
+  char       *r_idx_blks_read = (char *)malloc(sizeof(char) * (8 + 1));
+  char       *r_idx_blks_hit = (char *)malloc(sizeof(char) * (8 + 1));
+  char       *r_toast_blks_read = (char *)malloc(sizeof(char) * (8 + 1));
+  char       *r_toast_blks_hit = (char *)malloc(sizeof(char) * (8 + 1));
+  char       *r_tidx_blks_read = (char *)malloc(sizeof(char) * (8 + 1));
+  char       *r_tidx_blks_hit = (char *)malloc(sizeof(char) * (8 + 1));
 
   /*
    * With a filter, we assume we'll get only one row.
@@ -1820,15 +2048,24 @@ print_pgstattableio()
 
     /* printing the diff...
      * note that the first line will be the current value, rather than the diff */
-    (void)printf(" %6ld    %6ld    %7ld   %7ld    %7ld    %7ld     %9ld %9ld\n",
-      heap_blks_read - previous_pgstattableio->heap_blks_read,
-      heap_blks_hit - previous_pgstattableio->heap_blks_hit,
-      idx_blks_read - previous_pgstattableio->idx_blks_read,
-      idx_blks_hit - previous_pgstattableio->idx_blks_hit,
-      toast_blks_read - previous_pgstattableio->toast_blks_read,
-      toast_blks_hit - previous_pgstattableio->toast_blks_hit,
-      tidx_blks_read - previous_pgstattableio->tidx_blks_read,
-      tidx_blks_hit - previous_pgstattableio->tidx_blks_hit
+    format(r_heap_blks_read, heap_blks_read - previous_pgstattableio->heap_blks_read, 8,  opts->human_readable ? ALL_UNIT : NO_UNIT);
+    format(r_heap_blks_hit, heap_blks_hit - previous_pgstattableio->heap_blks_hit, 8,  opts->human_readable ? ALL_UNIT : NO_UNIT);
+    format(r_idx_blks_read, idx_blks_read - previous_pgstattableio->idx_blks_read, 8,  opts->human_readable ? ALL_UNIT : NO_UNIT);
+    format(r_idx_blks_hit, idx_blks_hit - previous_pgstattableio->idx_blks_hit, 8,  opts->human_readable ? ALL_UNIT : NO_UNIT);
+    format(r_toast_blks_read, toast_blks_read - previous_pgstattableio->toast_blks_read, 8,  opts->human_readable ? ALL_UNIT : NO_UNIT);
+    format(r_toast_blks_hit, toast_blks_hit - previous_pgstattableio->toast_blks_hit, 8,  opts->human_readable ? ALL_UNIT : NO_UNIT);
+    format(r_tidx_blks_read, tidx_blks_read - previous_pgstattableio->tidx_blks_read, 8,  opts->human_readable ? ALL_UNIT : NO_UNIT);
+    format(r_tidx_blks_hit, tidx_blks_hit - previous_pgstattableio->tidx_blks_hit, 8,  opts->human_readable ? ALL_UNIT : NO_UNIT);
+
+    (void)printf(" %s  %s   %s  %s   %s  %s   %s  %s\n",
+      r_heap_blks_read,
+      r_heap_blks_hit,
+      r_idx_blks_read,
+      r_idx_blks_hit,
+      r_toast_blks_read,
+      r_toast_blks_hit,
+      r_tidx_blks_read,
+      r_tidx_blks_hit
       );
 
     /* setting the new old value */
@@ -1843,6 +2080,14 @@ print_pgstattableio()
   }
 
   /* cleanup */
+  free(r_heap_blks_read);
+  free(r_heap_blks_hit);
+  free(r_idx_blks_read);
+  free(r_idx_blks_hit);
+  free(r_toast_blks_read);
+  free(r_toast_blks_hit);
+  free(r_tidx_blks_read);
+  free(r_tidx_blks_hit);
   PQclear(res);
 }
 
@@ -1861,6 +2106,10 @@ print_pgstatindex()
   long       idx_scan = 0;
   long       idx_tup_read = 0;
   long       idx_tup_fetch = 0;
+
+  char       *r_idx_scan = (char *)malloc(sizeof(char) * (8 + 1));
+  char       *r_idx_tup_read = (char *)malloc(sizeof(char) * (8 + 1));
+  char       *r_idx_tup_fetch = (char *)malloc(sizeof(char) * (8 + 1));
 
   /*
    * With a filter, we assume we'll get only one row.
@@ -1921,10 +2170,13 @@ print_pgstatindex()
 
     /* printing the diff...
      * note that the first line will be the current value, rather than the diff */
-    (void)printf(" %8ld   %7ld %7ld\n",
-      idx_scan - previous_pgstatindex->idx_scan,
-      idx_tup_read - previous_pgstatindex->idx_tup_read,
-      idx_tup_fetch - previous_pgstatindex->idx_tup_fetch
+    format(r_idx_scan, idx_scan - previous_pgstatindex->idx_scan, 8, opts->human_readable ? ALL_UNIT : NO_UNIT);
+    format(r_idx_tup_read, idx_tup_read - previous_pgstatindex->idx_tup_read, 8, opts->human_readable ? ALL_UNIT : NO_UNIT);
+    format(r_idx_tup_fetch, idx_tup_fetch - previous_pgstatindex->idx_tup_fetch, 8, opts->human_readable ? ALL_UNIT : NO_UNIT);
+    (void)printf(" %s   %s %s\n",
+      r_idx_scan,
+      r_idx_tup_read,
+      r_idx_tup_fetch
       );
 
     /* setting the new old value */
@@ -1934,6 +2186,9 @@ print_pgstatindex()
   }
 
   /* cleanup */
+  free(r_idx_scan);
+  free(r_idx_tup_read);
+  free(r_idx_tup_fetch);
   PQclear(res);
 }
 
@@ -1952,6 +2207,10 @@ print_pgstatfunction()
   long       calls = 0;
   float      total_time = 0;
   float      self_time = 0;
+
+  char       *r_calls = (char *)malloc(sizeof(char) * (9 + 1));
+  char       *r_total_time = (char *)malloc(sizeof(char) * (10 + 1));
+  char       *r_self_time = (char *)malloc(sizeof(char) * (10 + 1));
 
   /*
    * With a filter, we assume we'll get only one row.
@@ -2012,10 +2271,14 @@ print_pgstatfunction()
 
     /* printing the diff...
      * note that the first line will be the current value, rather than the diff */
-    (void)printf(" %9ld   %5f    %5f\n",
-      calls - previous_pgstatfunction->calls,
-      total_time - previous_pgstatfunction->total_time,
-      self_time - previous_pgstatfunction->self_time
+    format(r_calls, calls - previous_pgstatfunction->calls, 9, opts->human_readable ? ALL_UNIT : NO_UNIT);
+    format_time(r_total_time, total_time - previous_pgstatfunction->total_time, 10);
+    format_time(r_self_time, self_time - previous_pgstatfunction->self_time, 10);
+
+    (void)printf(" %s   %s  %s\n",
+      r_calls,
+      r_total_time,
+      r_self_time
       );
 
     /* setting the new old value */
@@ -2025,6 +2288,9 @@ print_pgstatfunction()
   }
 
   /* cleanup */
+  free(r_calls);
+  free(r_total_time);
+  free(r_self_time);
   PQclear(res);
 }
 
@@ -2064,6 +2330,13 @@ print_pgstatstatement()
   long       wal_records = 0;
   long       wal_fpi = 0;
   long       wal_bytes = 0;
+
+  char     *r1 = (char *)malloc(sizeof(char) * (20 + 1));
+  char     *r2 = (char *)malloc(sizeof(char) * (20 + 1));
+  char     *r3 = (char *)malloc(sizeof(char) * (20 + 1));
+  char     *r4 = (char *)malloc(sizeof(char) * (20 + 1));
+  char     *r5 = (char *)malloc(sizeof(char) * (20 + 1));
+  char     *r6 = (char *)malloc(sizeof(char) * (20 + 1));
 
   if (opts->filter == NULL)
   {
@@ -2178,81 +2451,72 @@ print_pgstatstatement()
      * note that the first line will be the current value, rather than the diff */
     if ((opts->substat == NULL || strstr(opts->substat, "plan") != NULL) && backend_minimum_version(13, 0))
     {
-      (void)printf(" %6ld  %6.2f",
-        plans - previous_pgstatstatement->plans,
-        total_plan_time - previous_pgstatstatement->total_plan_time
-        );
+      format(r1, plans - previous_pgstatstatement->plans, 6, opts->human_readable ? ALL_UNIT : NO_UNIT);
+      format_time(r2, total_plan_time - previous_pgstatstatement->total_plan_time, 9);
+      (void)printf(" %s %s", r1, r2);
     }
     if (opts->substat == NULL || strstr(opts->substat, "exec") != NULL)
     {
-      (void)printf("   %6ld    %6.2f %6ld",
-        calls - previous_pgstatstatement->calls,
-        total_exec_time - previous_pgstatstatement->total_exec_time,
-        rows - previous_pgstatstatement->rows
-        );
+      format(r1, calls - previous_pgstatstatement->calls, 6, opts->human_readable ? ALL_UNIT : NO_UNIT);
+      format_time(r2, total_exec_time - previous_pgstatstatement->total_exec_time, 9);
+      format(r3, rows - previous_pgstatstatement->rows, 6, opts->human_readable ? ALL_UNIT : NO_UNIT);
+      (void)printf("   %s %s %s", r1, r2, r3);
     }
     if (opts->substat == NULL || strstr(opts->substat, "shared") != NULL)
     {
-      (void)printf("   %6ld %6ld %6ld  %6ld",
-        shared_blks_hit - previous_pgstatstatement->shared_blks_hit,
-        shared_blks_read - previous_pgstatstatement->shared_blks_read,
-        shared_blks_dirtied - previous_pgstatstatement->shared_blks_dirtied,
-        shared_blks_written - previous_pgstatstatement->shared_blks_written
-        );
+      format(r1, shared_blks_hit - previous_pgstatstatement->shared_blks_hit, 6, opts->human_readable ? ALL_UNIT : NO_UNIT);
+      format(r2, shared_blks_read - previous_pgstatstatement->shared_blks_read, 6, opts->human_readable ? ALL_UNIT : NO_UNIT);
+      format(r3, shared_blks_dirtied - previous_pgstatstatement->shared_blks_dirtied, 6, opts->human_readable ? ALL_UNIT : NO_UNIT);
+      format(r4, shared_blks_written - previous_pgstatstatement->shared_blks_written, 6, opts->human_readable ? ALL_UNIT : NO_UNIT);
+      (void)printf("   %s %s %s  %s", r1, r2, r3, r4);
     }
     if (opts->substat == NULL || strstr(opts->substat, "local") != NULL)
     {
-      (void)printf("   %6ld %6ld %6ld  %6ld",
-        local_blks_hit - previous_pgstatstatement->local_blks_hit,
-        local_blks_read - previous_pgstatstatement->local_blks_read,
-        local_blks_dirtied - previous_pgstatstatement->local_blks_dirtied,
-        local_blks_written - previous_pgstatstatement->local_blks_written
-        );
+      format(r1, local_blks_hit - previous_pgstatstatement->local_blks_hit, 6, opts->human_readable ? ALL_UNIT : NO_UNIT);
+      format(r2, local_blks_read - previous_pgstatstatement->local_blks_read, 6, opts->human_readable ? ALL_UNIT : NO_UNIT);
+      format(r3, local_blks_dirtied - previous_pgstatstatement->local_blks_dirtied, 6, opts->human_readable ? ALL_UNIT : NO_UNIT);
+      format(r4, local_blks_written - previous_pgstatstatement->local_blks_written, 6, opts->human_readable ? ALL_UNIT : NO_UNIT);
+      (void)printf("   %s %s %s  %s", r1, r2, r3, r4);
     }
     if (opts->substat == NULL || strstr(opts->substat, "temp") != NULL)
     {
-      (void)printf("  %6ld  %6ld",
-        temp_blks_read - previous_pgstatstatement->temp_blks_read,
-        temp_blks_written - previous_pgstatstatement->temp_blks_written
-        );
+      format(r1, temp_blks_read - previous_pgstatstatement->temp_blks_read, 6, opts->human_readable ? ALL_UNIT : NO_UNIT);
+      format(r2, temp_blks_written - previous_pgstatstatement->temp_blks_written, 6, opts->human_readable ? ALL_UNIT : NO_UNIT);
+      (void)printf("   %s  %s", r1, r2);
     }
     if (opts->substat == NULL || strstr(opts->substat, "time") != NULL)
     {
       if (backend_minimum_version(17, 0))
       {
-        (void)printf("      %6.2f       %6.2f    %6.2f      %6.2f   %6.2f      %6.2f",
-          shared_blk_read_time - previous_pgstatstatement->shared_blk_read_time,
-          shared_blk_write_time - previous_pgstatstatement->shared_blk_write_time,
-          local_blk_read_time - previous_pgstatstatement->shared_blk_read_time,
-          local_blk_write_time - previous_pgstatstatement->shared_blk_write_time,
-          temp_blk_read_time - previous_pgstatstatement->shared_blk_read_time,
-          temp_blk_write_time - previous_pgstatstatement->shared_blk_write_time
-          );
+        format_time(r1, shared_blk_read_time - previous_pgstatstatement->shared_blk_read_time, 9);
+        format_time(r2, shared_blk_write_time - previous_pgstatstatement->shared_blk_write_time, 9);
+        format_time(r3, local_blk_read_time - previous_pgstatstatement->local_blk_read_time, 9);
+        format_time(r4, local_blk_write_time - previous_pgstatstatement->local_blk_write_time, 9);
+        format_time(r5, temp_blk_read_time - previous_pgstatstatement->temp_blk_read_time, 9);
+        format_time(r6, temp_blk_write_time - previous_pgstatstatement->temp_blk_write_time, 9);
+        (void)printf("   %s    %s %s   %s %s   %s", r1, r2, r3, r4, r5, r6);
       }
       else if (backend_minimum_version(16, 0))
       {
-        (void)printf("       %6.2f    %6.2f     %6.2f     %6.2f",
-          shared_blk_read_time - previous_pgstatstatement->shared_blk_read_time,
-          shared_blk_write_time - previous_pgstatstatement->shared_blk_write_time,
-          temp_blk_read_time - previous_pgstatstatement->shared_blk_read_time,
-          temp_blk_write_time - previous_pgstatstatement->shared_blk_write_time
-          );
+        format_time(r1, shared_blk_read_time - previous_pgstatstatement->shared_blk_read_time, 9);
+        format_time(r2, shared_blk_write_time - previous_pgstatstatement->shared_blk_write_time, 9);
+        format_time(r3, temp_blk_read_time - previous_pgstatstatement->temp_blk_read_time, 9);
+        format_time(r4, temp_blk_write_time - previous_pgstatstatement->temp_blk_write_time, 9);
+        (void)printf("   %s %s %s %s", r1, r2, r3, r4);
       }
       else if (backend_minimum_version(13, 0))
       {
-        (void)printf("       %6.2f    %6.2f",
-          shared_blk_read_time - previous_pgstatstatement->shared_blk_read_time,
-          shared_blk_write_time - previous_pgstatstatement->shared_blk_write_time
-          );
+        format_time(r1, shared_blk_read_time - previous_pgstatstatement->shared_blk_read_time, 9);
+        format_time(r2, shared_blk_write_time - previous_pgstatstatement->shared_blk_write_time, 9);
+        (void)printf("   %s %s", r1, r2);
       }
     }
     if ((opts->substat == NULL || strstr(opts->substat, "wal") != NULL) && backend_minimum_version(13, 0))
     {
-      (void)printf("          %6ld  %6ld    %6ld",
-        wal_records - previous_pgstatstatement->wal_records,
-        wal_fpi - previous_pgstatstatement->wal_fpi,
-        wal_bytes - previous_pgstatstatement->wal_bytes
-        );
+      format(r1, wal_records - previous_pgstatstatement->wal_records, 6, opts->human_readable ? ALL_UNIT : NO_UNIT);
+      format(r2, wal_fpi - previous_pgstatstatement->wal_fpi, 6, opts->human_readable ? ALL_UNIT : NO_UNIT);
+      format(r3, wal_bytes - previous_pgstatstatement->wal_bytes, 6, opts->human_readable ? ALL_UNIT : NO_UNIT);
+      (void)printf("      %s %s %s", r1, r2, r3);
     }
     (void)printf("\n");
 
@@ -2284,6 +2548,12 @@ print_pgstatstatement()
   };
 
   /* cleanup */
+  free(r1);
+  free(r2);
+  free(r3);
+  free(r4);
+  free(r5);
+  free(r6);
   PQclear(res);
 }
 
@@ -2308,6 +2578,14 @@ print_pgstatslru()
   long       truncates = 0;
   char       *stats_reset;
   bool       has_been_reset;
+
+  char       *r_blks_zeroed = (char *)malloc(sizeof(char) * (9 + 1));
+  char       *r_blks_hit = (char *)malloc(sizeof(char) * (9 + 1));
+  char       *r_blks_read = (char *)malloc(sizeof(char) * (9 + 1));
+  char       *r_blks_written = (char *)malloc(sizeof(char) * (9 + 1));
+  char       *r_blks_exists = (char *)malloc(sizeof(char) * (9 + 1));
+  char       *r_flushes = (char *)malloc(sizeof(char) * (9 + 1));
+  char       *r_truncates = (char *)malloc(sizeof(char) * (9 + 1));
 
   /*
    * With a filter, we assume we'll get only one row.
@@ -2383,14 +2661,22 @@ print_pgstatslru()
     }
 
     /* printing the diff... note that the first line will be the current value, rather than the diff */
-    (void)printf(" %6ld   %6ld  %6ld  %6ld   %6ld  %6ld     %6ld\n",
-      blks_zeroed - previous_pgstatslru->blks_zeroed,
-      blks_hit - previous_pgstatslru->blks_hit,
-      blks_read - previous_pgstatslru->blks_read,
-      blks_written - previous_pgstatslru->blks_written,
-      blks_exists - previous_pgstatslru->blks_exists,
-      flushes - previous_pgstatslru->flushes,
-      truncates - previous_pgstatslru->truncates
+    format(r_blks_zeroed, blks_zeroed - previous_pgstatslru->blks_zeroed, 9, opts->human_readable ? ALL_UNIT : NO_UNIT);
+    format(r_blks_hit, blks_hit - previous_pgstatslru->blks_hit, 9, opts->human_readable ? ALL_UNIT : NO_UNIT);
+    format(r_blks_read, blks_read - previous_pgstatslru->blks_read, 9, opts->human_readable ? ALL_UNIT : NO_UNIT);
+    format(r_blks_written, blks_written - previous_pgstatslru->blks_written, 9, opts->human_readable ? ALL_UNIT : NO_UNIT);
+    format(r_blks_exists, blks_exists - previous_pgstatslru->blks_exists, 9, opts->human_readable ? ALL_UNIT : NO_UNIT);
+    format(r_flushes, flushes - previous_pgstatslru->flushes, 9, opts->human_readable ? ALL_UNIT : NO_UNIT);
+    format(r_truncates, truncates - previous_pgstatslru->truncates, 9, opts->human_readable ? ALL_UNIT : NO_UNIT);
+
+    (void)printf(" %s %s %s %s %s %s %s\n",
+      r_blks_zeroed,
+      r_blks_hit,
+      r_blks_read,
+      r_blks_written,
+      r_blks_exists,
+      r_flushes,
+      r_truncates
       );
 
     /* setting the new old value */
@@ -2405,6 +2691,13 @@ print_pgstatslru()
   }
 
   /* cleanup */
+  free(r_blks_zeroed);
+  free(r_blks_hit);
+  free(r_blks_read);
+  free(r_blks_written);
+  free(r_blks_exists);
+  free(r_flushes);
+  free(r_truncates);
   PQclear(res);
 }
 
@@ -2429,6 +2722,15 @@ print_pgstatwal()
   float    wal_sync_time;
   char     *stats_reset;
   bool     has_been_reset;
+
+  char     *r_wal_records = (char *)malloc(sizeof(char) * (10 + 1));
+  char     *r_wal_fpi = (char *)malloc(sizeof(char) * (10 + 1));
+  char     *r_wal_bytes = (char *)malloc(sizeof(char) * (10 + 1));
+  char     *r_wal_buffers_full = (char *)malloc(sizeof(char) * (10 + 1));
+  char     *r_wal_write = (char *)malloc(sizeof(char) * (10 + 1));
+  char     *r_wal_sync = (char *)malloc(sizeof(char) * (10 + 1));
+  char     *r_wal_write_time = (char *)malloc(sizeof(char) * (10 + 1));
+  char     *r_wal_sync_time = (char *)malloc(sizeof(char) * (10 + 1));
 
   /* grab the stats (this is the only stats on one line) */
   snprintf(sql, sizeof(sql),
@@ -2479,15 +2781,24 @@ print_pgstatwal()
 
     /* printing the diff...
      * note that the first line will be the current value, rather than the diff */
-    (void)printf("   %6ld   %6ld   %6ld         %6ld  %6ld   %6ld      %6.2f      %6.2f\n",
-      wal_records - previous_pgstatwal->wal_records,
-      wal_fpi - previous_pgstatwal->wal_fpi,
-      wal_bytes - previous_pgstatwal->wal_bytes,
-      wal_buffers_full - previous_pgstatwal->wal_buffers_full,
-      wal_write - previous_pgstatwal->wal_write,
-      wal_sync - previous_pgstatwal->wal_sync,
-      wal_write_time - previous_pgstatwal->wal_write_time,
-      wal_sync_time - previous_pgstatwal->wal_sync_time
+    format(r_wal_records, wal_records - previous_pgstatwal->wal_records, 10, opts->human_readable ? ALL_UNIT : NO_UNIT);
+    format(r_wal_fpi, wal_fpi - previous_pgstatwal->wal_fpi, 10, opts->human_readable ? ALL_UNIT : NO_UNIT);
+    format(r_wal_bytes, wal_bytes - previous_pgstatwal->wal_bytes, 10, opts->human_readable ? SIZE_UNIT : NO_UNIT);
+    format(r_wal_buffers_full, wal_buffers_full - previous_pgstatwal->wal_buffers_full, 10, opts->human_readable ? ALL_UNIT : NO_UNIT);
+    format(r_wal_write, wal_write - previous_pgstatwal->wal_write, 10, opts->human_readable ? ALL_UNIT : NO_UNIT);
+    format(r_wal_sync, wal_sync - previous_pgstatwal->wal_sync, 10, opts->human_readable ? ALL_UNIT : NO_UNIT);
+    format_time(r_wal_write_time, wal_write_time - previous_pgstatwal->wal_write_time, 10);
+    format_time(r_wal_sync_time, wal_sync_time - previous_pgstatwal->wal_sync_time, 10);
+
+    (void)printf(" %s %s %s   %s %s %s %s %s\n",
+      r_wal_records,
+      r_wal_fpi,
+      r_wal_bytes,
+      r_wal_buffers_full,
+      r_wal_write,
+      r_wal_sync,
+      r_wal_write_time,
+      r_wal_sync_time
       );
 
     /* setting the new old value */
@@ -2503,6 +2814,14 @@ print_pgstatwal()
   }
 
   /* cleanup */
+  free(r_wal_records);
+  free(r_wal_fpi);
+  free(r_wal_bytes);
+  free(r_wal_buffers_full);
+  free(r_wal_write);
+  free(r_wal_sync);
+  free(r_wal_write_time);
+  free(r_wal_sync_time);
   PQclear(res);
 }
 
@@ -2613,7 +2932,6 @@ print_pgstatprogressanalyze()
   nrows = PQntuples(res);
 
   /* for each row, dump the information */
-  /* this is stupid, a simple if would do the trick, but it will help for other cases */
   for (row = 0; row < nrows; row++)
   {
     /* printing the value... */
@@ -2893,6 +3211,11 @@ print_buffercache()
   long     dirtyblocks = 0;
   long     dirtyblocks_pct = 0;
 
+  char     *r_usedblocks = (char *)malloc(sizeof(char) * (5 + 1));
+  char     *r_usedblocks_pct = (char *)malloc(sizeof(char) * (5 + 1));
+  char     *r_dirtyblocks = (char *)malloc(sizeof(char) * (5 + 1));
+  char     *r_dirtyblocks_pct = (char *)malloc(sizeof(char) * (5 + 1));
+
   snprintf(sql, sizeof(sql),
     "SELECT count(*) FILTER (WHERE relfilenode IS NOT NULL), "
     "100. * count(*) FILTER (WHERE relfilenode IS NOT NULL) / count(*), "
@@ -2928,11 +3251,20 @@ print_buffercache()
     dirtyblocks_pct = atol(PQgetvalue(res, row, column++));
 
     /* printing the actual values for once */
-    (void)printf("   %4ld        %4ld     %4ld       %4ld\n",
-      usedblocks, usedblocks_pct, dirtyblocks, dirtyblocks_pct);
+    format(r_usedblocks, usedblocks, 7, opts->human_readable ? ALL_UNIT : NO_UNIT);
+    format(r_usedblocks_pct, usedblocks_pct, 5, NO_UNIT);
+    format(r_dirtyblocks, dirtyblocks, 7, opts->human_readable ? ALL_UNIT : NO_UNIT);
+    format(r_dirtyblocks_pct, dirtyblocks_pct, 5, NO_UNIT);
+
+    (void)printf(" %s    %s   %s    %s\n",
+      r_usedblocks, r_usedblocks_pct, r_dirtyblocks, r_dirtyblocks_pct);
   }
 
   /* cleanup */
+  free(r_usedblocks);
+  free(r_usedblocks_pct);
+  free(r_dirtyblocks);
+  free(r_dirtyblocks_pct);
   PQclear(res);
 }
 
@@ -2947,9 +3279,9 @@ print_xlogstats()
 
   char     *xlogfilename;
   char     *currentlocation;
-  char     *prettylocation;
   long     locationdiff;
-  char     h_locationdiff[PGSTAT_DEFAULT_STRING_SIZE];
+
+  char     *r_locationdiff = (char *)malloc(sizeof(char) * (12 + 1));
 
   if (backend_minimum_version(10, 0))
   {
@@ -2957,9 +3289,7 @@ print_xlogstats()
       "SELECT "
       "  pg_walfile_name(pg_current_wal_lsn()), "
       "  pg_current_wal_lsn(), "
-      "  pg_wal_lsn_diff(pg_current_wal_lsn(), '0/0'), "
-      "  pg_size_pretty(pg_wal_lsn_diff(pg_current_wal_lsn(), '%s'))",
-      previous_xlogstats->location);
+      "  pg_wal_lsn_diff(pg_current_wal_lsn(), '0/0')");
   }
   else
   {
@@ -2967,9 +3297,7 @@ print_xlogstats()
       "SELECT "
       "  pg_xlogfile_name(pg_current_xlog_location()), "
       "  pg_current_xlog_location(), "
-      "  pg_xlog_location_diff(pg_current_xlog_location(), '0/0'), "
-      "  pg_size_pretty(pg_xlog_location_diff(pg_current_xlog_location(), '%s'))",
-      previous_xlogstats->location);
+      "  pg_xlog_location_diff(pg_current_xlog_location(), '0/0')");
   }
 
   res = PQexec(conn, sql);
@@ -2987,26 +3315,17 @@ print_xlogstats()
   xlogfilename = pg_strdup(PQgetvalue(res, 0, 0));
   currentlocation = pg_strdup(PQgetvalue(res, 0, 1));
   locationdiff = atol(PQgetvalue(res, 0, 2));
-  prettylocation = pg_strdup(PQgetvalue(res, 0, 3));
-
-  /* get the human-readable diff if asked */
-  if (opts->human_readable)
-  {
-    snprintf(h_locationdiff, sizeof(h_locationdiff), "%s", prettylocation);
-  }
-  else
-  {
-    snprintf(h_locationdiff, sizeof(h_locationdiff), "%12ld", locationdiff - previous_xlogstats->locationdiff);
-  }
 
   /* printing the actual values for once */
-  (void)printf(" %s   %s      %s\n", xlogfilename, currentlocation, h_locationdiff);
+  format(r_locationdiff, locationdiff - previous_xlogstats->locationdiff, 12, opts->human_readable ? SIZE_UNIT : NO_UNIT);
+  (void)printf(" %s   %s     %s\n", xlogfilename, currentlocation, r_locationdiff);
 
   /* setting the new old value */
   previous_xlogstats->location = pg_strdup(currentlocation);
   previous_xlogstats->locationdiff = locationdiff;
 
   /* cleanup */
+  free(r_locationdiff);
   PQclear(res);
 }
 
@@ -3021,6 +3340,9 @@ print_deadlivestats()
 
   long     live;
   long     dead;
+
+  char     *r_live = (char *)malloc(sizeof(char) * (10 + 1));
+  char     *r_dead = (char *)malloc(sizeof(char) * (10 + 1));
 
   snprintf(sql, sizeof(sql),
     "SELECT sum(n_live_tup), sum(n_dead_tup) FROM pg_stat_all_tables");
@@ -3041,9 +3363,11 @@ print_deadlivestats()
   dead = atol(PQgetvalue(res, 0, 1));
 
   /* printing the actual values for once */
-  (void)printf(" %10ld   %10ld      %.2f\n",
-    live,
-    dead,
+  format(r_live, live, 10, opts->human_readable ? ALL_UNIT : NO_UNIT);
+  format(r_dead, dead, 10, opts->human_readable ? ALL_UNIT : NO_UNIT);
+  (void)printf(" %s  %s     %.2f\n",
+    r_live,
+    r_dead,
     dead+live == 0 ? 0 : 100.*dead/((dead+live)));
 
   /* setting the new old value */
@@ -3051,6 +3375,8 @@ print_deadlivestats()
   previous_deadlivestats->dead = dead;
 
   /* cleanup */
+  free(r_live);
+  free(r_dead);
   PQclear(res);
 }
 
@@ -3066,18 +3392,16 @@ print_repslotsstats()
   char     *xlogfilename;
   char     *currentlocation;
   long     locationdiff;
-  char     *prettylocation;
-  char     h_locationdiff[PGSTAT_DEFAULT_STRING_SIZE];
+
+  char     *r_locationdiff = (char *)malloc(sizeof(char) * (12 + 1));
 
   snprintf(sql, sizeof(sql),
     "SELECT "
     "  pg_walfile_name(restart_lsn), "
     "  restart_lsn, "
-    "  pg_wal_lsn_diff(restart_lsn, '0/0'), "
-    "  pg_size_pretty(pg_wal_lsn_diff(restart_lsn, '%s')) "
+    "  pg_wal_lsn_diff(restart_lsn, '0/0')"
     "FROM pg_replication_slots "
     "WHERE slot_name = '%s'",
-    previous_repslots->restartlsn,
     opts->filter);
 
   res = PQexec(conn, sql);
@@ -3086,7 +3410,7 @@ print_repslotsstats()
   {
     PQclear(res);
     PQfinish(conn);
-    pg_log_error("No results, meaning no replicaton slot");
+    pg_log_error("No results, meaning no replication slot");
     exit(EXIT_FAILURE);
   }
 
@@ -3103,26 +3427,17 @@ print_repslotsstats()
   xlogfilename = pg_strdup(PQgetvalue(res, 0, 0));
   currentlocation = pg_strdup(PQgetvalue(res, 0, 1));
   locationdiff = atol(PQgetvalue(res, 0, 2));
-  prettylocation = pg_strdup(PQgetvalue(res, 0, 3));
-
-  /* get the human-readable diff if asked */
-  if (opts->human_readable)
-  {
-    snprintf(h_locationdiff, sizeof(h_locationdiff), "%s", prettylocation);
-  }
-  else
-  {
-    snprintf(h_locationdiff, sizeof(h_locationdiff), "%12ld", locationdiff - previous_repslots->restartlsndiff);
-  }
 
   /* printing the actual values for once */
-  (void)printf(" %s   %s      %s\n", xlogfilename, currentlocation, h_locationdiff);
+  format(r_locationdiff, locationdiff - previous_xlogstats->locationdiff, 12, opts->human_readable ? SIZE_UNIT : NO_UNIT);
+  (void)printf(" %s   %s     %s\n", xlogfilename, currentlocation, r_locationdiff);
 
   /* setting the new old value */
   previous_repslots->restartlsn = pg_strdup(currentlocation);
   previous_repslots->restartlsndiff = locationdiff;
 
   /* cleanup */
+  free(r_locationdiff);
   PQclear(res);
 }
 
@@ -3138,6 +3453,9 @@ print_tempfilestats()
   long        count = 0;
   int      nrows;
   int      row, column;
+
+  char        *r_size = (char *)malloc(sizeof(char) * (10 + 1));
+  char        *r_count = (char *)malloc(sizeof(char) * (10 + 1));
 
   if (backend_minimum_version(9, 3))
   {
@@ -3227,9 +3545,13 @@ print_tempfilestats()
   }
 
   /* printing the diff... */
-  (void)printf(" %9ld     %9ld\n", size, count);
+  format(r_size, size, 10, opts->human_readable ? SIZE_UNIT : NO_UNIT);
+  format(r_count, count, 10, opts->human_readable ? ALL_UNIT : NO_UNIT);
+  (void)printf(" %s    %s\n", r_size, r_count);
 
   /* cleanup */
+  free(r_size);
+  free(r_count);
   PQclear(res);
 }
 
@@ -3243,6 +3565,18 @@ print_pgstatwaitevent()
   PGresult *res;
   int      nrows;
   int      row;
+
+  char *r_lwlock = (char *)malloc(sizeof(char) * (10 + 1));
+  char *r_lock = (char *)malloc(sizeof(char) * (10 + 1));
+  char *r_bufferpin = (char *)malloc(sizeof(char) * (10 + 1));
+  char *r_activity = (char *)malloc(sizeof(char) * (10 + 1));
+  char *r_client = (char *)malloc(sizeof(char) * (10 + 1));
+  char *r_extension = (char *)malloc(sizeof(char) * (10 + 1));
+  char *r_ipc = (char *)malloc(sizeof(char) * (10 + 1));
+  char *r_timeout = (char *)malloc(sizeof(char) * (10 + 1));
+  char *r_io = (char *)malloc(sizeof(char) * (10 + 1));
+  char *r_running = (char *)malloc(sizeof(char) * (10 + 1));
+  char *r_all = (char *)malloc(sizeof(char) * (10 + 1));
 
   snprintf(sql, sizeof(sql),
     "SELECT "
@@ -3278,22 +3612,45 @@ print_pgstatwaitevent()
   for (row = 0; row < nrows; row++)
   {
     /* printing new values */
-    (void)printf(" %12d %8d %13d %12d %10d %13d %7d %11d %6d %11d %7d\n",
-      atoi(PQgetvalue(res, row, 0)),
-      atoi(PQgetvalue(res, row, 1)),
-      atoi(PQgetvalue(res, row, 2)),
-      atoi(PQgetvalue(res, row, 3)),
-      atoi(PQgetvalue(res, row, 4)),
-      atoi(PQgetvalue(res, row, 5)),
-      atoi(PQgetvalue(res, row, 6)),
-      atoi(PQgetvalue(res, row, 7)),
-      atoi(PQgetvalue(res, row, 8)),
-      atoi(PQgetvalue(res, row, 9)),
-      atoi(PQgetvalue(res, row, 10))
+    format(r_lwlock, atoi(PQgetvalue(res, row, 0)), 10, opts->human_readable ? ALL_UNIT : NO_UNIT);
+    format(r_lock, atoi(PQgetvalue(res, row, 1)), 10, opts->human_readable ? ALL_UNIT : NO_UNIT);
+    format(r_bufferpin, atoi(PQgetvalue(res, row, 2)), 10, opts->human_readable ? ALL_UNIT : NO_UNIT);
+    format(r_activity, atoi(PQgetvalue(res, row, 3)), 10, opts->human_readable ? ALL_UNIT : NO_UNIT);
+    format(r_client, atoi(PQgetvalue(res, row, 4)), 10, opts->human_readable ? ALL_UNIT : NO_UNIT);
+    format(r_extension, atoi(PQgetvalue(res, row, 5)), 10, opts->human_readable ? ALL_UNIT : NO_UNIT);
+    format(r_ipc, atoi(PQgetvalue(res, row, 6)), 10, opts->human_readable ? ALL_UNIT : NO_UNIT);
+    format(r_timeout, atoi(PQgetvalue(res, row, 7)), 10, opts->human_readable ? ALL_UNIT : NO_UNIT);
+    format(r_io, atoi(PQgetvalue(res, row, 8)), 10, opts->human_readable ? ALL_UNIT : NO_UNIT);
+    format(r_running, atoi(PQgetvalue(res, row, 9)), 10, opts->human_readable ? ALL_UNIT : NO_UNIT);
+    format(r_all, atoi(PQgetvalue(res, row, 10)), 10, opts->human_readable ? ALL_UNIT : NO_UNIT);
+
+    (void)printf(" %s   %s    %s   %s %s    %s  %s  %s %s  %s %s\n",
+      r_lwlock,
+      r_lock,
+      r_bufferpin,
+      r_activity,
+      r_client,
+      r_extension,
+      r_ipc,
+      r_timeout,
+      r_io,
+      r_running,
+      r_all
     );
   }
 
   /* cleanup */
+  free(r_lwlock);
+  free(r_lock);
+  free(r_bufferpin);
+  free(r_activity);
+  free(r_client);
+  free(r_extension);
+  free(r_ipc);
+  free(r_timeout);
+  free(r_io);
+  free(r_running);
+  free(r_all);
   PQclear(res);
 }
 
@@ -3643,28 +4000,28 @@ print_header(void)
       (void)printf(" archived   failed \n");
       break;
     case BGWRITER:
-      (void)printf("------------- buffers -------------\n");
-      (void)printf("  clean   alloc   maxwritten\n");
+      (void)printf("-------------- buffers -------------\n");
+      (void)printf("      clean       alloc  maxwritten\n");
       break;
     case CHECKPOINTER:
       if (backend_minimum_version(17, 0))
       {
-        (void)printf("--- checkpoints --- ------- restartpoints ------- ------ time ------ - buffers -\n");
-        (void)printf("   timed requested     timed requested      done     write     sync    written\n");
+        (void)printf("----- checkpoints ----- --------- restartpoints --------- ----- time ----- - buffers -\n");
+        (void)printf("     timed   requested       timed  requested       done    write    sync    written\n");
       }
       else if (backend_minimum_version(9, 2))
       {
-        (void)printf("--- checkpoints --- ------ time ------ - buffers -\n");
-        (void)printf("   timed requested     write     sync    written\n");
+        (void)printf("----- checkpoints ----- ----- time ----- - buffers -\n");
+        (void)printf("     timed   requested    write    sync    written\n");
       }
       else
       {
-        (void)printf("--- checkpoints --- - buffers -\n");
-        (void)printf("   timed requested    written\n");
+        (void)printf("----- checkpoints ----- - buffers -\n");
+        (void)printf("     timed   requested    written\n");
       }
       break;
     case CONNECTION:
-      (void)printf(" - total - active - lockwaiting - idle in transaction - idle -\n");
+      (void)printf(" - total - active - lockwaiting - idle in transaction -  idle -\n");
       break;
     case DATABASE:
       if (opts->substat == NULL || strstr(opts->substat, "backends") != NULL)
@@ -3681,8 +4038,8 @@ print_header(void)
       {
         if (backend_minimum_version(9, 0))
         {
-          strcat(header1, " -------------------- blocks ---------------------");
-          strcat(header2, "    read    hit hit ratio  read_time   write_time ");
+          strcat(header1, " ----------------------- blocks ----------------------");
+          strcat(header2, "        read        hit hitratio read_time write_time ");
         }
         else
         {
@@ -3697,13 +4054,13 @@ print_header(void)
       }
       if ((opts->substat == NULL || strstr(opts->substat, "temp") != NULL) && backend_minimum_version(9, 2))
       {
-        strcat(header1, " ------ temp ------");
-        strcat(header2, "   files     bytes ");
+        strcat(header1, " ----- temp -----");
+        strcat(header2, "   files   bytes ");
       }
       if ((opts->substat == NULL || strstr(opts->substat, "session") != NULL) && backend_minimum_version(14, 0))
       {
-        strcat(header1, " ---------------------------- session ----------------------------");
-        strcat(header2, "    all_time active_time iit_time numbers abandoned  fatal killed ");
+        strcat(header1, " ------------------------------- session -------------------------------");
+        strcat(header2, "     all_time active_time    iit_time numbers abandoned   fatal  killed ");
       }
       if ((opts->substat == NULL || strstr(opts->substat, "misc") != NULL) && backend_minimum_version(8, 4))
       {
@@ -3758,22 +4115,22 @@ print_header(void)
       }
       break;
     case TABLEIO:
-      (void)printf("--- heap table ---  --- toast table ---  --- heap indexes ---  --- toast indexes ---\n");
-      (void)printf("   read       hit       read       hit       read        hit          read       hit \n");
+      (void)printf("---- heap table ---- ---- toast table --- --- heap indexes --- --- toast indexes --\n");
+      (void)printf("     read       hit       read       hit       read       hit       read       hit \n");
       break;
     case INDEX:
-      (void)printf("-- scan -- ----- tuples -----\n");
-      (void)printf("               read   fetch\n");
+      (void)printf("-- scan -- ------ tuples -----\n");
+      (void)printf("                read    fetch\n");
       break;
     case FUNCTION:
-      (void)printf("-- count -- ------ time ------\n");
-      (void)printf("             total     self\n");
+      (void)printf("-- count -- --------- time ---------\n");
+      (void)printf("                  total        self\n");
       break;
     case STATEMENT:
       if ((opts->substat == NULL || strstr(opts->substat, "plan") != NULL) && backend_minimum_version(13, 0))
       {
-        strcat(header1, "----- plan -----");
-        strcat(header2, "  plans    time ");
+        strcat(header1, "------ plan ------");
+        strcat(header2, "  plans      time ");
       }
       if (opts->substat == NULL || strstr(opts->substat, "exec") != NULL)
       {
@@ -3793,14 +4150,14 @@ print_header(void)
       if (opts->substat == NULL || strstr(opts->substat, "temp") != NULL)
       {
         strcat(header1, " ----- temp -----");
-        strcat(header2, "   read written  ");
+        strcat(header2, "    read written ");
       }
       if (opts->substat == NULL || strstr(opts->substat, "time") != NULL)
       {
         if (backend_minimum_version(17, 0))
         {
           strcat(header1, " ------------------------------- time ------------------------------");
-          strcat(header2, "  shr read  shr written  loc read loc written tmp read tmp written  ");
+          strcat(header2, "   shr read  shr written  loc read loc written  tmp read tmp written  ");
         }
         else if (backend_minimum_version(16, 0))
         {
@@ -3815,23 +4172,23 @@ print_header(void)
       }
       if ((opts->substat == NULL || strstr(opts->substat, "wal") != NULL) && backend_minimum_version(13, 0))
       {
-        strcat(header1, " -------------- wal --------------");
-        strcat(header2, "   wal_records wal_fpi wal_bytes");
+        strcat(header1, " ---------- wal ----------");
+        strcat(header2, "   records    fpi  bytes");
       }
       (void)printf("%s\n%s\n", header1, header2);
       break;
     case SLRU:
-      (void)printf("  zeroed  hit     read    written  exists  flushes  truncates\n");
+      (void)printf("    zeroed       hit      read   written    exists   flushes truncates\n");
       break;
     case WAL:
-      (void)printf("  records      FPI    bytes   buffers_full   write     sync  write_time   sync_time\n");
+      (void)printf("    records        FPI      bytes buffers_full      write       sync write_time  sync_time\n");
       break;
     case BUFFERCACHE:
-      (void)printf("------- used ------- ------ dirty ------\n");
-      (void)printf("  total     percent    total    percent\n");
+      (void)printf("------ used ------ ------ dirty -----\n");
+      (void)printf("   total  percent     total  percent\n");
       break;
     case DEADLIVE:
-      (void)printf("  live       dead           percent\n");
+      (void)printf("       live        dead  percent\n");
       break;
     case XLOG:
     case REPSLOTS:
@@ -3841,7 +4198,7 @@ print_header(void)
       (void)printf("--- size --- --- count ---\n");
       break;
     case WAITEVENT:
-      (void)printf("--- LWLock --- Lock --- BufferPin --- Activity --- Client --- Extension --- IPC --- Timeout --- IO --- Running --- All ---\n");
+      (void)printf("---- LWLock ------- Lock --- BufferPin --- Activity --- Client --- Extension ------- IPC --- Timeout ------- IO --- Running ------ All ---\n");
       break;
     case PROGRESS_ANALYZE:
       (void)printf("--------------------- object --------------------- ---------- phase ---------- ---------------- stats --------------- -- time elapsed --\n");

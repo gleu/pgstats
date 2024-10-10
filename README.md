@@ -92,7 +92,7 @@ $ pgstat -s connection
 Yeah, way too many idle connections. Actually, way too many connections.
 Definitely needs a pooler there.
 
-This is what happens on a 10-secondes 10-clients pgbench test:
+This is what happens on a 10-seconds 10-clients pgbench test:
 
 ```
 $ pgstat -s database 1
