@@ -29,7 +29,7 @@ extern char *optarg;
 /*
  * Defines
  */
-#define PGCSVSTAT_VERSION "1.3.0"
+#define PGCSVSTAT_VERSION "1.4.0"
 
 /* these are the opts structures for command line params */
 struct options
