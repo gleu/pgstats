@@ -4,7 +4,7 @@
  *
  * This software is released under the PostgreSQL Licence.
  *
- * Guillaume Lelarge, guillaume@lelarge.info, 2019-2024.
+ * Guillaume Lelarge, guillaume@lelarge.info, 2019-2025.
  *
  * pgstats/pgwaitevent.c
  */
