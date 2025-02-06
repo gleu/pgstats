@@ -65,6 +65,9 @@
 #define AM_SIZE_TITLE "Access Methods"
 #define AM_SIZE_SQL "select nspname, amname, count(*), pg_size_pretty(sum(pg_table_size(c.oid))) from pg_class c join pg_am a on a.oid=c.relam join pg_namespace n on n.oid=c.relnamespace group by 1, 2 order by 1,2"
 
+#define TABLEWITHOUTPKEY_TITLE "Tables without primary key"
+#define TABLEWITHOUTPKEY_SQL "select ns.nspname, cl.relname from pg_class cl join pg_namespace ns on ns.oid=cl.relnamespace left join pg_constraint co on co.conrelid=cl.oid and co.contype='p' where cl.relkind='r' and ns.nspname not in ('pg_catalog', 'information_schema') and co.conname is null order by ns.nspname, cl.relname"
+
 #define INDEXTYPE_TITLE "Index by types"
 #define INDEXTYPE_SQL "SELECT nspname, count(*) FILTER (WHERE not indisunique AND not indisprimary) as standard, count(*) FILTER (WHERE indisunique AND not indisprimary) as unique, count(*) FILTER (WHERE indisprimary) as primary, count(*) FILTER (WHERE indisexclusion) as exclusion, count(*) FILTER (WHERE indisclustered) as clustered, count(*) FILTER (WHERE indisvalid) as valid FROM pg_index i JOIN pg_class c ON c.oid=i.indexrelid JOIN pg_namespace n ON n.oid=c.relnamespace GROUP BY 1;"
 
