@@ -507,3 +507,4 @@ Ideas
   * check for anything missing in this tool
 * pgreport
   * get data stats (idea from Christophe Courtois)
+  * find FK without incompatible data type
