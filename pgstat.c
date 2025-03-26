@@ -86,6 +86,7 @@ struct options
   /* misc */
   bool   verbose;
   bool   dontredisplayheader;
+  bool   addtimestamp;
   stat_t stat;
   char   *substat;
   char   *filter;
@@ -398,26 +399,26 @@ struct pgbouncerstats
 /*
  * Global variables
  */
-PGconn                     *conn;
-struct options             *opts;
-extern char                *optarg;
-struct pgstatarchiver      *previous_pgstatarchiver;
-struct pgstatbgwriter      *previous_pgstatbgwriter;
-struct pgstatcheckpointer  *previous_pgstatcheckpointer;
-struct pgstatdatabase      *previous_pgstatdatabase;
-struct pgstattable         *previous_pgstattable;
-struct pgstattableio       *previous_pgstattableio;
-struct pgstatindex         *previous_pgstatindex;
-struct pgstatfunction      *previous_pgstatfunction;
-struct pgstatstatement     *previous_pgstatstatement;
-struct pgstatslru          *previous_pgstatslru;
-struct pgstatwal           *previous_pgstatwal;
-struct xlogstats           *previous_xlogstats;
-struct deadlivestats       *previous_deadlivestats;
-struct repslots            *previous_repslots;
-struct pgbouncerstats      *previous_pgbouncerstats;
-int                        hdrcnt = 0;
-volatile sig_atomic_t      wresized;
+static PGconn                     *conn;
+static struct options             *opts;
+extern char                       *optarg;
+static struct pgstatarchiver      *previous_pgstatarchiver;
+static struct pgstatbgwriter      *previous_pgstatbgwriter;
+static struct pgstatcheckpointer  *previous_pgstatcheckpointer;
+static struct pgstatdatabase      *previous_pgstatdatabase;
+static struct pgstattable         *previous_pgstattable;
+static struct pgstattableio       *previous_pgstattableio;
+static struct pgstatindex         *previous_pgstatindex;
+static struct pgstatfunction      *previous_pgstatfunction;
+static struct pgstatstatement     *previous_pgstatstatement;
+static struct pgstatslru          *previous_pgstatslru;
+static struct pgstatwal           *previous_pgstatwal;
+static struct xlogstats           *previous_xlogstats;
+static struct deadlivestats       *previous_deadlivestats;
+static struct repslots            *previous_repslots;
+static struct pgbouncerstats      *previous_pgbouncerstats;
+static int                        hdrcnt = 0;
+static volatile sig_atomic_t      wresized;
 static int                 winlines = PGSTAT_DEFAULT_LINES;
 static const struct        size_pretty_unit size_pretty_units[] = {
   {" b", 10 * 1024, false, 0},
@@ -507,6 +508,7 @@ help(const char *progname)
        "                          replication slots, and slru)\n"
        "  -H                     display human-readable values\n"
        "  -n                     do not redisplay header\n"
+       "  -t                     add timestamp\n"
        "  -s STAT                stats to collect\n"
        "  -S SUBSTAT             part of stats to display\n"
        "                         (only works for database and statement)\n"
@@ -571,6 +573,7 @@ get_opts(int argc, char **argv)
   /* set the defaults */
   opts->verbose = false;
   opts->dontredisplayheader = false;
+  opts->addtimestamp = false;
   opts->stat = NONE;
   opts->substat = NULL;
   opts->filter = NULL;
@@ -598,7 +601,7 @@ get_opts(int argc, char **argv)
   }
 
   /* get opts */
-  while ((c = getopt(argc, argv, "h:Hp:U:d:f:ns:S:v")) != -1)
+  while ((c = getopt(argc, argv, "h:Hp:U:d:f:nts:S:v")) != -1)
   {
     switch (c)
     {
@@ -620,6 +623,11 @@ get_opts(int argc, char **argv)
         /* don't show headers */
       case 'v':
         opts->verbose = true;
+        break;
+
+        /* add timestamp */
+      case 't':
+        opts->addtimestamp = true;
         break;
 
         /* specify the stat */
@@ -1005,13 +1013,15 @@ print_pgstatarchiver()
   char     *stats_reset;
   bool     has_been_reset;
 
+  char *ts = NULL;
   char *r_archived_count = (char *)malloc(sizeof(char) * (8 + 1));
   char *r_failed_count = (char *)malloc(sizeof(char) * (8 + 1));
 
   /* grab the stats (this is the only stats on one line) */
   snprintf(sql, sizeof(sql),
-    "SELECT archived_count, failed_count, stats_reset, stats_reset>'%s' "
+    "SELECT %s archived_count, failed_count, stats_reset, stats_reset>'%s' "
     "FROM pg_stat_archiver ",
+    opts->addtimestamp ? "to_char(now(), 'YYYY-MM-DD HH24:MI:SS')," : "",
     previous_pgstatarchiver->stats_reset);
 
   /* make the call */
@@ -1037,6 +1047,10 @@ print_pgstatarchiver()
     column = 0;
 
     /* getting new values */
+    if (opts->addtimestamp)
+    {
+      ts = PQgetvalue(res, row, column++);
+    }
     archived_count = atol(PQgetvalue(res, row, column++));
     failed_count = atol(PQgetvalue(res, row, column++));
     stats_reset = PQgetvalue(res, row, column++);
@@ -1051,6 +1065,10 @@ print_pgstatarchiver()
      * note that the first line will be the current value, rather than the diff */
     format(r_archived_count, archived_count - previous_pgstatarchiver->archived_count, 8, NO_UNIT);
     format(r_failed_count, failed_count - previous_pgstatarchiver->failed_count, 8, NO_UNIT);
+    if (opts->addtimestamp && ts != NULL)
+    {
+      (void)printf(" %s  ", ts);
+    }
     (void)printf(" %s %s\n", r_archived_count, r_failed_count);
 
     /* setting the new old value */
@@ -1082,14 +1100,16 @@ print_pgstatbgwriter()
   char     *stats_reset;
   bool     has_been_reset;
 
+  char *ts = NULL;
   char *r_buffers_clean = (char *)malloc(sizeof(char) * (10 + 1));
   char *r_maxwritten_clean = (char *)malloc(sizeof(char) * (10 + 1));
   char *r_buffers_alloc = (char *)malloc(sizeof(char) * (10 + 1));
 
   /* grab the stats (this is the only stats on one line) */
   snprintf(sql, sizeof(sql),
-    "select buffers_clean, maxwritten_clean, buffers_alloc, stats_reset, stats_reset>'%s' "
+    "select %s buffers_clean, maxwritten_clean, buffers_alloc, stats_reset, stats_reset>'%s' "
     "from pg_stat_bgwriter ",
+    opts->addtimestamp ? "to_char(now(), 'YYYY-MM-DD HH24:MI:SS')," : "",
     previous_pgstatbgwriter->stats_reset);
 
   /* make the call */
@@ -1115,6 +1135,10 @@ print_pgstatbgwriter()
     column = 0;
 
     /* getting new values */
+    if (opts->addtimestamp)
+    {
+      ts = PQgetvalue(res, row, column++);
+    }
     buffers_clean = atol(PQgetvalue(res, row, column++));
     maxwritten_clean = atol(PQgetvalue(res, row, column++));
     buffers_alloc = atol(PQgetvalue(res, row, column++));
@@ -1131,6 +1155,10 @@ print_pgstatbgwriter()
     format(r_buffers_clean, buffers_clean - previous_pgstatbgwriter->buffers_clean, 10, opts->human_readable ? ALL_UNIT : NO_UNIT);
     format(r_maxwritten_clean, buffers_alloc - previous_pgstatbgwriter->buffers_alloc, 10, opts->human_readable ? ALL_UNIT : NO_UNIT);
     format(r_buffers_alloc, maxwritten_clean - previous_pgstatbgwriter->maxwritten_clean, 10, opts->human_readable ? ALL_UNIT : NO_UNIT);
+    if (opts->addtimestamp && ts != NULL)
+    {
+      (void)printf(" %s  ", ts);
+    }
     (void)printf(" %s  %s  %s\n", r_buffers_clean, r_maxwritten_clean, r_buffers_alloc);
 
     /* setting the new old value */
@@ -1169,6 +1197,7 @@ print_pgstatcheckpointer()
   char     *stats_reset;
   bool     has_been_reset;
 
+  char *ts = NULL;
   char *r_checkpoints_timed = (char *)malloc(sizeof(char) * (9 + 1));
   char *r_checkpoints_requested = (char *)malloc(sizeof(char) * (9 + 1));
   char *r_restartpoints_timed = (char *)malloc(sizeof(char) * (9 + 1));
@@ -1182,18 +1211,20 @@ print_pgstatcheckpointer()
   if (backend_minimum_version(17, 0))
   {
     snprintf(sql, sizeof(sql),
-      "select num_timed, num_requested, restartpoints_timed, restartpoints_req, "
+      "select %snum_timed, num_requested, restartpoints_timed, restartpoints_req, "
       "restartpoints_done, write_time, sync_time, buffers_written, "
       "stats_reset, stats_reset>'%s' "
       "from pg_stat_checkpointer ",
+      opts->addtimestamp ? "to_char(now(), 'YYYY-MM-DD HH24:MI:SS'), " : "",
       previous_pgstatcheckpointer->stats_reset);
   }
   else
   {
     snprintf(sql, sizeof(sql),
-      "select checkpoints_timed, checkpoints_req, %sbuffers_checkpoint, "
+      "select %scheckpoints_timed, checkpoints_req, %sbuffers_checkpoint, "
       "stats_reset, stats_reset>'%s' "
       "from pg_stat_bgwriter ",
+      opts->addtimestamp ? "to_char(now(), 'YYYY-MM-DD HH24:MI:SS'), " : "",
       backend_minimum_version(9, 2) ? "checkpoint_write_time, checkpoint_sync_time, " : "",
       previous_pgstatcheckpointer->stats_reset);
   }
@@ -1221,6 +1252,10 @@ print_pgstatcheckpointer()
     column = 0;
 
     /* getting new values */
+    if (opts->addtimestamp)
+    {
+      ts = PQgetvalue(res, row, column++);
+    }
     checkpoints_timed = atol(PQgetvalue(res, row, column++));
     checkpoints_requested = atol(PQgetvalue(res, row, column++));
     if (backend_minimum_version(17, 0))
@@ -1255,6 +1290,10 @@ print_pgstatcheckpointer()
     format_time(r_sync_time, sync_time - previous_pgstatcheckpointer->sync_time, 6);
     format(r_buffers_written, buffers_written - previous_pgstatcheckpointer->buffers_written, 7, opts->human_readable ? ALL_UNIT : NO_UNIT);
 
+    if (opts->addtimestamp && ts != NULL)
+    {
+      (void)printf(" %s  ", ts);
+    }
     (void)printf(" %s   %s",
       r_checkpoints_timed,
       r_checkpoints_requested);
@@ -1318,6 +1357,7 @@ print_pgstatconnection()
   long     idleintransaction = 0;
   long     idle = 0;
 
+  char     *ts = NULL;
   char     *r_total = (char *)malloc(sizeof(char) * (5 + 1));
   char     *r_active = (char *)malloc(sizeof(char) * (5 + 1));
   char     *r_lockwaiting = (char *)malloc(sizeof(char) * (5 + 1));
@@ -1327,7 +1367,7 @@ print_pgstatconnection()
   if (backend_minimum_version(10, 0))
   {
     snprintf(sql, sizeof(sql),
-      "SELECT count(*) AS total, "
+      "SELECT %scount(*) AS total, "
       "  sum(CASE WHEN state='active' AND wait_event IS NULL "
       "THEN 1 ELSE 0 END) AS active, "
       "  sum(CASE WHEN state='active' AND wait_event IS NOT NULL "
@@ -1335,27 +1375,30 @@ print_pgstatconnection()
       "  sum(CASE WHEN state='idle in transaction' THEN 1 ELSE 0 END) AS idleintransaction, "
       "  sum(CASE WHEN state='idle' THEN 1 ELSE 0 END) AS idle "
       "FROM pg_stat_activity "
-      "WHERE backend_type='client backend'");
+      "WHERE backend_type='client backend'",
+      opts->addtimestamp ? "to_char(now(), 'YYYY-MM-DD HH24:MI:SS')," : "");
   }
   else if (backend_minimum_version(9, 6))
   {
     snprintf(sql, sizeof(sql),
-      "SELECT count(*) AS total, "
+      "SELECT %scount(*) AS total, "
       "  sum(CASE WHEN state='active' AND wait_event IS NULL THEN 1 ELSE 0 END) AS active, "
       "  sum(CASE WHEN state='active' AND wait_event IS NOT NULL THEN 1 ELSE 0 END) AS lockwaiting, "
       "  sum(CASE WHEN state='idle in transaction' THEN 1 ELSE 0 END) AS idleintransaction, "
       "  sum(CASE WHEN state='idle' THEN 1 ELSE 0 END) AS idle "
-      "FROM pg_stat_activity");
+      "FROM pg_stat_activity",
+      opts->addtimestamp ? "to_char(now(), 'YYYY-MM-DD HH24:MI:SS')," : "");
   }
   else
   {
     snprintf(sql, sizeof(sql),
-      "SELECT count(*) AS total, "
+      "SELECT %scount(*) AS total, "
       "  sum(CASE WHEN state='active' AND NOT waiting THEN 1 ELSE 0 END) AS active, "
       "  sum(CASE WHEN waiting THEN 1 ELSE 0 END) AS lockwaiting, "
       "  sum(CASE WHEN state='idle in transaction' THEN 1 ELSE 0 END) AS idleintransaction, "
       "  sum(CASE WHEN state='idle' THEN 1 ELSE 0 END) AS idle "
-      "FROM pg_stat_activity");
+      "FROM pg_stat_activity",
+      opts->addtimestamp ? "to_char(now(), 'YYYY-MM-DD HH24:MI:SS')," : "");
   }
 
   res = PQexec(conn, sql);
@@ -1379,6 +1422,10 @@ print_pgstatconnection()
   {
     column = 0;
 
+    if (opts->addtimestamp)
+    {
+      ts = PQgetvalue(res, row, column++);
+    }
     total = atol(PQgetvalue(res, row, column++));
     active = atol(PQgetvalue(res, row, column++));
     lockwaiting = atol(PQgetvalue(res, row, column++));
@@ -1391,6 +1438,10 @@ print_pgstatconnection()
     format(r_lockwaiting, lockwaiting, 5, NO_UNIT);
     format(r_idleintransaction, idleintransaction, 5, NO_UNIT);
     format(r_idle, idle, 5, NO_UNIT);
+    if (opts->addtimestamp && ts != NULL)
+    {
+      (void)printf(" %s  ", ts);
+    }
     (void)printf("   %s    %s         %s                 %s   %s\n",
         r_total, r_active, r_lockwaiting, r_idleintransaction, r_idle);
   }
@@ -1444,6 +1495,7 @@ print_pgstatdatabase()
   bool       has_been_reset;
   float      hit_ratio;
 
+  char       *ts = NULL;
   char       *r1 = (char *)malloc(sizeof(char) * (12 + 1));
   char       *r2 = (char *)malloc(sizeof(char) * (12 + 1));
   char       *r3 = (char *)malloc(sizeof(char) * (12 + 1));
@@ -1459,10 +1511,11 @@ print_pgstatdatabase()
   if (opts->filter == NULL)
   {
     snprintf(sql, sizeof(sql),
-      "SELECT sum(numbackends), sum(xact_commit), sum(xact_rollback), sum(blks_read), sum(blks_hit)"
+      "SELECT %ssum(numbackends), sum(xact_commit), sum(xact_rollback), sum(blks_read), sum(blks_hit)"
       ", max(stats_reset), max(stats_reset)>'%s'"
       "%s%s%s%s%s "
       "FROM pg_stat_database ",
+      opts->addtimestamp ? "to_char(now(), 'YYYY-MM-DD HH24:MI:SS')," : "",
       previous_pgstatdatabase->stats_reset,
       backend_minimum_version(8, 3) ? ", sum(tup_returned), sum(tup_fetched), sum(tup_inserted), sum(tup_updated), sum(tup_deleted)" : "",
       backend_minimum_version(9, 1) ? ", sum(conflicts)" : "",
@@ -1475,11 +1528,12 @@ print_pgstatdatabase()
   else
   {
     snprintf(sql, sizeof(sql),
-      "SELECT numbackends, xact_commit, xact_rollback, blks_read, blks_hit"
+      "SELECT %snumbackends, xact_commit, xact_rollback, blks_read, blks_hit"
       ", stats_reset, stats_reset>'%s'"
       "%s%s%s%s%s "
       "FROM pg_stat_database "
       "WHERE datname=$1",
+      opts->addtimestamp ? "to_char(now(), 'YYYY-MM-DD HH24:MI:SS')," : "",
       previous_pgstatdatabase->stats_reset,
       backend_minimum_version(8, 3) ? ", tup_returned, tup_fetched, tup_inserted, tup_updated, tup_deleted" : "",
       backend_minimum_version(9, 1) ? ", conflicts" : "",
@@ -1519,6 +1573,10 @@ print_pgstatdatabase()
     column = 0;
 
     /* getting new values */
+    if (opts->addtimestamp)
+    {
+      ts = PQgetvalue(res, row, column++);
+    }
     numbackends = atol(PQgetvalue(res, row, column++));
     xact_commit = atol(PQgetvalue(res, row, column++));
     xact_rollback = atol(PQgetvalue(res, row, column++));
@@ -1574,6 +1632,10 @@ print_pgstatdatabase()
 
     /* printing the diff...
      * note that the first line will be the current value, rather than the diff */
+    if (opts->addtimestamp && ts != NULL)
+    {
+      (void)printf(" %s  ", ts);
+    }
     if (opts->substat == NULL || strstr(opts->substat, "backends") != NULL)
     {
       format(r1, numbackends, 8, NO_UNIT);
@@ -1715,6 +1777,7 @@ print_pgstattable()
   long       analyze_count = 0;
   long       autoanalyze_count = 0;
 
+  char       *ts = NULL;
   char       *r_seq_scan = (char *)malloc(sizeof(char) * (6 + 1));
   char       *r_seq_tup_read = (char *)malloc(sizeof(char) * (6 + 1));
   char       *r_idx_scan = (char *)malloc(sizeof(char) * (6 + 1));
@@ -1740,7 +1803,7 @@ print_pgstattable()
   if (opts->filter == NULL)
   {
     snprintf(sql, sizeof(sql),
-      "SELECT sum(seq_scan), sum(seq_tup_read), sum(idx_scan), sum(idx_tup_fetch), sum(n_tup_ins), "
+      "SELECT %ssum(seq_scan), sum(seq_tup_read), sum(idx_scan), sum(idx_tup_fetch), sum(n_tup_ins), "
       "sum(n_tup_upd), sum(n_tup_del)"
       "%s"
       "%s"
@@ -1749,6 +1812,7 @@ print_pgstattable()
       "%s"
       " FROM pg_stat_all_tables "
       "WHERE schemaname <> 'information_schema' ",
+      opts->addtimestamp ? "to_char(now(), 'YYYY-MM-DD HH24:MI:SS')," : "",
       backend_minimum_version(16, 0) ? ", sum(n_tup_newpage_upd)" : "",
       backend_minimum_version(8, 3) ? ", sum(n_tup_hot_upd), sum(n_live_tup), sum(n_dead_tup)" : "",
       backend_minimum_version(9, 4) ? ", sum(n_mod_since_analyze)" : "",
@@ -1760,7 +1824,7 @@ print_pgstattable()
   else
   {
     snprintf(sql, sizeof(sql),
-      "SELECT sum(seq_scan), sum(seq_tup_read), sum(idx_scan), sum(idx_tup_fetch), sum(n_tup_ins), "
+      "SELECT %ssum(seq_scan), sum(seq_tup_read), sum(idx_scan), sum(idx_tup_fetch), sum(n_tup_ins), "
       "sum(n_tup_upd), sum(n_tup_del)"
       "%s"
       "%s"
@@ -1770,6 +1834,7 @@ print_pgstattable()
       " FROM pg_stat_all_tables "
       "WHERE schemaname <> 'information_schema' "
       "  AND relname = $1",
+      opts->addtimestamp ? "to_char(now(), 'YYYY-MM-DD HH24:MI:SS')," : "",
       backend_minimum_version(16, 0) ? ", sum(n_tup_newpage_upd)" : "",
       backend_minimum_version(8, 3) ? ", sum(n_tup_hot_upd), sum(n_live_tup), sum(n_dead_tup)" : "",
       backend_minimum_version(9, 4) ? ", sum(n_mod_since_analyze)" : "",
@@ -1808,6 +1873,10 @@ print_pgstattable()
     column = 0;
 
     /* getting new values */
+    if (opts->addtimestamp)
+    {
+      ts = PQgetvalue(res, row, column++);
+    }
     seq_scan = atol(PQgetvalue(res, row, column++));
     seq_tup_read = atol(PQgetvalue(res, row, column++));
     idx_scan = atol(PQgetvalue(res, row, column++));
@@ -1860,6 +1929,10 @@ print_pgstattable()
     format(r_analyze_count, analyze_count - previous_pgstattable->analyze_count, 6, opts->human_readable ? ALL_UNIT : NO_UNIT);
     format(r_autoanalyze_count, autoanalyze_count - previous_pgstattable->autoanalyze_count, 6, opts->human_readable ? ALL_UNIT : NO_UNIT);
 
+    if (opts->addtimestamp && ts != NULL)
+    {
+      (void)printf(" %s  ", ts);
+    }
     (void)printf(" %s  %s   %s  %s   %s %s %s",
       r_seq_scan,
       r_seq_tup_read,
@@ -1973,6 +2046,7 @@ print_pgstattableio()
   long       tidx_blks_read = 0;
   long       tidx_blks_hit = 0;
 
+  char       *ts = NULL;
   char       *r_heap_blks_read = (char *)malloc(sizeof(char) * (8 + 1));
   char       *r_heap_blks_hit = (char *)malloc(sizeof(char) * (8 + 1));
   char       *r_idx_blks_read = (char *)malloc(sizeof(char) * (8 + 1));
@@ -1989,21 +2063,23 @@ print_pgstattableio()
   if (opts->filter == NULL)
   {
     snprintf(sql, sizeof(sql),
-      "SELECT sum(heap_blks_read), sum(heap_blks_hit), sum(idx_blks_read), sum(idx_blks_hit), "
+      "SELECT %ssum(heap_blks_read), sum(heap_blks_hit), sum(idx_blks_read), sum(idx_blks_hit), "
       "sum(toast_blks_read), sum(toast_blks_hit), sum(tidx_blks_read), sum(tidx_blks_hit) "
       "FROM pg_statio_all_tables "
-      "WHERE schemaname <> 'information_schema' ");
+      "WHERE schemaname <> 'information_schema' ",
+      opts->addtimestamp ? "to_char(now(), 'YYYY-MM-DD HH24:MI:SS')," : "");
 
     res = PQexec(conn, sql);
   }
   else
   {
     snprintf(sql, sizeof(sql),
-      "SELECT heap_blks_read, heap_blks_hit, idx_blks_read, idx_blks_hit, "
+      "SELECT %sheap_blks_read, heap_blks_hit, idx_blks_read, idx_blks_hit, "
       "toast_blks_read, toast_blks_hit, tidx_blks_read, tidx_blks_hit "
       "FROM pg_statio_all_tables "
       "WHERE schemaname <> 'information_schema' "
-      "  AND relname = $1");
+      "  AND relname = $1",
+      opts->addtimestamp ? "to_char(now(), 'YYYY-MM-DD HH24:MI:SS')," : "");
 
     paramValues[0] = pg_strdup(opts->filter);
 
@@ -2037,6 +2113,10 @@ print_pgstattableio()
     column = 0;
 
     /* getting new values */
+    if (opts->addtimestamp)
+    {
+      ts = PQgetvalue(res, row, column++);
+    }
     heap_blks_read = atol(PQgetvalue(res, row, column++));
     heap_blks_hit = atol(PQgetvalue(res, row, column++));
     idx_blks_read = atol(PQgetvalue(res, row, column++));
@@ -2057,6 +2137,10 @@ print_pgstattableio()
     format(r_tidx_blks_read, tidx_blks_read - previous_pgstattableio->tidx_blks_read, 8,  opts->human_readable ? ALL_UNIT : NO_UNIT);
     format(r_tidx_blks_hit, tidx_blks_hit - previous_pgstattableio->tidx_blks_hit, 8,  opts->human_readable ? ALL_UNIT : NO_UNIT);
 
+    if (opts->addtimestamp && ts != NULL)
+    {
+      (void)printf(" %s  ", ts);
+    }
     (void)printf(" %s  %s   %s  %s   %s  %s   %s  %s\n",
       r_heap_blks_read,
       r_heap_blks_hit,
@@ -2107,6 +2191,7 @@ print_pgstatindex()
   long       idx_tup_read = 0;
   long       idx_tup_fetch = 0;
 
+  char       *ts = NULL;
   char       *r_idx_scan = (char *)malloc(sizeof(char) * (8 + 1));
   char       *r_idx_tup_read = (char *)malloc(sizeof(char) * (8 + 1));
   char       *r_idx_tup_fetch = (char *)malloc(sizeof(char) * (8 + 1));
@@ -2118,19 +2203,21 @@ print_pgstatindex()
   if (opts->filter == NULL)
   {
     snprintf(sql, sizeof(sql),
-      "SELECT sum(idx_scan), sum(idx_tup_read), sum(idx_tup_fetch) "
+      "SELECT %ssum(idx_scan), sum(idx_tup_read), sum(idx_tup_fetch) "
       " FROM pg_stat_all_indexes "
-      "WHERE schemaname <> 'information_schema' ");
+      "WHERE schemaname <> 'information_schema' ",
+      opts->addtimestamp ? "to_char(now(), 'YYYY-MM-DD HH24:MI:SS')," : "");
 
     res = PQexec(conn, sql);
   }
   else
   {
     snprintf(sql, sizeof(sql),
-      "SELECT idx_scan, idx_tup_read, idx_tup_fetch "
+      "SELECT %sidx_scan, idx_tup_read, idx_tup_fetch "
       "FROM pg_stat_all_indexes "
       "WHERE schemaname <> 'information_schema' "
-      "  AND indexrelname = $1");
+      "  AND indexrelname = $1",
+      opts->addtimestamp ? "to_char(now(), 'YYYY-MM-DD HH24:MI:SS')," : "");
 
     paramValues[0] = pg_strdup(opts->filter);
 
@@ -2164,6 +2251,10 @@ print_pgstatindex()
     column = 0;
 
     /* getting new values */
+    if (opts->addtimestamp)
+    {
+      ts = PQgetvalue(res, row, column++);
+    }
     idx_scan = atol(PQgetvalue(res, row, column++));
     idx_tup_read = atof(PQgetvalue(res, row, column++));
     idx_tup_fetch = atof(PQgetvalue(res, row, column++));
@@ -2173,6 +2264,10 @@ print_pgstatindex()
     format(r_idx_scan, idx_scan - previous_pgstatindex->idx_scan, 8, opts->human_readable ? ALL_UNIT : NO_UNIT);
     format(r_idx_tup_read, idx_tup_read - previous_pgstatindex->idx_tup_read, 8, opts->human_readable ? ALL_UNIT : NO_UNIT);
     format(r_idx_tup_fetch, idx_tup_fetch - previous_pgstatindex->idx_tup_fetch, 8, opts->human_readable ? ALL_UNIT : NO_UNIT);
+    if (opts->addtimestamp && ts != NULL)
+    {
+      (void)printf(" %s  ", ts);
+    }
     (void)printf(" %s   %s %s\n",
       r_idx_scan,
       r_idx_tup_read,
@@ -2208,6 +2303,7 @@ print_pgstatfunction()
   float      total_time = 0;
   float      self_time = 0;
 
+  char       *ts = NULL;
   char       *r_calls = (char *)malloc(sizeof(char) * (9 + 1));
   char       *r_total_time = (char *)malloc(sizeof(char) * (10 + 1));
   char       *r_self_time = (char *)malloc(sizeof(char) * (10 + 1));
@@ -2219,19 +2315,21 @@ print_pgstatfunction()
   if (opts->filter == NULL)
   {
     snprintf(sql, sizeof(sql),
-      "SELECT sum(calls), sum(total_time), sum(self_time) "
+      "SELECT %ssum(calls), sum(total_time), sum(self_time) "
       "FROM pg_stat_user_functions "
-      "WHERE schemaname <> 'information_schema' ");
+      "WHERE schemaname <> 'information_schema' ",
+      opts->addtimestamp ? "to_char(now(), 'YYYY-MM-DD HH24:MI:SS')," : "");
 
     res = PQexec(conn, sql);
   }
   else
   {
     snprintf(sql, sizeof(sql),
-      "SELECT calls, total_time, self_time "
+      "SELECT %scalls, total_time, self_time "
       "FROM pg_stat_user_functions "
       "WHERE schemaname <> 'information_schema' "
-      "  AND funcname = $1");
+      "  AND funcname = $1",
+      opts->addtimestamp ? "to_char(now(), 'YYYY-MM-DD HH24:MI:SS')," : "");
 
     paramValues[0] = pg_strdup(opts->filter);
 
@@ -2265,6 +2363,10 @@ print_pgstatfunction()
     column = 0;
 
     /* getting new values */
+    if (opts->addtimestamp)
+    {
+      ts = PQgetvalue(res, row, column++);
+    }
     calls = atol(PQgetvalue(res, row, column++));
     total_time = atof(PQgetvalue(res, row, column++));
     self_time = atof(PQgetvalue(res, row, column++));
@@ -2275,6 +2377,10 @@ print_pgstatfunction()
     format_time(r_total_time, total_time - previous_pgstatfunction->total_time, 10);
     format_time(r_self_time, self_time - previous_pgstatfunction->self_time, 10);
 
+    if (opts->addtimestamp && ts != NULL)
+    {
+      (void)printf(" %s  ", ts);
+    }
     (void)printf(" %s   %s  %s\n",
       r_calls,
       r_total_time,
@@ -2331,6 +2437,7 @@ print_pgstatstatement()
   long       wal_fpi = 0;
   long       wal_bytes = 0;
 
+  char     *ts = NULL;
   char     *r1 = (char *)malloc(sizeof(char) * (20 + 1));
   char     *r2 = (char *)malloc(sizeof(char) * (20 + 1));
   char     *r3 = (char *)malloc(sizeof(char) * (20 + 1));
@@ -2341,13 +2448,14 @@ print_pgstatstatement()
   if (opts->filter == NULL)
   {
     snprintf(sql, sizeof(sql),
-      "SELECT %ssum(calls), sum(%s), sum(rows),"
+      "SELECT %s%ssum(calls), sum(%s), sum(rows),"
       " sum(shared_blks_hit), sum(shared_blks_read), sum(shared_blks_dirtied), sum(shared_blks_written),"
       " sum(local_blks_hit), sum(local_blks_read), sum(local_blks_dirtied), sum(local_blks_written),"
       " sum(temp_blks_read), sum(temp_blks_written)"
       "%s%s%s"
       "%s"
       " FROM %s.pg_stat_statements ",
+      opts->addtimestamp ? "to_char(now(), 'YYYY-MM-DD HH24:MI:SS')," : "",
       backend_minimum_version(13, 0) ? "sum(plans), sum(total_plan_time), " : "",
       backend_minimum_version(13, 0) ? "total_exec_time" : "total_time",
       backend_minimum_version(17, 0) ? ", sum(shared_blk_read_time), sum(shared_blk_write_time)" : ", sum(blk_read_time), sum(blk_write_time)",
@@ -2361,7 +2469,7 @@ print_pgstatstatement()
   else
   {
     snprintf(sql, sizeof(sql),
-      "SELECT %scalls, %s, rows,"
+      "SELECT %s%scalls, %s, rows,"
       " shared_blks_hit, shared_blks_read, shared_blks_dirtied, shared_blks_written,"
       " local_blks_hit, local_blks_read, local_blks_dirtied, local_blks_written,"
       " temp_blks_read, temp_blks_written,"
@@ -2369,6 +2477,7 @@ print_pgstatstatement()
       "%s"
       " FROM %s.pg_stat_statements "
       "WHERE queryid=$1",
+      opts->addtimestamp ? "to_char(now(), 'YYYY-MM-DD HH24:MI:SS')," : "",
       backend_minimum_version(13, 0) ? "plans, total_plan_time, " : "",
       backend_minimum_version(13, 0) ? "total_exec_time" : "total_time",
       backend_minimum_version(17, 0) ? ", shared_blk_read_time, shared_blk_write_time" : ", blk_read_time, blk_write_time",
@@ -2409,6 +2518,10 @@ print_pgstatstatement()
     column = 0;
 
     /* getting new values */
+    if (opts->addtimestamp)
+    {
+      ts = PQgetvalue(res, row, column++);
+    }
     if (backend_minimum_version(13, 0))
     {
       plans = atol(PQgetvalue(res, row, column++));
@@ -2449,6 +2562,10 @@ print_pgstatstatement()
 
     /* printing the diff...
      * note that the first line will be the current value, rather than the diff */
+    if (opts->addtimestamp && ts != NULL)
+    {
+      (void)printf(" %s  ", ts);
+    }
     if ((opts->substat == NULL || strstr(opts->substat, "plan") != NULL) && backend_minimum_version(13, 0))
     {
       format(r1, plans - previous_pgstatstatement->plans, 6, opts->human_readable ? ALL_UNIT : NO_UNIT);
@@ -2579,6 +2696,7 @@ print_pgstatslru()
   char       *stats_reset;
   bool       has_been_reset;
 
+  char       *ts = NULL;
   char       *r_blks_zeroed = (char *)malloc(sizeof(char) * (9 + 1));
   char       *r_blks_hit = (char *)malloc(sizeof(char) * (9 + 1));
   char       *r_blks_read = (char *)malloc(sizeof(char) * (9 + 1));
@@ -2594,10 +2712,11 @@ print_pgstatslru()
   if (opts->filter == NULL)
   {
     snprintf(sql, sizeof(sql),
-      "SELECT sum(blks_zeroed), sum(blks_hit), sum(blks_read), sum(blks_written), "
+      "SELECT %ssum(blks_zeroed), sum(blks_hit), sum(blks_read), sum(blks_written), "
       "sum(blks_exists), sum(flushes), sum(truncates), "
       "max(stats_reset), max(stats_reset)>'%s' "
       "FROM pg_stat_slru ",
+      opts->addtimestamp ? "to_char(now(), 'YYYY-MM-DD HH24:MI:SS')," : "",
       previous_pgstatslru->stats_reset);
 
     res = PQexec(conn, sql);
@@ -2605,11 +2724,12 @@ print_pgstatslru()
   else
   {
     snprintf(sql, sizeof(sql),
-      "SELECT sum(blks_zeroed), sum(blks_hit), sum(blks_read), sum(blks_written), "
+      "SELECT %ssum(blks_zeroed), sum(blks_hit), sum(blks_read), sum(blks_written), "
       "sum(blks_exists), sum(flushes), sum(truncates), "
       "stats_reset, stats_reset>'%s' "
       "FROM pg_stat_slru "
       "WHERE name = $1",
+      opts->addtimestamp ? "to_char(now(), 'YYYY-MM-DD HH24:MI:SS')," : "",
       previous_pgstatslru->stats_reset);
 
     paramValues[0] = pg_strdup(opts->filter);
@@ -2644,6 +2764,10 @@ print_pgstatslru()
     column = 0;
 
     /* getting new values */
+    if (opts->addtimestamp)
+    {
+      ts = PQgetvalue(res, row, column++);
+    }
     blks_zeroed = atol(PQgetvalue(res, row, column++));
     blks_hit = atol(PQgetvalue(res, row, column++));
     blks_read = atol(PQgetvalue(res, row, column++));
@@ -2669,6 +2793,10 @@ print_pgstatslru()
     format(r_flushes, flushes - previous_pgstatslru->flushes, 9, opts->human_readable ? ALL_UNIT : NO_UNIT);
     format(r_truncates, truncates - previous_pgstatslru->truncates, 9, opts->human_readable ? ALL_UNIT : NO_UNIT);
 
+    if (opts->addtimestamp && ts != NULL)
+    {
+      (void)printf(" %s  ", ts);
+    }
     (void)printf(" %s %s %s %s %s %s %s\n",
       r_blks_zeroed,
       r_blks_hit,
@@ -2723,6 +2851,7 @@ print_pgstatwal()
   char     *stats_reset;
   bool     has_been_reset;
 
+  char     *ts = NULL;
   char     *r_wal_records = (char *)malloc(sizeof(char) * (10 + 1));
   char     *r_wal_fpi = (char *)malloc(sizeof(char) * (10 + 1));
   char     *r_wal_bytes = (char *)malloc(sizeof(char) * (10 + 1));
@@ -2734,10 +2863,11 @@ print_pgstatwal()
 
   /* grab the stats (this is the only stats on one line) */
   snprintf(sql, sizeof(sql),
-    "SELECT wal_records, wal_fpi, wal_bytes, wal_buffers_full, "
+    "SELECT %swal_records, wal_fpi, wal_bytes, wal_buffers_full, "
     "wal_write, wal_sync, wal_write_time, wal_sync_time, "
     "stats_reset, stats_reset>'%s' "
     "FROM pg_stat_wal ",
+    opts->addtimestamp ? "to_char(now(), 'YYYY-MM-DD HH24:MI:SS')," : "",
     previous_pgstatwal->stats_reset);
 
   /* make the call */
@@ -2763,6 +2893,10 @@ print_pgstatwal()
     column = 0;
 
     /* getting new values */
+    if (opts->addtimestamp)
+    {
+      ts = PQgetvalue(res, row, column++);
+    }
     wal_records = atol(PQgetvalue(res, row, column++));
     wal_fpi = atol(PQgetvalue(res, row, column++));
     wal_bytes = atol(PQgetvalue(res, row, column++));
@@ -2790,6 +2924,10 @@ print_pgstatwal()
     format_time(r_wal_write_time, wal_write_time - previous_pgstatwal->wal_write_time, 10);
     format_time(r_wal_sync_time, wal_sync_time - previous_pgstatwal->wal_sync_time, 10);
 
+    if (opts->addtimestamp && ts != NULL)
+    {
+      (void)printf(" %s  ", ts);
+    }
     (void)printf(" %s %s %s   %s %s %s %s %s\n",
       r_wal_records,
       r_wal_fpi,
@@ -3211,17 +3349,19 @@ print_buffercache()
   long     dirtyblocks = 0;
   long     dirtyblocks_pct = 0;
 
+  char     *ts = NULL;
   char     *r_usedblocks = (char *)malloc(sizeof(char) * (5 + 1));
   char     *r_usedblocks_pct = (char *)malloc(sizeof(char) * (5 + 1));
   char     *r_dirtyblocks = (char *)malloc(sizeof(char) * (5 + 1));
   char     *r_dirtyblocks_pct = (char *)malloc(sizeof(char) * (5 + 1));
 
   snprintf(sql, sizeof(sql),
-    "SELECT count(*) FILTER (WHERE relfilenode IS NOT NULL), "
+    "SELECT %scount(*) FILTER (WHERE relfilenode IS NOT NULL), "
     "100. * count(*) FILTER (WHERE relfilenode IS NOT NULL) / count(*), "
     "count(*) FILTER (WHERE isdirty), "
     "100. * count(*) FILTER (WHERE isdirty) / count(*) "
     "FROM %s.pg_buffercache ",
+    opts->addtimestamp ? "to_char(now(), 'YYYY-MM-DD HH24:MI:SS')," : "",
     opts->namespace);
 
   res = PQexec(conn, sql);
@@ -3245,6 +3385,10 @@ print_buffercache()
   {
     column = 0;
 
+    if (opts->addtimestamp)
+    {
+      ts = PQgetvalue(res, row, column++);
+    }
     usedblocks = atol(PQgetvalue(res, row, column++));
     usedblocks_pct = atol(PQgetvalue(res, row, column++));
     dirtyblocks = atol(PQgetvalue(res, row, column++));
@@ -3256,6 +3400,10 @@ print_buffercache()
     format(r_dirtyblocks, dirtyblocks, 7, opts->human_readable ? ALL_UNIT : NO_UNIT);
     format(r_dirtyblocks_pct, dirtyblocks_pct, 5, NO_UNIT);
 
+    if (opts->addtimestamp && ts != NULL)
+    {
+      (void)printf(" %s  ", ts);
+    }
     (void)printf(" %s    %s   %s    %s\n",
       r_usedblocks, r_usedblocks_pct, r_dirtyblocks, r_dirtyblocks_pct);
   }
@@ -3276,28 +3424,32 @@ print_xlogstats()
 {
   char     sql[PGSTAT_DEFAULT_STRING_SIZE];
   PGresult *res;
+  long     column = 0;
 
   char     *xlogfilename;
   char     *currentlocation;
   long     locationdiff;
 
+  char     *ts = NULL;
   char     *r_locationdiff = (char *)malloc(sizeof(char) * (12 + 1));
 
   if (backend_minimum_version(10, 0))
   {
     snprintf(sql, sizeof(sql),
-      "SELECT "
+      "SELECT %s"
       "  pg_walfile_name(pg_current_wal_lsn()), "
       "  pg_current_wal_lsn(), "
-      "  pg_wal_lsn_diff(pg_current_wal_lsn(), '0/0')");
+      "  pg_wal_lsn_diff(pg_current_wal_lsn(), '0/0')",
+      opts->addtimestamp ? "to_char(now(), 'YYYY-MM-DD HH24:MI:SS')," : "");
   }
   else
   {
     snprintf(sql, sizeof(sql),
-      "SELECT "
+      "SELECT %s"
       "  pg_xlogfile_name(pg_current_xlog_location()), "
       "  pg_current_xlog_location(), "
-      "  pg_xlog_location_diff(pg_current_xlog_location(), '0/0')");
+      "  pg_xlog_location_diff(pg_current_xlog_location(), '0/0')",
+      opts->addtimestamp ? "to_char(now(), 'YYYY-MM-DD HH24:MI:SS')," : "");
   }
 
   res = PQexec(conn, sql);
@@ -3312,12 +3464,20 @@ print_xlogstats()
     exit(EXIT_FAILURE);
   }
 
-  xlogfilename = pg_strdup(PQgetvalue(res, 0, 0));
-  currentlocation = pg_strdup(PQgetvalue(res, 0, 1));
-  locationdiff = atol(PQgetvalue(res, 0, 2));
+  if (opts->addtimestamp)
+  {
+    ts = PQgetvalue(res, 0, column++);
+  }
+  xlogfilename = pg_strdup(PQgetvalue(res, 0, column++));
+  currentlocation = pg_strdup(PQgetvalue(res, 0, column++));
+  locationdiff = atol(PQgetvalue(res, 0, column++));
 
   /* printing the actual values for once */
   format(r_locationdiff, locationdiff - previous_xlogstats->locationdiff, 12, opts->human_readable ? SIZE_UNIT : NO_UNIT);
+  if (opts->addtimestamp && ts != NULL)
+  {
+    (void)printf(" %s  ", ts);
+  }
   (void)printf(" %s   %s     %s\n", xlogfilename, currentlocation, r_locationdiff);
 
   /* setting the new old value */
@@ -3337,15 +3497,18 @@ print_deadlivestats()
 {
   char     sql[PGSTAT_DEFAULT_STRING_SIZE];
   PGresult *res;
+  long     column = 0;
 
   long     live;
   long     dead;
 
+  char     *ts = NULL;
   char     *r_live = (char *)malloc(sizeof(char) * (10 + 1));
   char     *r_dead = (char *)malloc(sizeof(char) * (10 + 1));
 
   snprintf(sql, sizeof(sql),
-    "SELECT sum(n_live_tup), sum(n_dead_tup) FROM pg_stat_all_tables");
+    "SELECT %ssum(n_live_tup), sum(n_dead_tup) FROM pg_stat_all_tables",
+    opts->addtimestamp ? "to_char(now(), 'YYYY-MM-DD HH24:MI:SS')," : "");
 
   res = PQexec(conn, sql);
 
@@ -3359,12 +3522,20 @@ print_deadlivestats()
     exit(EXIT_FAILURE);
   }
 
-  live = atol(PQgetvalue(res, 0, 0));
-  dead = atol(PQgetvalue(res, 0, 1));
+  if (opts->addtimestamp)
+  {
+    ts = PQgetvalue(res, 0, column++);
+  }
+  live = atol(PQgetvalue(res, 0, column++));
+  dead = atol(PQgetvalue(res, 0, column++));
 
   /* printing the actual values for once */
   format(r_live, live, 10, opts->human_readable ? ALL_UNIT : NO_UNIT);
   format(r_dead, dead, 10, opts->human_readable ? ALL_UNIT : NO_UNIT);
+  if (opts->addtimestamp && ts != NULL)
+  {
+    (void)printf(" %s  ", ts);
+  }
   (void)printf(" %s  %s     %.2f\n",
     r_live,
     r_dead,
@@ -3388,20 +3559,23 @@ print_repslotsstats()
 {
   char     sql[PGSTAT_DEFAULT_STRING_SIZE];
   PGresult *res;
+  long     column = 0;
 
   char     *xlogfilename;
   char     *currentlocation;
   long     locationdiff;
 
+  char     *ts = NULL;
   char     *r_locationdiff = (char *)malloc(sizeof(char) * (12 + 1));
 
   snprintf(sql, sizeof(sql),
-    "SELECT "
+    "SELECT %s"
     "  pg_walfile_name(restart_lsn), "
     "  restart_lsn, "
     "  pg_wal_lsn_diff(restart_lsn, '0/0')"
     "FROM pg_replication_slots "
     "WHERE slot_name = '%s'",
+    opts->addtimestamp ? "to_char(now(), 'YYYY-MM-DD HH24:MI:SS')," : "",
     opts->filter);
 
   res = PQexec(conn, sql);
@@ -3424,12 +3598,20 @@ print_repslotsstats()
     exit(EXIT_FAILURE);
   }
 
-  xlogfilename = pg_strdup(PQgetvalue(res, 0, 0));
-  currentlocation = pg_strdup(PQgetvalue(res, 0, 1));
-  locationdiff = atol(PQgetvalue(res, 0, 2));
+  if (opts->addtimestamp)
+  {
+    ts = PQgetvalue(res, 0, column++);
+  }
+  xlogfilename = pg_strdup(PQgetvalue(res, 0, column++));
+  currentlocation = pg_strdup(PQgetvalue(res, 0, column++));
+  locationdiff = atol(PQgetvalue(res, 0, column++));
 
   /* printing the actual values for once */
   format(r_locationdiff, locationdiff - previous_xlogstats->locationdiff, 12, opts->human_readable ? SIZE_UNIT : NO_UNIT);
+  if (opts->addtimestamp && ts != NULL)
+  {
+    (void)printf(" %s  ", ts);
+  }
   (void)printf(" %s   %s     %s\n", xlogfilename, currentlocation, r_locationdiff);
 
   /* setting the new old value */
@@ -3447,20 +3629,21 @@ print_repslotsstats()
 void
 print_tempfilestats()
 {
-  char    sql[2*PGSTAT_DEFAULT_STRING_SIZE];
-  PGresult   *res;
-  long        size = 0;
-  long        count = 0;
-  int      nrows;
-  int      row, column;
+  char      sql[2*PGSTAT_DEFAULT_STRING_SIZE];
+  PGresult  *res;
+  long      size = 0;
+  long      count = 0;
+  int       nrows;
+  int       row, column;
 
-  char        *r_size = (char *)malloc(sizeof(char) * (10 + 1));
-  char        *r_count = (char *)malloc(sizeof(char) * (10 + 1));
+  char      *ts = NULL;
+  char      *r_size = (char *)malloc(sizeof(char) * (10 + 1));
+  char      *r_count = (char *)malloc(sizeof(char) * (10 + 1));
 
   if (backend_minimum_version(9, 3))
   {
     snprintf(sql, sizeof(sql),
-      "SELECT unnest(regexp_matches(agg.tmpfile, 'pgsql_tmp([0-9]*)')) AS pid, "
+      "SELECT %sunnest(regexp_matches(agg.tmpfile, 'pgsql_tmp([0-9]*)')) AS pid, "
       "  SUM((pg_stat_file(agg.dir||'/'||agg.tmpfile)).size), "
       "  count(*) "
       "FROM "
@@ -3486,12 +3669,14 @@ print_tempfilestats()
       "     (SELECT generate_series(1,2) AS i) AS gs, "
       "     LATERAL pg_ls_dir(dir||'/'||ls.sub) pglsdir "
       "   WHERE ls.sub = 'pgsql_tmp') agg "
-      "GROUP BY 1");
+      "GROUP BY 1%s",
+      opts->addtimestamp ? "to_char(now(), 'YYYY-MM-DD HH24:MI:SS')," : "",
+      opts->addtimestamp ? ",2" : "");
   }
   else
   {
     snprintf(sql, sizeof(sql),
-      "SELECT unnest(regexp_matches(agg.tmpfile, 'pgsql_tmp([0-9]*)')) AS pid, "
+      "SELECT %sunnest(regexp_matches(agg.tmpfile, 'pgsql_tmp([0-9]*)')) AS pid, "
       "  SUM((pg_stat_file(agg.dir||'/'||agg.tmpfile)).size), "
       "  count(*) "
       "FROM "
@@ -3516,7 +3701,9 @@ print_tempfilestats()
       "     ) AS ls, "
       "     (SELECT generate_series(1,2) AS i) AS gs "
       "   WHERE ls.sub = 'pgsql_tmp') agg "
-      "GROUP BY 1");
+      "GROUP BY 1%s",
+      opts->addtimestamp ? "to_char(now(), 'YYYY-MM-DD HH24:MI:SS')," : "",
+      opts->addtimestamp ? ",2" : "");
   }
 
   res = PQexec(conn, sql);
@@ -3540,6 +3727,10 @@ print_tempfilestats()
     column = 1;
 
     /* getting new values */
+    if (opts->addtimestamp)
+    {
+      ts = PQgetvalue(res, row, column++);
+    }
     size += atol(PQgetvalue(res, row, column++));
     count += atol(PQgetvalue(res, row, column++));
   }
@@ -3547,6 +3738,27 @@ print_tempfilestats()
   /* printing the diff... */
   format(r_size, size, 10, opts->human_readable ? SIZE_UNIT : NO_UNIT);
   format(r_count, count, 10, opts->human_readable ? ALL_UNIT : NO_UNIT);
+  if (opts->addtimestamp)
+  {
+    if (ts == NULL)
+    {
+      PQclear(res);
+      snprintf(sql, sizeof(sql), "SELECT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')");
+      res = PQexec(conn, sql);
+      /* check and deal with errors */
+      if (!res || PQresultStatus(res) > 2)
+      {
+        pg_log_warning("query failed: %s", PQerrorMessage(conn));
+        PQclear(res);
+        PQfinish(conn);
+        pg_log_error("query was: %s", sql);
+        exit(EXIT_FAILURE);
+      }
+      ts = PQgetvalue(res, 0, 0);
+    }
+
+    (void)printf(" %s  ", ts);
+  }
   (void)printf(" %s    %s\n", r_size, r_count);
 
   /* cleanup */
@@ -3564,8 +3776,9 @@ print_pgstatwaitevent()
   char     sql[2*PGSTAT_DEFAULT_STRING_SIZE];
   PGresult *res;
   int      nrows;
-  int      row;
+  int      row, column;
 
+  char *ts = NULL;
   char *r_lwlock = (char *)malloc(sizeof(char) * (10 + 1));
   char *r_lock = (char *)malloc(sizeof(char) * (10 + 1));
   char *r_bufferpin = (char *)malloc(sizeof(char) * (10 + 1));
@@ -3579,7 +3792,7 @@ print_pgstatwaitevent()
   char *r_all = (char *)malloc(sizeof(char) * (10 + 1));
 
   snprintf(sql, sizeof(sql),
-    "SELECT "
+    "SELECT %s"
     "  count(*) FILTER (WHERE wait_event_type='LWLock') AS LWLock, "
     "  count(*) FILTER (WHERE wait_event_type='Lock') AS Lock, "
     "  count(*) FILTER (WHERE wait_event_type='BufferPin') AS BufferPin, "
@@ -3591,7 +3804,8 @@ print_pgstatwaitevent()
     "  count(*) FILTER (WHERE wait_event_type='IO') AS IO, "
     "  count(*) FILTER (WHERE wait_event_type IS NULL) AS Running, "
     "  count(*) AS All "
-    "FROM pg_stat_activity;");
+    "FROM pg_stat_activity;",
+    opts->addtimestamp ? "to_char(now(), 'YYYY-MM-DD HH24:MI:SS')," : "");
 
   res = PQexec(conn, sql);
 
@@ -3609,21 +3823,30 @@ print_pgstatwaitevent()
   nrows = PQntuples(res);
 
   /* for each row, dump the information */
+  column = 0;
   for (row = 0; row < nrows; row++)
   {
     /* printing new values */
-    format(r_lwlock, atoi(PQgetvalue(res, row, 0)), 10, opts->human_readable ? ALL_UNIT : NO_UNIT);
-    format(r_lock, atoi(PQgetvalue(res, row, 1)), 10, opts->human_readable ? ALL_UNIT : NO_UNIT);
-    format(r_bufferpin, atoi(PQgetvalue(res, row, 2)), 10, opts->human_readable ? ALL_UNIT : NO_UNIT);
-    format(r_activity, atoi(PQgetvalue(res, row, 3)), 10, opts->human_readable ? ALL_UNIT : NO_UNIT);
-    format(r_client, atoi(PQgetvalue(res, row, 4)), 10, opts->human_readable ? ALL_UNIT : NO_UNIT);
-    format(r_extension, atoi(PQgetvalue(res, row, 5)), 10, opts->human_readable ? ALL_UNIT : NO_UNIT);
-    format(r_ipc, atoi(PQgetvalue(res, row, 6)), 10, opts->human_readable ? ALL_UNIT : NO_UNIT);
-    format(r_timeout, atoi(PQgetvalue(res, row, 7)), 10, opts->human_readable ? ALL_UNIT : NO_UNIT);
-    format(r_io, atoi(PQgetvalue(res, row, 8)), 10, opts->human_readable ? ALL_UNIT : NO_UNIT);
-    format(r_running, atoi(PQgetvalue(res, row, 9)), 10, opts->human_readable ? ALL_UNIT : NO_UNIT);
-    format(r_all, atoi(PQgetvalue(res, row, 10)), 10, opts->human_readable ? ALL_UNIT : NO_UNIT);
+    if (opts->addtimestamp)
+    {
+      ts = PQgetvalue(res, row, column++);
+    }
+    format(r_lwlock, atoi(PQgetvalue(res, row, column++)), 10, opts->human_readable ? ALL_UNIT : NO_UNIT);
+    format(r_lock, atoi(PQgetvalue(res, row, column++)), 10, opts->human_readable ? ALL_UNIT : NO_UNIT);
+    format(r_bufferpin, atoi(PQgetvalue(res, row, column++)), 10, opts->human_readable ? ALL_UNIT : NO_UNIT);
+    format(r_activity, atoi(PQgetvalue(res, row, column++)), 10, opts->human_readable ? ALL_UNIT : NO_UNIT);
+    format(r_client, atoi(PQgetvalue(res, row, column++)), 10, opts->human_readable ? ALL_UNIT : NO_UNIT);
+    format(r_extension, atoi(PQgetvalue(res, row, column++)), 10, opts->human_readable ? ALL_UNIT : NO_UNIT);
+    format(r_ipc, atoi(PQgetvalue(res, row, column++)), 10, opts->human_readable ? ALL_UNIT : NO_UNIT);
+    format(r_timeout, atoi(PQgetvalue(res, row, column++)), 10, opts->human_readable ? ALL_UNIT : NO_UNIT);
+    format(r_io, atoi(PQgetvalue(res, row, column++)), 10, opts->human_readable ? ALL_UNIT : NO_UNIT);
+    format(r_running, atoi(PQgetvalue(res, row, column++)), 10, opts->human_readable ? ALL_UNIT : NO_UNIT);
+    format(r_all, atoi(PQgetvalue(res, row, column++)), 10, opts->human_readable ? ALL_UNIT : NO_UNIT);
 
+    if (opts->addtimestamp && ts != NULL)
+    {
+      (void)printf(" %s  ", ts);
+    }
     (void)printf(" %s   %s    %s   %s %s    %s  %s  %s %s  %s %s\n",
       r_lwlock,
       r_lock,
@@ -3990,38 +4213,48 @@ print_header(void)
   char header1[PGSTAT_DEFAULT_STRING_SIZE] = "";
   char header2[PGSTAT_DEFAULT_STRING_SIZE] = "";
 
+  if (opts->addtimestamp)
+  {
+    strcat(header1, "----- timestamp ----- ");
+    strcat(header2, "                      ");
+  }
+
   switch(opts->stat)
   {
     case NONE:
       /* That shouldn't happen */
         break;
     case ARCHIVER:
-      (void)printf("---- WAL counts ----\n");
-      (void)printf(" archived   failed \n");
+      strcat(header1, "---- WAL counts ----");
+      strcat(header2, " archived   failed");
+      (void)printf("%s\n%s\n", header1, header2);
       break;
     case BGWRITER:
-      (void)printf("-------------- buffers -------------\n");
-      (void)printf("      clean       alloc  maxwritten\n");
+      strcat(header1, "-------------- buffers -------------");
+      strcat(header2, "      clean       alloc  maxwritten");
+      (void)printf("%s\n%s\n", header1, header2);
       break;
     case CHECKPOINTER:
       if (backend_minimum_version(17, 0))
       {
-        (void)printf("----- checkpoints ----- --------- restartpoints --------- ----- time ----- - buffers -\n");
-        (void)printf("     timed   requested       timed  requested       done    write    sync    written\n");
+        strcat(header1, "----- checkpoints ----- --------- restartpoints --------- ----- time ----- - buffers -");
+        strcat(header2, "     timed   requested       timed  requested       done    write    sync    written");
       }
       else if (backend_minimum_version(9, 2))
       {
-        (void)printf("----- checkpoints ----- ----- time ----- - buffers -\n");
-        (void)printf("     timed   requested    write    sync    written\n");
+        strcat(header1, "----- checkpoints ----- ----- time ----- - buffers -");
+        strcat(header2, "     timed   requested    write    sync    written");
       }
       else
       {
-        (void)printf("----- checkpoints ----- - buffers -\n");
-        (void)printf("     timed   requested    written\n");
+        strcat(header1, "----- checkpoints ----- - buffers -");
+        strcat(header2, "     timed   requested    written");
       }
+      (void)printf("%s\n%s\n", header1, header2);
       break;
     case CONNECTION:
-      (void)printf(" - total - active - lockwaiting - idle in transaction -  idle -\n");
+      strcat(header1, " - total - active - lockwaiting - idle in transaction -  idle -");
+      (void)printf("%s\n", header1);
       break;
     case DATABASE:
       if (opts->substat == NULL || strstr(opts->substat, "backends") != NULL)
@@ -4085,46 +4318,50 @@ print_header(void)
     case TABLE:
       if (backend_minimum_version(16, 0))
       {
-        (void)printf("-- sequential -- ----- index ---- ------------------------------- tuples ------------------------------- -------------- maintenance --------------\n");
-        (void)printf("   scan  tuples     scan  tuples      ins    upd    del hotupd newpageupd   live   dead analyze ins_vac   vacuum autovacuum analyze autoanalyze\n");
+        strcat(header1, "-- sequential -- ----- index ---- ------------------------------- tuples ------------------------------- -------------- maintenance --------------");
+        strcat(header2, "   scan  tuples     scan  tuples      ins    upd    del hotupd newpageupd   live   dead analyze ins_vac   vacuum autovacuum analyze autoanalyze");
       }
       else if (backend_minimum_version(13, 0))
       {
-        (void)printf("-- sequential -- ----- index ----- ------------------------- tuples ------------------------- -------------- maintenance --------------\n");
-        (void)printf("   scan  tuples     scan  tuples      ins    upd    del hotupd   live   dead analyze ins_vac   vacuum autovacuum analyze autoanalyze\n");
+        strcat(header1, "-- sequential -- ----- index ----- ------------------------- tuples ------------------------- -------------- maintenance --------------");
+        strcat(header2, "   scan  tuples     scan  tuples      ins    upd    del hotupd   live   dead analyze ins_vac   vacuum autovacuum analyze autoanalyze");
       }
       else if (backend_minimum_version(9, 4))
       {
-        (void)printf("-- sequential -- ----- index ---- ------------------------- tuples ------------------ -------------- maintenance ------------\n");
-        (void)printf("   scan  tuples     scan  tuples      ins    upd    del hotupd   live   dead analyze   vacuum autovacuum analyze autoanalyze\n");
+        strcat(header1, "-- sequential -- ----- index ---- ------------------------- tuples ------------------ -------------- maintenance ------------");
+        strcat(header2, "   scan  tuples     scan  tuples      ins    upd    del hotupd   live   dead analyze   vacuum autovacuum analyze autoanalyze");
       }
       else if (backend_minimum_version(9, 1))
       {
-        (void)printf("-- sequential -- ----- index ---- ------------------------- tuples ---------- -------------- maintenance ------------\n");
-        (void)printf("   scan  tuples     scan  tuples      ins    upd    del hotupd   live   dead   vacuum autovacuum analyze autoanalyze\n");
+        strcat(header1, "-- sequential -- ----- index ---- ------------------------- tuples ---------- -------------- maintenance ------------");
+        strcat(header2, "   scan  tuples     scan  tuples      ins    upd    del hotupd   live   dead   vacuum autovacuum analyze autoanalyze");
       }
       else if (backend_minimum_version(8, 3))
       {
-        (void)printf("-- sequential -- ----- index ---- ------------------------- tuples ----------\n");
-        (void)printf("   scan  tuples     scan  tuples      ins    upd    del hotupd   live   dead\n");
+        strcat(header1, "-- sequential -- ----- index ---- ------------------------- tuples ----------");
+        strcat(header2, "   scan  tuples     scan  tuples      ins    upd    del hotupd   live   dead");
       }
       else
       {
-        (void)printf("-- sequential -- ----- index ---- ------- tuples -------\n");
-        (void)printf("   scan  tuples     scan  tuples      ins    upd    del\n");
+        strcat(header1, "-- sequential -- ----- index ---- ------- tuples -------");
+        strcat(header2, "   scan  tuples     scan  tuples      ins    upd    del");
       }
+      (void)printf("%s\n%s\n", header1, header2);
       break;
     case TABLEIO:
-      (void)printf("---- heap table ---- ---- toast table --- --- heap indexes --- --- toast indexes --\n");
-      (void)printf("     read       hit       read       hit       read       hit       read       hit \n");
+      strcat(header1, "---- heap table ---- ---- toast table --- --- heap indexes --- --- toast indexes --");
+      strcat(header2, "     read       hit       read       hit       read       hit       read       hit");
+      (void)printf("%s\n%s\n", header1, header2);
       break;
     case INDEX:
-      (void)printf("-- scan -- ------ tuples -----\n");
-      (void)printf("                read    fetch\n");
+      strcat(header1, "-- scan -- ------ tuples -----");
+      strcat(header2, "                read    fetch");
+      (void)printf("%s\n%s\n", header1, header2);
       break;
     case FUNCTION:
-      (void)printf("-- count -- --------- time ---------\n");
-      (void)printf("                  total        self\n");
+      strcat(header1, "-- count -- --------- time ---------");
+      strcat(header2, "                  total        self");
+      (void)printf("%s\n%s\n", header1, header2);
       break;
     case STATEMENT:
       if ((opts->substat == NULL || strstr(opts->substat, "plan") != NULL) && backend_minimum_version(13, 0))
@@ -4178,59 +4415,74 @@ print_header(void)
       (void)printf("%s\n%s\n", header1, header2);
       break;
     case SLRU:
-      (void)printf("    zeroed       hit      read   written    exists   flushes truncates\n");
+      strcat(header1, "    zeroed       hit      read   written    exists   flushes truncates");
+      (void)printf("%s\n", header1);
       break;
     case WAL:
-      (void)printf("    records        FPI      bytes buffers_full      write       sync write_time  sync_time\n");
+      strcat(header1, "    records        FPI      bytes buffers_full      write       sync write_time  sync_time");
+      (void)printf("%s\n", header1);
       break;
     case BUFFERCACHE:
-      (void)printf("------ used ------ ------ dirty -----\n");
-      (void)printf("   total  percent     total  percent\n");
+      strcat(header1, "----- used ------ ------ dirty -----");
+      strcat(header2, "   total  percent     total  percent");
+      (void)printf("%s\n%s\n", header1, header2);
       break;
     case DEADLIVE:
-      (void)printf("       live        dead  percent\n");
+      strcat(header1, "       live        dead  percent");
+      (void)printf("%s\n", header1);
       break;
     case XLOG:
     case REPSLOTS:
-      (void)printf("-------- filename -------- -- location -- ---- bytes ----\n");
+      strcat(header1, "-------- filename -------- -- location -- ---- bytes ----");
+      (void)printf("%s\n", header1);
       break;
     case TEMPFILE:
-      (void)printf("--- size --- --- count ---\n");
+      strcat(header1, "--- size --- --- count ---");
+      (void)printf("%s\n", header1);
       break;
     case WAITEVENT:
-      (void)printf("---- LWLock ------- Lock --- BufferPin --- Activity --- Client --- Extension ------- IPC --- Timeout ------- IO --- Running ------ All ---\n");
+      strcat(header1, "--- LWLock ------- Lock --- BufferPin --- Activity --- Client --- Extension ------- IPC --- Timeout ------- IO --- Running ------ All ---");
+      (void)printf("%s\n", header1);
       break;
     case PROGRESS_ANALYZE:
-      (void)printf("--------------------- object --------------------- ---------- phase ---------- ---------------- stats --------------- -- time elapsed --\n");
-      (void)printf(" database         relation              size                                    %%sample blocks  %%ext stats  %%child tables\n");
+      strcat(header1, "--------------------- object --------------------- ---------- phase ---------- ---------------- stats --------------- -- time elapsed --");
+      strcat(header2, " database         relation              size                                    %%sample blocks  %%ext stats  %%child tables\n");
+      (void)printf("%s\n%s\n", header1, header2);
       break;
     case PROGRESS_BASEBACKUP:
-      (void)printf("--- pid --- ---------- phase ---------- ---------------------- stats -------------------- -- time elapsed --\n");
-      (void)printf("                                         Sent size - Total size - %%Sent - %%Tablespaces\n");
+      strcat(header1, "--- pid --- ---------- phase ---------- ---------------------- stats -------------------- -- time elapsed --");
+      strcat(header2, "                                         Sent size - Total size - %%Sent - %%Tablespaces");
+      (void)printf("%s\n%s\n", header1, header2);
       break;
     case PROGRESS_CLUSTER:
-      (void)printf("--------------------------- object -------------------------- -------------------- phase -------------------- ------------------- stats ------------------- -- time elapsed --\n");
-      (void)printf(" database         table                 index                                                                  tuples scanned  tuples written  %%blocks  index rebuilt\n");
+      strcat(header1, "--------------------------- object -------------------------- -------------------- phase -------------------- ------------------- stats ------------------- -- time elapsed --");
+      strcat(header2, " database         table                 index                                                                  tuples scanned  tuples written  %%blocks  index rebuilt");
+      (void)printf("%s\n%s\n", header1, header2);
       break;
     case PROGRESS_COPY:
-      (void)printf("----------------- object ---------------- -------------------- phase -------------------- --------- bytes --------- ------- tuples -------- -- time elapsed --\n");
-      (void)printf(" database         table                     command                  type                   processed       total    processed    excluded\n");
+      strcat(header1, "----------------- object ---------------- -------------------- phase -------------------- --------- bytes --------- ------- tuples -------- -- time elapsed --");
+      strcat(header2, " database         table                     command                  type                   processed       total    processed    excluded");
+      (void)printf("%s\n%s\n", header1, header2);
       break;
     case PROGRESS_CREATEINDEX:
-      (void)printf("--------------------------- object -------------------------- -------------------- phase -------------------- ------------------- stats ------------------- -- time elapsed --\n");
-      (void)printf(" database         table                 index                                                                  %%lockers  %%blocks  %%tuples  %%partitions\n");
+      strcat(header1, "--------------------------- object -------------------------- -------------------- phase -------------------- ------------------- stats ------------------- -- time elapsed --");
+      strcat(header2, " database         table                 index                                                                  %%lockers  %%blocks  %%tuples  %%partitions");
+      (void)printf("%s\n%s\n", header1, header2);
       break;
     case PROGRESS_VACUUM:
-      (void)printf("--------------------- object --------------------- ---------- phase ---------- ---------------- stats --------------- -- time elapsed --\n");
-      (void)printf(" database         relation              size                                    %%scan  %%vacuum  #index  %%dead tuple\n");
+      strcat(header1, "--------------------- object --------------------- ---------- phase ---------- ---------------- stats --------------- -- time elapsed --");
+      strcat(header2, " database         relation              size                                    %%scan  %%vacuum  #index  %%dead tuple");
+      (void)printf("%s\n%s\n", header1, header2);
       break;
     case PBPOOLS:
-      (void)printf("---- client -----  ---------------- server ----------------  -- misc --\n");
-      (void)printf(" active  waiting    active    idle    used  tested   login    maxwait\n");
+      strcat(header1, "---- client -----  ---------------- server ----------------  -- misc --");
+      strcat(header2, " active  waiting    active    idle    used  tested   login    maxwait");
+      (void)printf("%s\n%s\n", header1, header2);
       break;
     case PBSTATS:
-      (void)printf("---------------- total -----------------\n");
-      (void)printf(" request  received  sent    query time\n");
+      strcat(header1, "---------------- total -----------------");
+      strcat(header2, " request  received  sent    query time");
+      (void)printf("%s\n%s\n", header1, header2);
       break;
   }
 

@@ -309,6 +309,15 @@ $ ./pgstat -s xlog -H
 
 That's indeed much more readable if you ask me.
 
+You can also add a timestamp to each line with the `-t` option. For example:
+
+```
+----- timestamp ----- -------------- buffers -------------
+                            clean       alloc  maxwritten
+ 2025-03-26 16:48:32            0       14662           0
+ 2025-03-26 16:48:33            0           0           0
+```
+
 Another customer wanted to know how many temporary files were written, and
 their sizes. Of course, you can get that with the pg_stat_database view, but
 it only gets added when the query is done. We wanted to know when the query is
