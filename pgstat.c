@@ -69,6 +69,7 @@ typedef enum
   REPSLOTS,
   WAITEVENT,
   WAL,
+  IO,
   PROGRESS_ANALYZE,
   PROGRESS_BASEBACKUP,
   PROGRESS_CLUSTER,
@@ -358,6 +359,31 @@ struct pgstatwal
   char  *stats_reset;
 };
 
+/* pg_stat_io struct */
+struct pgstatio
+{
+  /*
+  char *backend_type;
+  char *object;
+  char *context;
+  */
+  long  reads;
+  float read_time;
+  long  writes;
+  float write_time;
+  long  writebacks;
+  float writeback_time;
+  long  extends;
+  float extend_time;
+  long  op_bytes;
+  long  hits;
+  long  evictions;
+  long  reuses;
+  float fsyncs;
+  float fsync_time;
+  char  *stats_reset;
+};
+
 /* deadlivestats struct */
 struct deadlivestats
 {
@@ -413,6 +439,7 @@ static struct pgstatfunction      *previous_pgstatfunction;
 static struct pgstatstatement     *previous_pgstatstatement;
 static struct pgstatslru          *previous_pgstatslru;
 static struct pgstatwal           *previous_pgstatwal;
+static struct pgstatio            *previous_pgstatio;
 static struct xlogstats           *previous_xlogstats;
 static struct deadlivestats       *previous_deadlivestats;
 static struct repslots            *previous_repslots;
@@ -465,6 +492,7 @@ void        print_pgstatfunction(void);
 void        print_pgstatstatement(void);
 void        print_pgstatslru(void);
 void        print_pgstatwal(void);
+void        print_pgstatio(void);
 void        print_pgstatprogressanalyze(void);
 void        print_pgstatprogressbasebackup(void);
 void        print_pgstatprogresscluster(void);
@@ -541,6 +569,7 @@ help(const char *progname)
        "  * tempfile             for temporary file usage\n"
        "  * waitevent            for wait events usage\n"
        "  * wal                  for pg_stat_wal (only for 14+)\n"
+       "  * io                   for pg_stat_io (only for 16+)\n"
        "  * progress_analyze     for analyze progress monitoring (only for\n"
        "                         13+)\n"
        "  * progress_basebackup  for base backup progress monitoring (only\n"
@@ -689,6 +718,10 @@ get_opts(int argc, char **argv)
         else if (!strcmp(optarg, "wal"))
         {
           opts->stat = WAL;
+        }
+        else if (!strcmp(optarg, "io"))
+        {
+          opts->stat = IO;
         }
         else if (!strcmp(optarg, "xlog"))
         {
@@ -2964,6 +2997,185 @@ print_pgstatwal()
 }
 
 /*
+ * Dump all io stats.
+ */
+void
+print_pgstatio()
+{
+  char     sql[PGSTAT_DEFAULT_STRING_SIZE];
+  PGresult *res;
+  int      nrows;
+  int      row, column;
+
+  long     reads;
+  float    read_time;
+  long     writes;
+  float    write_time;
+  long     writebacks;
+  float    writeback_time;
+  long     extends;
+  float    extend_time;
+  long     op_bytes;
+  long     hits;
+  long     evictions;
+  long     reuses;
+  long     fsyncs;
+  float    fsync_time;
+  char     *stats_reset;
+  bool     has_been_reset;
+
+  char     *ts = NULL;
+  char     *r_reads = (char *)malloc(sizeof(char) * (10 + 1));
+  char     *r_read_time = (char *)malloc(sizeof(char) * (10 + 1));
+  char     *r_writes = (char *)malloc(sizeof(char) * (10 + 1));
+  char     *r_write_time = (char *)malloc(sizeof(char) * (10 + 1));
+  char     *r_writebacks = (char *)malloc(sizeof(char) * (10 + 1));
+  char     *r_writeback_time = (char *)malloc(sizeof(char) * (10 + 1));
+  char     *r_extends = (char *)malloc(sizeof(char) * (10 + 1));
+  char     *r_extend_time = (char *)malloc(sizeof(char) * (10 + 1));
+  char     *r_op_bytes = (char *)malloc(sizeof(char) * (10 + 1));
+  char     *r_hits = (char *)malloc(sizeof(char) * (10 + 1));
+  char     *r_evictions = (char *)malloc(sizeof(char) * (10 + 1));
+  char     *r_reuses = (char *)malloc(sizeof(char) * (10 + 1));
+  char     *r_fsyncs = (char *)malloc(sizeof(char) * (10 + 1));
+  char     *r_fsync_time = (char *)malloc(sizeof(char) * (10 + 1));
+
+  /* grab the stats (this is the only stats on one line) */
+  snprintf(sql, sizeof(sql),
+    "SELECT %ssum(reads), sum(read_time), sum(writes), sum(write_time), "
+    "sum(writebacks), sum(writeback_time), sum(extends), sum(extend_time), "
+    "sum(op_bytes), sum(hits), sum(evictions), sum(reuses), "
+    "sum(fsyncs), sum(fsync_time), "
+    "max(stats_reset), bool_and(stats_reset>'%s') "
+    "FROM pg_stat_io ",
+    opts->addtimestamp ? "to_char(now(), 'YYYY-MM-DD HH24:MI:SS')," : "",
+    previous_pgstatio->stats_reset);
+
+  /* make the call */
+  res = PQexec(conn, sql);
+
+  /* check and deal with errors */
+  if (!res || PQresultStatus(res) > 2)
+  {
+    pg_log_warning("query failed: %s", PQerrorMessage(conn));
+    PQclear(res);
+    PQfinish(conn);
+    pg_log_error("query was: %s", sql);
+    exit(EXIT_FAILURE);
+  }
+
+  /* get the number of fields */
+  nrows = PQntuples(res);
+
+  /* for each row, dump the information */
+  /* this is stupid, a simple if would do the trick, but it will help for other cases */
+  for (row = 0; row < nrows; row++)
+  {
+    column = 0;
+
+    /* getting new values */
+    if (opts->addtimestamp)
+    {
+      ts = PQgetvalue(res, row, column++);
+    }
+    reads = atol(PQgetvalue(res, row, column++));
+    read_time = atof(PQgetvalue(res, row, column++));
+    writes = atol(PQgetvalue(res, row, column++));
+    write_time = atof(PQgetvalue(res, row, column++));
+    writebacks = atol(PQgetvalue(res, row, column++));
+    writeback_time = atof(PQgetvalue(res, row, column++));
+    extends = atol(PQgetvalue(res, row, column++));
+    extend_time = atof(PQgetvalue(res, row, column++));
+    op_bytes = atol(PQgetvalue(res, row, column++));
+    hits = atol(PQgetvalue(res, row, column++));
+    evictions = atol(PQgetvalue(res, row, column++));
+    reuses = atol(PQgetvalue(res, row, column++));
+    fsyncs = atol(PQgetvalue(res, row, column++));
+    fsync_time = atof(PQgetvalue(res, row, column++));
+
+    stats_reset = PQgetvalue(res, row, column++);
+    has_been_reset = strcmp(PQgetvalue(res, row, column++), "f") && strcmp(previous_pgstatio->stats_reset, PGSTAT_OLDEST_STAT_RESET);
+
+    if (has_been_reset)
+    {
+      (void)printf("pg_stat_io has been reset!\n");
+    }
+
+    /* printing the diff...
+     * note that the first line will be the current value, rather than the diff */
+    format(r_reads, reads - previous_pgstatio->reads, 7, opts->human_readable ? ALL_UNIT : NO_UNIT);
+    format_time(r_read_time, read_time - previous_pgstatio->read_time, 10);
+    format(r_writes, writes - previous_pgstatio->writes, 7, opts->human_readable ? ALL_UNIT : NO_UNIT);
+    format_time(r_write_time, write_time - previous_pgstatio->write_time, 10);
+    format(r_writebacks, writebacks - previous_pgstatio->writebacks, 10, opts->human_readable ? ALL_UNIT : NO_UNIT);
+    format_time(r_writeback_time, writeback_time - previous_pgstatio->writeback_time, 10);
+    format(r_extends, extends - previous_pgstatio->extends, 6, opts->human_readable ? ALL_UNIT : NO_UNIT);
+    format_time(r_extend_time, extend_time - previous_pgstatio->extend_time, 10);
+    format(r_op_bytes, op_bytes - previous_pgstatio->op_bytes, 6, opts->human_readable ? ALL_UNIT : NO_UNIT);
+    format(r_hits, hits - previous_pgstatio->hits, 6, opts->human_readable ? ALL_UNIT : NO_UNIT);
+    format(r_evictions, evictions - previous_pgstatio->evictions, 6, opts->human_readable ? ALL_UNIT : NO_UNIT);
+    format(r_reuses, reuses - previous_pgstatio->reuses, 6, opts->human_readable ? ALL_UNIT : NO_UNIT);
+    format(r_fsyncs, fsyncs - previous_pgstatio->fsyncs, 6, opts->human_readable ? ALL_UNIT : NO_UNIT);
+    format_time(r_fsync_time, fsync_time - previous_pgstatio->fsync_time, 10);
+
+    if (opts->addtimestamp && ts != NULL)
+    {
+      (void)printf(" %s  ", ts);
+    }
+    (void)printf("%s %s %s %s %s     %s  %s  %s   %s  %s    %s  %s  %s    %s\n",
+      r_reads,
+      r_read_time,
+      r_writes,
+      r_write_time,
+      r_writebacks,
+      r_writeback_time,
+      r_extends,
+      r_extend_time,
+      r_op_bytes,
+      r_hits,
+      r_evictions,
+      r_reuses,
+      r_fsyncs,
+      r_fsync_time
+      );
+
+    /* setting the new old value */
+    previous_pgstatio->reads = reads;
+    previous_pgstatio->read_time = read_time;
+    previous_pgstatio->writes = writes;
+    previous_pgstatio->write_time = write_time;
+    previous_pgstatio->writebacks = writebacks;
+    previous_pgstatio->writeback_time = writeback_time;
+    previous_pgstatio->extends = extends;
+    previous_pgstatio->extend_time = extend_time;
+    previous_pgstatio->op_bytes = op_bytes;
+    previous_pgstatio->hits = hits;
+    previous_pgstatio->evictions = evictions;
+    previous_pgstatio->reuses = reuses;
+    previous_pgstatio->fsyncs = fsyncs;
+    previous_pgstatio->fsync_time = fsync_time;
+    previous_pgstatio->stats_reset = stats_reset;
+  }
+
+  /* cleanup */
+  free(r_reads);
+  free(r_read_time);
+  free(r_writes);
+  free(r_write_time);
+  free(r_writebacks);
+  free(r_writeback_time);
+  free(r_extends);
+  free(r_extend_time);
+  free(r_op_bytes);
+  free(r_hits);
+  free(r_evictions);
+  free(r_reuses);
+  free(r_fsyncs);
+  free(r_fsync_time);
+  PQclear(res);
+}
+
+/*
  * Dump base backup progress.
  */
 void
@@ -4422,6 +4634,10 @@ print_header(void)
       strcat(header1, "    records        FPI      bytes buffers_full      write       sync write_time  sync_time");
       (void)printf("%s\n", header1);
       break;
+    case IO:
+      strcat(header1, "  reads  read_time  writes write_time writebacks writeback_time extends extend_time op_bytes    hits evictions   ruses  fsyncs    fsync_time");
+      (void)printf("%s\n", header1);
+      break;
     case BUFFERCACHE:
       strcat(header1, "----- used ------ ------ dirty -----");
       strcat(header2, "   total  percent     total  percent");
@@ -4540,6 +4756,9 @@ print_line(void)
       break;
     case WAL:
       print_pgstatwal();
+      break;
+    case IO:
+      print_pgstatio();
       break;
     case BUFFERCACHE:
       print_buffercache();
@@ -4740,6 +4959,24 @@ allocate_struct(void)
       previous_pgstatwal->wal_write_time = 0;
       previous_pgstatwal->wal_sync_time = 0;
       previous_pgstatwal->stats_reset = PGSTAT_OLDEST_STAT_RESET;
+      break;
+    case IO:
+      previous_pgstatio = (struct pgstatio *) pg_malloc(sizeof(struct pgstatio));
+      previous_pgstatio->reads = 0;
+      previous_pgstatio->read_time = 0;
+      previous_pgstatio->writes = 0;
+      previous_pgstatio->write_time = 0;
+      previous_pgstatio->writebacks = 0;
+      previous_pgstatio->writeback_time = 0;
+      previous_pgstatio->extends = 0;
+      previous_pgstatio->extend_time = 0;
+      previous_pgstatio->op_bytes = 0;
+      previous_pgstatio->hits = 0;
+      previous_pgstatio->evictions = 0;
+      previous_pgstatio->reuses = 0;
+      previous_pgstatio->fsyncs = 0;
+      previous_pgstatio->fsync_time = 0;
+      previous_pgstatio->stats_reset = PGSTAT_OLDEST_STAT_RESET;
       break;
     case XLOG:
       previous_xlogstats = (struct xlogstats *) pg_malloc(sizeof(struct xlogstats));
@@ -4945,6 +5182,13 @@ main(int argc, char **argv)
   {
     PQfinish(conn);
     pg_log_error("You need at least v14 for this statistic.");
+    exit(EXIT_FAILURE);
+  }
+
+  if (opts->stat == IO && !backend_minimum_version(15, 0))
+  {
+    PQfinish(conn);
+    pg_log_error("You need at least v15 for this statistic.");
     exit(EXIT_FAILURE);
   }
 
