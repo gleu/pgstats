@@ -427,6 +427,7 @@ main(int argc, char **argv)
   {
     fetch_table(FUNCS_PER_SCHEMA_TITLE, FUNCS_PER_SCHEMA_SQL);
   }
+  fetch_table(RULES_TITLE, RULES_SQL);
   fetch_table(LOBJ_TITLE, LOBJ_SQL);
   fetch_table(LOBJ_STATS_TITLE, LOBJ_STATS_SQL);
   fetch_table(RELOPTIONS_TITLE, RELOPTIONS_SQL);

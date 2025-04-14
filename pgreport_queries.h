@@ -86,6 +86,9 @@
 #define FUNCS_PER_SCHEMA_TITLE "Functions per schema and language"
 #define FUNCS_PER_SCHEMA_SQL "select n.nspname, l.lanname, count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace join pg_language l on l.oid=p.prolang where pronamespace=2200 or pronamespace>16383 group by 1, 2 order by 1, 2"
 
+#define RULES_TITLE "Rules"
+#define RULES_SQL "SELECT n.nspname AS schemaname, c.relname AS tablename, r.rulename, pg_get_ruledef(r.oid) AS definition FROM pg_rewrite r JOIN pg_class c ON c.oid = r.ev_class LEFT JOIN pg_namespace n ON n.oid = c.relnamespace WHERE r.rulename <> '_RETURN'::name"
+
 #define LOBJ_TITLE "Large Objects"
 #define LOBJ_SQL "select count(*) from pg_largeobject"
 
