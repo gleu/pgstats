@@ -417,6 +417,7 @@ main(int argc, char **argv)
   fetch_table(REDUNDANTINDEXES_TITLE, REDUNDANTINDEXES_SQL);
   fetch_table(ORPHANEDFILES_TITLE, ORPHANEDFILES_SQL);
   fetch_table(NBFUNCS_TITLE, NBFUNCS_SQL);
+  fetch_table(SECDEF_FUNCS_TITLE, SECDEF_FUNCS_SQL);
   if (backend_minimum_version(11,0))
   {
     fetch_table(FUNCSPROCS_PER_SCHEMA_AND_KIND_TITLE,
