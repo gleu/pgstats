@@ -47,6 +47,12 @@
 #define SECDEF_FUNCS_TITLE "Security Definer Functions"
 #define SECDEF_FUNCS_SQL "SELECT n.nspname, p.proname FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE prosecdef"
 
+#define RLS_TITLE "Row-Level Security Tables"
+#define RLS_SQL "SELECT oid, relname FROM pg_class WHERE relrowsecurity"
+
+#define POLICY_TITLE "Policies"
+#define POLICY_SQL "SELECT * FROM pg_policy"
+
 #define HEAPTOAST_SIZE_TITLE "HEAP and TOAST sizes per schema"
 #define HEAPTOAST_SIZE_SQL "select nspname, relname, pg_relation_size(c.oid) as heap_size, pg_relation_size(reltoastrelid) as toast_size from pg_namespace n join pg_class c on n.oid=c.relnamespace where pg_relation_size(reltoastrelid)>0 order by nspname, relname"
 
