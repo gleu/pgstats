@@ -71,6 +71,9 @@
 #define TABLEWITHOUTPKEY_TITLE "Tables without primary key"
 #define TABLEWITHOUTPKEY_SQL "select ns.nspname, cl.relname from pg_class cl join pg_namespace ns on ns.oid=cl.relnamespace left join pg_constraint co on co.conrelid=cl.oid and co.contype='p' where cl.relkind='r' and ns.nspname not in ('pg_catalog', 'information_schema') and co.conname is null order by ns.nspname, cl.relname"
 
+#define BAD_DATATYPE_TITLE "Columns with bad datatype"
+#define BAD_DATATYPE_SQL "select n.nspname as \"schema\", c.relname as \"table\", a.attname as \"column\", t.typname as \"type\" from pg_class c join pg_namespace n on n.oid=c.relnamespace join pg_attribute a on a.attrelid=c.oid join pg_type t on t.oid=a.atttypid where n.nspname not like 'pg%' and n.nspname <> 'information_schema' and c.relkind='r' and a.attnum>0 and ((t.typname='varchar' and coalesce(a.atttypmod,0)>4) or (t.typname='money') or (t.typname='timestamp')) order by n.nspname, c.relname, a.attnum"
+
 #define INDEXTYPE_TITLE "Index by types"
 #define INDEXTYPE_SQL "SELECT nspname, count(*) FILTER (WHERE not indisunique AND not indisprimary) as standard, count(*) FILTER (WHERE indisunique AND not indisprimary) as unique, count(*) FILTER (WHERE indisprimary) as primary, count(*) FILTER (WHERE indisexclusion) as exclusion, count(*) FILTER (WHERE indisclustered) as clustered, count(*) FILTER (WHERE indisvalid) as valid FROM pg_index i JOIN pg_class c ON c.oid=i.indexrelid JOIN pg_namespace n ON n.oid=c.relnamespace GROUP BY 1;"
 
