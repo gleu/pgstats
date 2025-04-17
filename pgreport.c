@@ -268,7 +268,9 @@ fetch_postmaster_starttime()
 void
 fetch_table(char *label, char *query)
 {
-  printf("\\echo %s\n",label);
+  printf("\\echo\n");
+  printf("\\echo ## %s\n",label);
+  printf("\\echo\n\n");
   printf("%s;\n",query);
 }
 
@@ -315,7 +317,9 @@ main(int argc, char **argv)
   printf("SET application_name to 'pgreport';\n");
 
   /* Fetch version */
-  printf("\\echo # PostgreSQL Version\n\n");
+  printf("\\echo\n");
+  printf("\\echo # PostgreSQL Version\n");
+  printf("\\echo\n\n");
   fetch_version();
   printf("\n");
 
@@ -341,17 +345,23 @@ main(int argc, char **argv)
   }
 
   /* Fetch postmaster start time */
-  printf("\\echo # PostgreSQL Start time\n\n");
+  printf("\\echo\n");
+  printf("\\echo # PostgreSQL Start time\n");
+  printf("\\echo\n\n");
   fetch_postmaster_starttime();
   printf("\n");
 
   /* Fetch reload conf time */
-  printf("\\echo # PostgreSQL Reload conf time\n\n");
+  printf("\\echo\n");
+  printf("\\echo # PostgreSQL Reload conf time\n");
+  printf("\\echo\n\n");
   fetch_postmaster_reloadconftime();
   printf("\n");
 
   /* Fetch settings by various ways */
-  printf("\\echo # PostgreSQL Configuration\n\n");
+  printf("\\echo\n");
+  printf("\\echo # PostgreSQL Configuration\n");
+  printf("\\echo\n\n");
   fetch_table(SETTINGS_BY_SOURCEFILE_TITLE, SETTINGS_BY_SOURCEFILE_SQL);
   fetch_table(SETTINGS_NOTCONFIGFILE_NOTDEFAULTVALUE_TITLE,
         SETTINGS_NOTCONFIGFILE_NOTDEFAULTVALUE_SQL);
@@ -370,7 +380,9 @@ main(int argc, char **argv)
   fetch_table(PGSETTINGS_TITLE, PGSETTINGS_SQL);
 
   /* Fetch global objects */
-  printf("\\echo # Global objects\n\n");
+  printf("\\echo\n");
+  printf("\\echo # Global objects\n");
+  printf("\\echo\n\n");
   fetch_table(CLUSTER_HITRATIO_TITLE, CLUSTER_HITRATIO_SQL);
   fetch_table(CLUSTER_BUFFERSUSAGE_TITLE, CLUSTER_BUFFERSUSAGE_SQL);
   fetch_table(CLUSTER_BUFFERSUSAGEDIRTY_TITLE, CLUSTER_BUFFERSUSAGEDIRTY_SQL);
@@ -382,15 +394,17 @@ main(int argc, char **argv)
   fetch_table(DATABASEUSER_CONFIG_TITLE, DATABASEUSER_CONFIG_SQL);
 
   /* Fetch local objects of the current database */
+  printf("\\echo\n");
   if (backend_minimum_version(9,3))
   {
     printf("SELECT current_database() AS db \\gset");
-    printf("\\echo # Local objects in database :'db'\n\n");
+    printf("\\echo # Local objects in database :'db'\n");
   }
   else
   {
-    printf("\\echo # Local objects in current database\n\n");
+    printf("\\echo # Local objects in current database\n");
   }
+  printf("\\echo\n\n");
   fetch_table(SCHEMAS_TITLE, SCHEMAS_SQL);
   fetch_table(NBRELS_IN_SCHEMA_TITLE, NBRELS_IN_SCHEMA_SQL);
   if (backend_minimum_version(11,0))
