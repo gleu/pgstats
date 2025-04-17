@@ -53,6 +53,12 @@
 #define POLICY_TITLE "Policies"
 #define POLICY_SQL "SELECT * FROM pg_policy"
 
+#define PARTITIONGLOBALSIZE_TITLE "Partitions global size"
+#define PARTITIONGLOBALSIZE_SQL "select pg_size_pretty(sum(pg_table_size(ppt.relid))) from pg_class c, lateral pg_partition_tree(c.oid) ppt where c.relkind='p' and not c.relispartition and ppt.isleaf"
+
+#define PARTITIONLIST_TITLE "Partitions"
+#define PARTITIONLIST_SQL "with tmp as ( select ppt.level, ppt.parentrelid as parentable, case level when 0 then c.oid else ppt.relid end as tableoid, case pt.partstrat when 'h' then 'hash' when 'l' then 'list' when 'r' then 'range' else 'weird' end as strategy, cdef.relname as default, ppt.isleaf from pg_partitioned_table pt join pg_class c on c.oid=pt.partrelid left join pg_class cdef on cdef.oid=pt.partdefid, lateral pg_partition_tree(c.oid) ppt) select *, pg_size_pretty(pg_table_size(tableoid)) as size from tmp"
+
 #define HEAPTOAST_SIZE_TITLE "HEAP and TOAST sizes per schema"
 #define HEAPTOAST_SIZE_SQL "select nspname, relname, pg_relation_size(c.oid) as heap_size, pg_relation_size(reltoastrelid) as toast_size from pg_namespace n join pg_class c on n.oid=c.relnamespace where pg_relation_size(reltoastrelid)>0 order by nspname, relname"
 
