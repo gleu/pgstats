@@ -53,15 +53,14 @@ struct options
 /*
  * Global variables
  */
-struct options *opts;
-extern char    *optarg;
-const char *progname;
+static struct options  *opts;
+extern char            *optarg;
 
 
 /*
  * Function prototypes
  */
-static void help();
+static void help(const char *progname);
 void        get_opts(int, char **);
 #ifndef FE_MEMUTILS_H
 void        *pg_malloc(size_t size);
@@ -84,7 +83,7 @@ static void quit_properly(SIGNAL_ARGS);
  * Print help message
  */
 static void
-help()
+help(const char *progname)
 {
   printf("%s gets lots of informations from PostgreSQL metadata and statistics.\n\n"
        "Usage:\n"
@@ -106,6 +105,9 @@ void
 get_opts(int argc, char **argv)
 {
   int        c;
+  const char *progname;
+
+  progname = get_progname(argv[0]);
 
   /* set the defaults */
   opts->script = NULL;
@@ -116,7 +118,7 @@ get_opts(int argc, char **argv)
   {
     if (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-?") == 0)
     {
-      help();
+      help(progname);
       exit(0);
     }
     if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0)
@@ -301,9 +303,6 @@ main(int argc, char **argv)
 
   /* Initialize the logging interface */
   pg_logging_init(argv[0]);
-
-  /* Get the program name */
-  progname = get_progname(argv[0]);
 
   /* Allocate the options struct */
   opts = (struct options *) pg_malloc(sizeof(struct options));

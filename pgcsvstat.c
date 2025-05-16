@@ -48,8 +48,8 @@ struct options
 };
 
 /* global variables */
-struct options *opts;
-PGconn         *conn;
+static struct options *opts;
+static PGconn         *conn;
 
 /* function prototypes */
 static void help(const char *progname);

@@ -55,9 +55,9 @@ struct options
 /*
  * Global variables
  */
-PGconn         *conn;
-struct options *opts;
-extern char    *optarg;
+static PGconn         *conn;
+static struct options *opts;
+extern char           *optarg;
 
 /*
  * Function prototypes
