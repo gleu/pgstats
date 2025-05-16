@@ -316,6 +316,10 @@ main(int argc, char **argv)
   printf("\\echo =================================================================================\n");
   printf("SET application_name to 'pgreport';\n");
 
+  printf("\\pset format aligned\n");
+  printf("\\pset border 2\n");
+  printf("\\pset linestyle ascii\n");
+
   /* Fetch version */
   printf("\\echo\n");
   printf("\\echo # PostgreSQL Version\n");
