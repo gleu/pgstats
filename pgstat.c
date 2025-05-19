@@ -2898,11 +2898,11 @@ print_pgstatwal()
 
   /* grab the stats (this is the only stats on one line) */
   snprintf(sql, sizeof(sql),
-    "SELECT %swal_records, wal_fpi, wal_bytes, wal_buffers_full, "
-    "wal_write, wal_sync, wal_write_time, wal_sync_time, "
+    "SELECT %swal_records, wal_fpi, wal_bytes, wal_buffers_full%s,"
     "stats_reset, stats_reset>'%s' "
     "FROM pg_stat_wal ",
     opts->addtimestamp ? "to_char(now(), 'YYYY-MM-DD HH24:MI:SS')," : "",
+    backend_minimum_version(18, 0) ? "" : ", wal_write, wal_sync, wal_write_time, wal_sync_time",
     previous_pgstatwal->stats_reset);
 
   /* make the call */
@@ -2936,10 +2936,13 @@ print_pgstatwal()
     wal_fpi = atol(PQgetvalue(res, row, column++));
     wal_bytes = atol(PQgetvalue(res, row, column++));
     wal_buffers_full = atol(PQgetvalue(res, row, column++));
-    wal_write = atol(PQgetvalue(res, row, column++));
-    wal_sync = atol(PQgetvalue(res, row, column++));
-    wal_write_time = atof(PQgetvalue(res, row, column++));
-    wal_sync_time = atof(PQgetvalue(res, row, column++));
+    if (!backend_minimum_version(18, 0))
+    {
+      wal_write = atol(PQgetvalue(res, row, column++));
+      wal_sync = atol(PQgetvalue(res, row, column++));
+      wal_write_time = atof(PQgetvalue(res, row, column++));
+      wal_sync_time = atof(PQgetvalue(res, row, column++));
+    }
     stats_reset = PQgetvalue(res, row, column++);
     has_been_reset = strcmp(PQgetvalue(res, row, column++), "f") && strcmp(previous_pgstatwal->stats_reset, PGSTAT_OLDEST_STAT_RESET);
 
@@ -2954,35 +2957,47 @@ print_pgstatwal()
     format(r_wal_fpi, wal_fpi - previous_pgstatwal->wal_fpi, 10, opts->human_readable ? ALL_UNIT : NO_UNIT);
     format(r_wal_bytes, wal_bytes - previous_pgstatwal->wal_bytes, 10, opts->human_readable ? SIZE_UNIT : NO_UNIT);
     format(r_wal_buffers_full, wal_buffers_full - previous_pgstatwal->wal_buffers_full, 10, opts->human_readable ? ALL_UNIT : NO_UNIT);
-    format(r_wal_write, wal_write - previous_pgstatwal->wal_write, 10, opts->human_readable ? ALL_UNIT : NO_UNIT);
-    format(r_wal_sync, wal_sync - previous_pgstatwal->wal_sync, 10, opts->human_readable ? ALL_UNIT : NO_UNIT);
-    format_time(r_wal_write_time, wal_write_time - previous_pgstatwal->wal_write_time, 10);
-    format_time(r_wal_sync_time, wal_sync_time - previous_pgstatwal->wal_sync_time, 10);
+    if (!backend_minimum_version(18, 0))
+    {
+      format(r_wal_write, wal_write - previous_pgstatwal->wal_write, 10, opts->human_readable ? ALL_UNIT : NO_UNIT);
+      format(r_wal_sync, wal_sync - previous_pgstatwal->wal_sync, 10, opts->human_readable ? ALL_UNIT : NO_UNIT);
+      format_time(r_wal_write_time, wal_write_time - previous_pgstatwal->wal_write_time, 10);
+      format_time(r_wal_sync_time, wal_sync_time - previous_pgstatwal->wal_sync_time, 10);
+    }
 
     if (opts->addtimestamp && ts != NULL)
     {
       (void)printf(" %s  ", ts);
     }
-    (void)printf(" %s %s %s   %s %s %s %s %s\n",
+    (void)printf(" %s %s %s   %s",
       r_wal_records,
       r_wal_fpi,
       r_wal_bytes,
-      r_wal_buffers_full,
-      r_wal_write,
-      r_wal_sync,
-      r_wal_write_time,
-      r_wal_sync_time
+      r_wal_buffers_full
       );
+    if (!backend_minimum_version(18, 0))
+    {
+      (void)printf(" %s %s %s %s",
+        r_wal_write,
+        r_wal_sync,
+        r_wal_write_time,
+        r_wal_sync_time
+        );
+    }
+    (void)printf("\n");
 
     /* setting the new old value */
     previous_pgstatwal->wal_records = wal_records;
     previous_pgstatwal->wal_fpi = wal_fpi;
     previous_pgstatwal->wal_bytes = wal_bytes;
     previous_pgstatwal->wal_buffers_full = wal_buffers_full;
-    previous_pgstatwal->wal_write = wal_write;
-    previous_pgstatwal->wal_sync = wal_sync;
-    previous_pgstatwal->wal_write_time = wal_write_time;
-    previous_pgstatwal->wal_sync_time = wal_sync_time;
+    if (!backend_minimum_version(18, 0))
+    {
+      previous_pgstatwal->wal_write = wal_write;
+      previous_pgstatwal->wal_sync = wal_sync;
+      previous_pgstatwal->wal_write_time = wal_write_time;
+      previous_pgstatwal->wal_sync_time = wal_sync_time;
+    }
     previous_pgstatwal->stats_reset = stats_reset;
   }
 
@@ -4641,7 +4656,11 @@ print_header(void)
       (void)printf("%s\n", header1);
       break;
     case WAL:
-      strcat(header1, "    records        FPI      bytes buffers_full      write       sync write_time  sync_time");
+      strcat(header1, "    records        FPI      bytes buffers_full");
+      if (!backend_minimum_version(18, 0))
+      {
+        strcat(header1, "     write       sync write_time  sync_time");
+      }
       (void)printf("%s\n", header1);
       break;
     case IO:
