@@ -368,8 +368,10 @@ struct pgstatio
   char *context;
   */
   long  reads;
+  long  read_bytes;
   float read_time;
   long  writes;
+  long  write_bytes;
   float write_time;
   long  writebacks;
   float writeback_time;
@@ -3008,14 +3010,15 @@ print_pgstatio()
   int      row, column;
 
   long     reads;
+  long     read_bytes;
   float    read_time;
   long     writes;
+  long     write_bytes;
   float    write_time;
   long     writebacks;
   float    writeback_time;
   long     extends;
   float    extend_time;
-  long     op_bytes;
   long     hits;
   long     evictions;
   long     reuses;
@@ -3026,14 +3029,15 @@ print_pgstatio()
 
   char     *ts = NULL;
   char     *r_reads = (char *)malloc(sizeof(char) * (10 + 1));
+  char     *r_read_bytes = (char *)malloc(sizeof(char) * (10 + 1));
   char     *r_read_time = (char *)malloc(sizeof(char) * (10 + 1));
   char     *r_writes = (char *)malloc(sizeof(char) * (10 + 1));
+  char     *r_write_bytes = (char *)malloc(sizeof(char) * (10 + 1));
   char     *r_write_time = (char *)malloc(sizeof(char) * (10 + 1));
   char     *r_writebacks = (char *)malloc(sizeof(char) * (10 + 1));
   char     *r_writeback_time = (char *)malloc(sizeof(char) * (10 + 1));
   char     *r_extends = (char *)malloc(sizeof(char) * (10 + 1));
   char     *r_extend_time = (char *)malloc(sizeof(char) * (10 + 1));
-  char     *r_op_bytes = (char *)malloc(sizeof(char) * (10 + 1));
   char     *r_hits = (char *)malloc(sizeof(char) * (10 + 1));
   char     *r_evictions = (char *)malloc(sizeof(char) * (10 + 1));
   char     *r_reuses = (char *)malloc(sizeof(char) * (10 + 1));
@@ -3042,13 +3046,14 @@ print_pgstatio()
 
   /* grab the stats (this is the only stats on one line) */
   snprintf(sql, sizeof(sql),
-    "SELECT %ssum(reads), sum(read_time), sum(writes), sum(write_time), "
+    "SELECT %ssum(reads), %s, sum(read_time), sum(writes), %s, sum(write_time), "
     "sum(writebacks), sum(writeback_time), sum(extends), sum(extend_time), "
-    "sum(op_bytes), sum(hits), sum(evictions), sum(reuses), "
-    "sum(fsyncs), sum(fsync_time), "
+    "sum(hits), sum(evictions), sum(reuses), sum(fsyncs), sum(fsync_time), "
     "max(stats_reset), bool_and(stats_reset>'%s') "
     "FROM pg_stat_io ",
     opts->addtimestamp ? "to_char(now(), 'YYYY-MM-DD HH24:MI:SS')," : "",
+    backend_minimum_version(18, 0) ? "sum(read_bytes)" : "sum(reads*op_bytes)",
+    backend_minimum_version(18, 0) ? "sum(write_bytes)" : "sum(writes*op_bytes)",
     previous_pgstatio->stats_reset);
 
   /* make the call */
@@ -3079,14 +3084,15 @@ print_pgstatio()
       ts = PQgetvalue(res, row, column++);
     }
     reads = atol(PQgetvalue(res, row, column++));
+    read_bytes = atol(PQgetvalue(res, row, column++));
     read_time = atof(PQgetvalue(res, row, column++));
     writes = atol(PQgetvalue(res, row, column++));
+    write_bytes = atol(PQgetvalue(res, row, column++));
     write_time = atof(PQgetvalue(res, row, column++));
     writebacks = atol(PQgetvalue(res, row, column++));
     writeback_time = atof(PQgetvalue(res, row, column++));
     extends = atol(PQgetvalue(res, row, column++));
     extend_time = atof(PQgetvalue(res, row, column++));
-    op_bytes = atol(PQgetvalue(res, row, column++));
     hits = atol(PQgetvalue(res, row, column++));
     evictions = atol(PQgetvalue(res, row, column++));
     reuses = atol(PQgetvalue(res, row, column++));
@@ -3104,14 +3110,15 @@ print_pgstatio()
     /* printing the diff...
      * note that the first line will be the current value, rather than the diff */
     format(r_reads, reads - previous_pgstatio->reads, 7, opts->human_readable ? ALL_UNIT : NO_UNIT);
+    format(r_read_bytes, read_bytes - previous_pgstatio->read_bytes, 7, opts->human_readable ? SIZE_UNIT : NO_UNIT);
     format_time(r_read_time, read_time - previous_pgstatio->read_time, 10);
     format(r_writes, writes - previous_pgstatio->writes, 7, opts->human_readable ? ALL_UNIT : NO_UNIT);
+    format(r_write_bytes, write_bytes - previous_pgstatio->write_bytes, 7, opts->human_readable ? SIZE_UNIT : NO_UNIT);
     format_time(r_write_time, write_time - previous_pgstatio->write_time, 10);
     format(r_writebacks, writebacks - previous_pgstatio->writebacks, 10, opts->human_readable ? ALL_UNIT : NO_UNIT);
     format_time(r_writeback_time, writeback_time - previous_pgstatio->writeback_time, 10);
     format(r_extends, extends - previous_pgstatio->extends, 6, opts->human_readable ? ALL_UNIT : NO_UNIT);
     format_time(r_extend_time, extend_time - previous_pgstatio->extend_time, 10);
-    format(r_op_bytes, op_bytes - previous_pgstatio->op_bytes, 6, opts->human_readable ? ALL_UNIT : NO_UNIT);
     format(r_hits, hits - previous_pgstatio->hits, 6, opts->human_readable ? ALL_UNIT : NO_UNIT);
     format(r_evictions, evictions - previous_pgstatio->evictions, 6, opts->human_readable ? ALL_UNIT : NO_UNIT);
     format(r_reuses, reuses - previous_pgstatio->reuses, 6, opts->human_readable ? ALL_UNIT : NO_UNIT);
@@ -3122,16 +3129,17 @@ print_pgstatio()
     {
       (void)printf(" %s  ", ts);
     }
-    (void)printf("%s %s %s %s %s     %s  %s  %s   %s  %s    %s  %s  %s    %s\n",
+    (void)printf("%s     %s %s %s     %s %s %s     %s  %s  %s %s    %s    %s %s %s\n",
       r_reads,
+      r_read_bytes,
       r_read_time,
       r_writes,
+      r_write_bytes,
       r_write_time,
       r_writebacks,
       r_writeback_time,
       r_extends,
       r_extend_time,
-      r_op_bytes,
       r_hits,
       r_evictions,
       r_reuses,
@@ -3141,14 +3149,15 @@ print_pgstatio()
 
     /* setting the new old value */
     previous_pgstatio->reads = reads;
+    previous_pgstatio->read_bytes = read_bytes;
     previous_pgstatio->read_time = read_time;
     previous_pgstatio->writes = writes;
+    previous_pgstatio->write_bytes = write_bytes;
     previous_pgstatio->write_time = write_time;
     previous_pgstatio->writebacks = writebacks;
     previous_pgstatio->writeback_time = writeback_time;
     previous_pgstatio->extends = extends;
     previous_pgstatio->extend_time = extend_time;
-    previous_pgstatio->op_bytes = op_bytes;
     previous_pgstatio->hits = hits;
     previous_pgstatio->evictions = evictions;
     previous_pgstatio->reuses = reuses;
@@ -3159,14 +3168,15 @@ print_pgstatio()
 
   /* cleanup */
   free(r_reads);
+  free(r_read_bytes);
   free(r_read_time);
   free(r_writes);
+  free(r_write_bytes);
   free(r_write_time);
   free(r_writebacks);
   free(r_writeback_time);
   free(r_extends);
   free(r_extend_time);
-  free(r_op_bytes);
   free(r_hits);
   free(r_evictions);
   free(r_reuses);
@@ -4635,7 +4645,7 @@ print_header(void)
       (void)printf("%s\n", header1);
       break;
     case IO:
-      strcat(header1, "  reads  read_time  writes write_time writebacks writeback_time extends extend_time op_bytes    hits evictions   ruses  fsyncs    fsync_time");
+      strcat(header1, "  reads  read_bytes  read_time  writes write_bytes write_time writebacks writeback_time extends extend_time   hits evictions    reuses fsyncs fsync_time");
       (void)printf("%s\n", header1);
       break;
     case BUFFERCACHE:
