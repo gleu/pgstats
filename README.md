@@ -17,7 +17,7 @@ you can load them on any spreadsheet to get the graphs you want.
 pgdisplay tries to display a table in an informative way. Still pretty much
 experimental.
 
-They all should be compatible with the latest PostgreSQL release (13 right
+They all should be compatible with the latest PostgreSQL release (18 right
 now), and down to the oldest stable release (9.5 right now). They may also be
 compatible with much older releases (8.x for most of them).
 
