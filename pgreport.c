@@ -332,10 +332,12 @@ main(int argc, char **argv)
   /* Install some extensions if they are not already there */
   install_extension("pg_buffercache");
   install_extension("pg_visibility");
+  install_extension("amcheck");
   /* Install some functions/views */
+  execute(CREATE_CORRUPTEDINDEXES_FUNCTION_SQL);
   execute(CREATE_GETVALUE_FUNCTION_SQL);
   execute(CREATE_BLOATTABLE_VIEW_SQL);
-  strcat(sql, CREATE_BLOATINDEX_VIEW_SQL_1);
+  strcpy(sql, CREATE_BLOATINDEX_VIEW_SQL_1);
   strcat(sql, CREATE_BLOATINDEX_VIEW_SQL_2);
   execute(sql);
   if (backend_minimum_version(10,0))
@@ -437,6 +439,7 @@ main(int argc, char **argv)
   fetch_table(PERCENTUSEDINDEXES_TITLE, PERCENTUSEDINDEXES_SQL);
   fetch_table(UNUSEDINDEXES_TITLE, UNUSEDINDEXES_SQL);
   fetch_table(REDUNDANTINDEXES_TITLE, REDUNDANTINDEXES_SQL);
+  fetch_table(CORRUPTEDINDEXES_TITLE, CORRUPTEDINDEXES_SQL);
   fetch_table(ORPHANEDFILES_TITLE, ORPHANEDFILES_SQL);
   fetch_table(NBFUNCS_TITLE, NBFUNCS_SQL);
   fetch_table(SECDEF_FUNCS_TITLE, SECDEF_FUNCS_SQL);
