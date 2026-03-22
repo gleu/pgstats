@@ -516,3 +516,4 @@ Ideas
 * pgreport
   * get data stats (idea from Christophe Courtois)
   * find FK without incompatible data type
+  * if pg_profile available, get a report? (https://github.com/zubkov-andrei/pg_profile/)
