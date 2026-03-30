@@ -3844,7 +3844,7 @@ print_repslotsstats()
   locationdiff = atol(PQgetvalue(res, 0, column++));
 
   /* printing the actual values for once */
-  format(r_locationdiff, locationdiff - previous_xlogstats->locationdiff, 12, opts->human_readable ? SIZE_UNIT : NO_UNIT);
+  format(r_locationdiff, locationdiff - previous_repslots->locationdiff, 12, opts->human_readable ? SIZE_UNIT : NO_UNIT);
   if (opts->addtimestamp && ts != NULL)
   {
     (void)printf(" %s  ", ts);
