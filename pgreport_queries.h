@@ -184,7 +184,11 @@
 #define ORPHANEDFILES_TITLE "Orphaned files"
 #define ORPHANEDFILES_SQL "SELECT * FROM orphaned_files ORDER BY file_size DESC"
 
+#define CREATE_REMAPRESOURCEMANAGER_FUNCTION_SQL "CREATE FUNCTION remap_resource_manager(resource_manager TEXT) RETURNS TEXT AS $$ SELECT CASE resource_manager WHEN 'CLOG' THEN 'Pg_xact' WHEN 'XLOG' THEN 'Pg_wal' ELSE resource_manager END $$ LANGUAGE SQL;"
+#define WALCONTENTS_TITLE "Current WAL contents"
+#define WALCONTENTS_SQL "WITH wal_records AS (SELECT remap_resource_manager(resource_manager) AS res_manager, record_type, COUNT(*) AS count, SUM(record_length) as size FROM pg_get_wal_records_info((select redo_lsn from pg_control_checkpoint()), 'FFFFFFFF/FFFFFFFF') GROUP BY 1, 2) SELECT res_manager, record_type, count, round(count * 100.0 / (SUM(count) OVER ()), 1) AS \"%\", round(size * 100.0 / (SUM(size) OVER ()), 1) AS \"size%\" FROM wal_records ORDER BY 5 desc"
+
 #define CREATE_SCHEMA "CREATE SCHEMA pgreport"
 #define SET_SEARCHPATH "SET search_path TO pgreport"
-#define DROP_ALL "DROP FUNCTION get_corruptedindexes();DROP FUNCTION get_value(text, text[], \"char\");DROP EXTENSION pg_buffercache;DROP EXTENSION pg_visibility;DROP SCHEMA pgreport"
+#define DROP_ALL "DROP FUNCTION IF EXISTS remap_resource_manager(text);DROP FUNCTION get_corruptedindexes();DROP FUNCTION get_value(text, text[], \"char\");DROP EXTENSION pg_buffercache;DROP EXTENSION pg_visibility;DROP EXTENSION amcheck;DROP EXTENSION pg_walinspect;DROP SCHEMA pgreport"
 

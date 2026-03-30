@@ -337,10 +337,18 @@ main(int argc, char **argv)
   install_extension("pg_buffercache");
   install_extension("pg_visibility");
   install_extension("amcheck");
+  if (backend_minimum_version(15,0))
+  {
+    install_extension("pg_walinspect");
+  }
   /* Install some functions/views */
   execute(CREATE_CORRUPTEDINDEXES_FUNCTION_SQL);
   execute(CREATE_GETVALUE_FUNCTION_SQL);
   execute(CREATE_BLOATTABLE_VIEW_SQL);
+  if (backend_minimum_version(15,0))
+  {
+    execute(CREATE_REMAPRESOURCEMANAGER_FUNCTION_SQL);
+  }
   strcpy(sql, CREATE_BLOATINDEX_VIEW_SQL_1);
   strcat(sql, CREATE_BLOATINDEX_VIEW_SQL_2);
   execute(sql);
@@ -395,6 +403,10 @@ main(int argc, char **argv)
   fetch_table(CLUSTER_HITRATIO_TITLE, CLUSTER_HITRATIO_SQL);
   fetch_table(CLUSTER_BUFFERSUSAGE_TITLE, CLUSTER_BUFFERSUSAGE_SQL);
   fetch_table(CLUSTER_BUFFERSUSAGEDIRTY_TITLE, CLUSTER_BUFFERSUSAGEDIRTY_SQL);
+  if (backend_minimum_version(15,0))
+  {
+    fetch_table(WALCONTENTS_TITLE, WALCONTENTS_SQL);
+  }
   fetch_table(DATABASES_TITLE, DATABASES_SQL);
   fetch_table(DATABASES_IN_CACHE_TITLE, DATABASES_IN_CACHE_SQL);
   fetch_table(TABLESPACES_TITLE, TABLESPACES_SQL);
