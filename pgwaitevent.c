@@ -9,6 +9,10 @@
  * pgstats/pgwaitevent.c
  */
 
+/*
+ * System headers
+ */
+#include <unistd.h>
 
 /*
  * PostgreSQL headers

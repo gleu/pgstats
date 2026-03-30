@@ -14,6 +14,7 @@
  * System headers
  */
 #include <sys/stat.h>
+#include <unistd.h>
 
 /*
  * PostgreSQL headers
