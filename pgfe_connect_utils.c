@@ -88,8 +88,13 @@ connectDatabase(const ConnParams *cparams, const char *progname,
 		conn = PQconnectdbParams(keywords, values, true);
 
 		if (!conn)
+#if (PG_VERSION_NUM >= 150000)
 			pg_fatal("could not connect to database %s: out of memory",
 					 cparams->dbname);
+#else
+			pg_log_fatal("could not connect to database %s: out of memory",
+					 cparams->dbname);
+#endif
 
 		/*
 		 * No luck?  Trying asking (again) for a password.
@@ -113,7 +118,11 @@ connectDatabase(const ConnParams *cparams, const char *progname,
 			PQfinish(conn);
 			return NULL;
 		}
+#if (PG_VERSION_NUM >= 150000)
 		pg_fatal("%s", PQerrorMessage(conn));
+#else
+		pg_log_fatal("%s", PQerrorMessage(conn));
+#endif
 	}
 
 	/* Start strict; callers may override this. */
