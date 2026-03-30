@@ -64,7 +64,8 @@ executeCommand(PGconn *conn, const char *query, bool echo)
 		pg_log_error_detail("Query was: %s", query);
 #else
 		pg_log_error("Query was: %s", query);
-#endif PQfinish(conn);
+#endif 
+		PQfinish(conn);
 		exit(1);
 	}
 
