@@ -2879,10 +2879,10 @@ print_pgstatwal()
   long     wal_fpi;
   long     wal_bytes;
   long     wal_buffers_full;
-  long     wal_write;
-  long     wal_sync;
-  float    wal_write_time;
-  float    wal_sync_time;
+  long     wal_write = 0;
+  long     wal_sync = 0;
+  float    wal_write_time = 0;
+  float    wal_sync_time = 0;
   char     *stats_reset;
   bool     has_been_reset;
 
@@ -3844,7 +3844,7 @@ print_repslotsstats()
   locationdiff = atol(PQgetvalue(res, 0, column++));
 
   /* printing the actual values for once */
-  format(r_locationdiff, locationdiff - previous_repslots->locationdiff, 12, opts->human_readable ? SIZE_UNIT : NO_UNIT);
+  format(r_locationdiff, locationdiff - previous_repslots->restartlsndiff, 12, opts->human_readable ? SIZE_UNIT : NO_UNIT);
   if (opts->addtimestamp && ts != NULL)
   {
     (void)printf(" %s  ", ts);
