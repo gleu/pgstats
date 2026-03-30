@@ -9,6 +9,10 @@
  * pgstats/pgreport.c
  */
 
+/*
+ * System headers
+ */
+#include <unistd.h>
 
 /*
  * PostgreSQL headers

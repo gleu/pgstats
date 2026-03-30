@@ -14,7 +14,7 @@
  * System headers
  */
 #include <sys/ioctl.h>
-
+#include <unistd.h>
 
 /*
  * PostgreSQL headers

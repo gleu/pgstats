@@ -15,6 +15,7 @@
  */
 #include <err.h>
 #include <sys/signal.h>
+#include <unistd.h>
 
 /*
  * PostgreSQL headers
