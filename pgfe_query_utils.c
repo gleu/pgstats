@@ -31,7 +31,11 @@ executeQuery(PGconn *conn, const char *query, bool echo)
 		PQresultStatus(res) != PGRES_TUPLES_OK)
 	{
 		pg_log_error("query failed: %s", PQerrorMessage(conn));
+#if (PG_VERSION_NUM >= 150000)
 		pg_log_error_detail("Query was: %s", query);
+#else
+		pg_log_error("Query was: %s", query);
+#endif
 		PQfinish(conn);
 		exit(1);
 	}
@@ -56,7 +60,11 @@ executeCommand(PGconn *conn, const char *query, bool echo)
 		PQresultStatus(res) != PGRES_COMMAND_OK)
 	{
 		pg_log_error("query failed: %s", PQerrorMessage(conn));
+#if (PG_VERSION_NUM >= 150000)
 		pg_log_error_detail("Query was: %s", query);
+#else
+		pg_log_error("Query was: %s", query);
+#endif 
 		PQfinish(conn);
 		exit(1);
 	}
