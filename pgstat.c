@@ -517,8 +517,8 @@ bool        backend_minimum_version(int major, int minor);
 void        print_header(void);
 void        print_line(void);
 void        allocate_struct(void);
-static void needhdr(int dummy);
-static void needresize(int);
+static void needhdr(SIGNAL_ARGS);
+static void needresize(SIGNAL_ARGS);
 void        doresize(void);
 static void quit_properly(SIGNAL_ARGS);
 
@@ -5048,7 +5048,7 @@ allocate_struct(void)
  * Force a header to be prepended to the next output.
  */
 static void
-needhdr(int dummy)
+needhdr(SIGNAL_ARGS)
 {
   hdrcnt = 1;
 }
@@ -5059,7 +5059,7 @@ needhdr(int dummy)
  * prepended to the next output.
  */
 void
-needresize(int signo)
+needresize(SIGNAL_ARGS)
 {
   wresized = 1;
 }
@@ -5127,7 +5127,7 @@ main(int argc, char **argv)
    */
   if (isatty(fileno(stdout)) != 0) {
     wresized = 1;
-    (void)signal(SIGWINCH, needresize);
+    pqsignal(SIGWINCH, needresize);
   } else {
     wresized = 0;
     winlines = PGSTAT_DEFAULT_LINES;
