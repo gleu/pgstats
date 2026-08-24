@@ -511,6 +511,8 @@ Ideas
   * add a report for pg_stat_subscription
   * add a report for pg_stat_subscription_stats
   * add a report for pg_stat_wal_receiver
+  * add a report for pg_stat_lock
+  * add a report for pg_stat_recovery
 * pgcsvstat
   * check for anything missing in this tool
 * pgreport
