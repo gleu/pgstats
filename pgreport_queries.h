@@ -147,6 +147,9 @@
 #define UNUSEDINDEXES_TITLE "Unused indexes"
 #define UNUSEDINDEXES_SQL "select schemaname, count(*) from pg_stat_user_indexes s join pg_index i using (indexrelid) where idx_scan=0 and (not indisunique AND not indisprimary) group by 1;"
 
+#define UNUSEDINDEXES6MONTHS_TITLE "Unused indexes since 6 months"
+#define UNUSEDINDEXES6MONTHS_SQL "select schemaname, relname, indexrelname, idx_scan, now()-last_idx_scan as since from pg_stat_user_indexes s join pg_index i using (indexrelid) where last_idx_scan<now()-'6 months'::interval and (not indisunique AND not indisprimary) order by last_idx_scan"
+
 #define REDUNDANTINDEXES_TITLE "Redundant indexes"
 #define REDUNDANTINDEXES_SQL "SELECT pg_size_pretty(SUM(pg_relation_size(idx))::BIGINT) AS SIZE, string_agg(idx::text, ', ') AS indexes FROM ( SELECT indexrelid::regclass AS idx, (indrelid::text ||E'\n'|| indclass::text ||E'\n'|| indkey::text ||E'\n'||COALESCE(indexprs::text,'')||E'\n' || COALESCE(indpred::text,'')) AS KEY FROM pg_index) sub GROUP BY KEY HAVING COUNT(*)>1 ORDER BY SUM(pg_relation_size(idx)) DESC"
 

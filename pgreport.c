@@ -459,6 +459,10 @@ main(int argc, char **argv)
   fetch_table(INDEXONTEXT_TITLE, INDEXONTEXT_SQL);
   fetch_table(PERCENTUSEDINDEXES_TITLE, PERCENTUSEDINDEXES_SQL);
   fetch_table(UNUSEDINDEXES_TITLE, UNUSEDINDEXES_SQL);
+  if (backend_minimum_version(16,0))
+  {
+    fetch_table(UNUSEDINDEXES6MONTHS_TITLE, UNUSEDINDEXES6MONTHS_SQL);
+  }
   fetch_table(REDUNDANTINDEXES_TITLE, REDUNDANTINDEXES_SQL);
   fetch_table(CORRUPTEDINDEXES_TITLE, CORRUPTEDINDEXES_SQL);
   if (backend_minimum_version(10,0))
